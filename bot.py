@@ -187,7 +187,7 @@ class SignInModal(discord.ui.Modal):
         self.add_item(self.skin)
         self.add_item(self.location)
 
-```python
+
     async def on_submit(self, interaction: discord.Interaction):
         t = TEXT[self.language]
         data = load_json(SIGNINS_FILE)
