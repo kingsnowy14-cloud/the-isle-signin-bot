@@ -1,3 +1,4 @@
+
 import os
 import re
 import json
@@ -76,11 +77,6 @@ TEXTS = {
         "not_signed_in": "You are not currently signed in.",
         "signout_done": "You have successfully signed out.",
         "signin_done": "You have successfully signed in.",
-        "modal_title": "The Isle - Player Sign In",
-        "player_name": "Player name",
-        "dino_label": "Dinosaur",
-        "skin_label": "Skin",
-        "location_label": "Current location",
     },
     "de": {
         "signed_in": "Spieler angemeldet",
@@ -93,11 +89,6 @@ TEXTS = {
         "not_signed_in": "Du bist derzeit nicht angemeldet.",
         "signout_done": "Du wurdest erfolgreich abgemeldet.",
         "signin_done": "Du wurdest erfolgreich angemeldet.",
-        "modal_title": "The Isle - Spieler anmelden",
-        "player_name": "Spielername",
-        "dino_label": "Dinosaurier",
-        "skin_label": "Skin",
-        "location_label": "Aktueller Standort",
     },
     "cs": {
         "signed_in": "Hráč přihlášen",
@@ -110,11 +101,6 @@ TEXTS = {
         "not_signed_in": "Momentálně nejsi přihlášen.",
         "signout_done": "Úspěšně ses odhlásil.",
         "signin_done": "Úspěšně ses přihlásil.",
-        "modal_title": "The Isle - Přihlášení hráče",
-        "player_name": "Jméno hráče",
-        "dino_label": "Dinosaurus",
-        "skin_label": "Vzhled",
-        "location_label": "Aktuální poloha",
     },
 }
 
@@ -124,7 +110,7 @@ def get_language(user_id):
 
 
 # ============================================================
-# ANMELDEPANEL - BESCHREIBUNG
+# ANMELDEPANEL-BESCHREIBUNG
 # ============================================================
 
 SIGNIN_DESCRIPTION = (
@@ -166,30 +152,25 @@ SIGNIN_DESCRIPTION = (
 # ANMELDEFORMULAR
 # ============================================================
 
-class SignInModal(discord.ui.Modal):
+class SignInModal(discord.ui.Modal, title="The Isle - Player Sign In"):
 
-    def __init__(self):
-        super().__init__(title="The Isle - Player Sign In")
+    dinosaur = discord.ui.TextInput(
+        label="Dinosaur",
+        placeholder="e.g. Deinosuchus",
+        max_length=80,
+    )
 
-        self.dino = discord.ui.TextInput(
-            label="Dinosaur",
-            placeholder="e.g. Deinosuchus",
-            max_length=80,
-        )
-        self.skin = discord.ui.TextInput(
-            label="Skin",
-            placeholder="Enter your dinosaur skin",
-            max_length=100,
-        )
-        self.location = discord.ui.TextInput(
-            label="Current location",
-            placeholder="Where are you currently?",
-            max_length=150,
-        )
+    skin = discord.ui.TextInput(
+        label="Skin",
+        placeholder="Enter your dinosaur skin",
+        max_length=100,
+    )
 
-        self.add_item(self.dino)
-        self.add_item(self.skin)
-        self.add_item(self.location)
+    location = discord.ui.TextInput(
+        label="Current location",
+        placeholder="Where are you currently?",
+        max_length=150,
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
@@ -199,11 +180,11 @@ class SignInModal(discord.ui.Modal):
         signins[user_id] = {
             "discord_name": str(interaction.user),
             "discord_id": interaction.user.id,
-            "dino": str(self.dino.value),
+            "dino": str(self.dinosaur.value),
             "skin": str(self.skin.value),
             "location": str(self.location.value),
             "status": "online",
-            "aktualisiert_am": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         save_json(SIGNINS_FILE, signins)
 
@@ -217,8 +198,16 @@ class SignInModal(discord.ui.Modal):
             value=interaction.user.mention,
             inline=False,
         )
-        embed.add_field(name=text["dino"], value=self.dino.value, inline=True)
-        embed.add_field(name=text["skin"], value=self.skin.value, inline=True)
+        embed.add_field(
+            name=text["dino"],
+            value=self.dinosaur.value,
+            inline=True,
+        )
+        embed.add_field(
+            name=text["skin"],
+            value=self.skin.value,
+            inline=True,
+        )
         embed.add_field(
             name=text["location"],
             value=self.location.value,
@@ -243,7 +232,10 @@ class SignInModal(discord.ui.Modal):
 
 class LanguageSelect(discord.ui.Select):
 
-    def __init__(self):
+    def __init__(
+        self,
+        placeholder="🌐 Choose your language / Sprache auswählen",
+    ):
         options = [
             discord.SelectOption(
                 label="English",
@@ -263,7 +255,7 @@ class LanguageSelect(discord.ui.Select):
         ]
 
         super().__init__(
-            placeholder="🌐 Choose your language / Sprache auswählen",
+            placeholder=placeholder,
             min_values=1,
             max_values=1,
             options=options,
@@ -271,7 +263,8 @@ class LanguageSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        languages[str(interaction.user.id)] = self.values[0]
+        language = self.values[0]
+        languages[str(interaction.user.id)] = language
         save_json(LANGUAGES_FILE, languages)
 
         labels = {
@@ -281,7 +274,7 @@ class LanguageSelect(discord.ui.Select):
         }
 
         await interaction.response.send_message(
-            labels[self.values[0]],
+            labels[language],
             ephemeral=True,
         )
 
@@ -294,6 +287,7 @@ class SignInView(discord.ui.View):
 
     def __init__(self):
         super().__init__(timeout=None)
+        self.add_item(LanguageSelect())
 
     @discord.ui.button(
         label="Sign In",
@@ -323,7 +317,10 @@ class SignInView(discord.ui.View):
         language = get_language(user_id)
         text = TEXTS.get(language, TEXTS["en"])
 
-        if user_id not in signins or signins[user_id].get("status") != "online":
+        if (
+            user_id not in signins
+            or signins[user_id].get("status") != "online"
+        ):
             await interaction.response.send_message(
                 text["not_signed_in"],
                 ephemeral=True,
@@ -331,9 +328,9 @@ class SignInView(discord.ui.View):
             return
 
         signins[user_id]["status"] = "offline"
-        signins[user_id]["aktualisiert_am"] = (
-            datetime.now(timezone.utc).isoformat()
-        )
+        signins[user_id]["updated_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
         save_json(SIGNINS_FILE, signins)
 
         embed = discord.Embed(
@@ -363,18 +360,6 @@ class SignInView(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.select(
-        cls=LanguageSelect,
-        custom_id="isle:language_select",
-    )
-    async def language_select(
-        self,
-        interaction: discord.Interaction,
-        select: LanguageSelect,
-    ):
-        # Die Auswahl wird durch LanguageSelect.callback verarbeitet.
-        pass
-
 
 # ============================================================
 # ANMELDEPANEL ERSTELLEN
@@ -397,7 +382,9 @@ async def anmeldepannel(ctx):
     description="Set the channel for player sign-in announcements",
 )
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(kanal="Channel for sign-in and sign-out announcements")
+@app_commands.describe(
+    kanal="Channel for sign-in and sign-out announcements"
+)
 async def kanal_set(
     interaction: discord.Interaction,
     kanal: discord.TextChannel,
@@ -406,8 +393,8 @@ async def kanal_set(
     save_json(CONFIG_FILE, config)
 
     await interaction.response.send_message(
-        f"Anmelde- und Abmeldeankündigungen werden jetzt in {kanal.mention} "
-        "veröffentlicht.",
+        f"Anmelde- und Abmeldeankündigungen werden jetzt in "
+        f"{kanal.mention} veröffentlicht.",
         ephemeral=True,
     )
 
@@ -449,6 +436,7 @@ def get_ticket_owner_id(channel):
 
 def is_support_member(member, channel):
     role_id = get_support_role_id(channel)
+
     return bool(
         role_id
         and isinstance(member, discord.Member)
@@ -473,10 +461,8 @@ async def create_ticket_transcript(channel):
         '<html lang="en"><head><meta charset="utf-8">',
         f"<title>Transcript - {html.escape(channel.name)}</title>",
         "<style>",
-        "body{font-family:Arial,sans-serif;background:#202225;color:#eee;"
-        "padding:24px}",
-        ".message{padding:12px;margin:10px 0;background:#2f3136;"
-        "border-radius:8px}",
+        "body{font-family:Arial,sans-serif;background:#202225;color:#eee;padding:24px}",
+        ".message{padding:12px;margin:10px 0;background:#2f3136;border-radius:8px}",
         ".meta{color:#aaa;font-size:12px;margin-bottom:6px}",
         "a{color:#00aff4}",
         "</style></head><body>",
@@ -518,8 +504,6 @@ async def create_ticket_transcript(channel):
 
 async def close_ticket(channel, reason, closed_by):
     owner_id = get_ticket_owner_id(channel)
-    guild = channel.guild
-
     transcript = await create_ticket_transcript(channel)
 
     if owner_id:
@@ -528,7 +512,7 @@ async def close_ticket(channel, reason, closed_by):
             await owner.send(
                 f"Dein Ticket **{channel.name}** wurde geschlossen.\n"
                 f"Grund: {reason}\n"
-                "Hier ist dein HTML-Transkript:",
+                "Das HTML-Transkript ist angehängt.",
                 file=transcript,
             )
         except (discord.Forbidden, discord.HTTPException):
@@ -561,10 +545,13 @@ async def close_ticket(channel, reason, closed_by):
 
 
 # ============================================================
-# TICKET-NACHRICHT BEARBEITEN
+# BOT-NACHRICHT BEARBEITEN
 # ============================================================
 
-class EditTicketMessageModal(discord.ui.Modal, title="Bot-Nachricht bearbeiten"):
+class EditTicketMessageModal(
+    discord.ui.Modal,
+    title="Bot-Nachricht bearbeiten",
+):
 
     message_id = discord.ui.TextInput(
         label="Nachrichten-ID",
@@ -638,12 +625,19 @@ class TicketCloseVoteView(discord.ui.View):
             )
             return
 
-        if interaction.user.id == owner_id:
-            channel_topic = update_topic(channel, **{"owner-yes": 1})
-        else:
-            channel_topic = update_topic(channel, **{"support-yes": 1})
+        if topic_value(channel, "close-request") != "1":
+            await ticket_ephemeral(
+                interaction,
+                "Es gibt keinen offenen Schließungsantrag.",
+            )
+            return
 
-        await channel.edit(topic=channel_topic)
+        if interaction.user.id == owner_id:
+            topic = update_topic(channel, **{"owner-yes": 1})
+        else:
+            topic = update_topic(channel, **{"support-yes": 1})
+
+        await channel.edit(topic=topic)
 
         owner_yes = topic_value(channel, "owner-yes") == "1"
         support_yes = topic_value(channel, "support-yes") == "1"
@@ -652,12 +646,16 @@ class TicketCloseVoteView(discord.ui.View):
             await interaction.response.send_message(
                 "Beide Seiten haben zugestimmt. Das Ticket wird geschlossen."
             )
-            await close_ticket(channel, "Beide Seiten haben zugestimmt", interaction.user)
+            await close_ticket(
+                channel,
+                "Beide Seiten haben zugestimmt",
+                interaction.user,
+            )
             return
 
         await interaction.response.send_message(
-            "Deine Zustimmung wurde gespeichert. Die andere Seite muss ebenfalls "
-            "zustimmen.",
+            "Deine Zustimmung wurde gespeichert. Die andere Seite muss "
+            "ebenfalls zustimmen.",
             ephemeral=True,
         )
 
@@ -675,6 +673,13 @@ class TicketCloseVoteView(discord.ui.View):
             await ticket_ephemeral(
                 interaction,
                 "Nur der Ticket-Ersteller oder das Support-Team darf abstimmen.",
+            )
+            return
+
+        if topic_value(channel, "close-request") != "1":
+            await ticket_ephemeral(
+                interaction,
+                "Es gibt keinen offenen Schließungsantrag.",
             )
             return
 
@@ -713,18 +718,22 @@ class TicketControlsView(discord.ui.View):
         channel = interaction.channel
 
         if not is_support_member(interaction.user, channel):
-            await ticket_ephemeral(interaction, "Nur Support darf Tickets übernehmen.")
+            await ticket_ephemeral(
+                interaction,
+                "Nur Support darf Tickets übernehmen.",
+            )
             return
 
         if topic_value(channel, "claimed") != "0":
-            await ticket_ephemeral(interaction, "Dieses Ticket wurde bereits übernommen.")
+            await ticket_ephemeral(
+                interaction,
+                "Dieses Ticket wurde bereits übernommen.",
+            )
             return
 
-        topic = update_topic(
-            channel,
-            claimed=interaction.user.id,
+        await channel.edit(
+            topic=update_topic(channel, claimed=interaction.user.id)
         )
-        await channel.edit(topic=topic)
 
         await interaction.response.send_message(
             f"🙋 {interaction.user.mention} hat dieses Ticket übernommen."
@@ -741,7 +750,10 @@ class TicketControlsView(discord.ui.View):
         claimer = topic_value(channel, "claimed")
 
         if claimer == "0":
-            await ticket_ephemeral(interaction, "Dieses Ticket ist nicht übernommen.")
+            await ticket_ephemeral(
+                interaction,
+                "Dieses Ticket ist nicht übernommen.",
+            )
             return
 
         if str(interaction.user.id) != claimer:
@@ -752,6 +764,7 @@ class TicketControlsView(discord.ui.View):
             return
 
         await channel.edit(topic=update_topic(channel, claimed=0))
+
         await interaction.response.send_message(
             f"↩️ {interaction.user.mention} hat das Ticket freigegeben."
         )
@@ -820,6 +833,11 @@ class TicketControlsView(discord.ui.View):
             view=TicketCloseVoteView(),
         )
 
+
+# Die Bearbeitungs-Schaltfläche wird separat registriert,
+# damit das Ticket-Control-Panel übersichtlich bleibt.
+class TicketControlsViewWithEdit(TicketControlsView):
+
     @discord.ui.button(
         label="Bot-Nachricht bearbeiten",
         emoji="✏️",
@@ -838,7 +856,7 @@ class TicketControlsView(discord.ui.View):
 
 
 # ============================================================
-# TICKET-PANEL UND TICKET-ERSTELLUNG
+# TICKET-PANEL
 # ============================================================
 
 class TicketPanelView(discord.ui.View):
@@ -854,8 +872,8 @@ class TicketPanelView(discord.ui.View):
         custom_id="kingsnowy:ticket:create",
     )
     async def create_ticket(self, interaction, button):
-        panel_key = str(interaction.message.id)
-        settings = tickets.get(panel_key)
+        panel_id = str(interaction.message.id)
+        settings = tickets.get(panel_id)
 
         if not settings:
             await ticket_ephemeral(
@@ -867,20 +885,21 @@ class TicketPanelView(discord.ui.View):
 
         guild = interaction.guild
         owner = interaction.user
-        role_id = int(settings["role_id"])
-        support_role = guild.get_role(role_id)
+        support_role = guild.get_role(int(settings["role_id"]))
 
         if support_role is None:
-            await ticket_ephemeral(interaction, "Die konfigurierte Support-Rolle fehlt.")
+            await ticket_ephemeral(
+                interaction,
+                "Die konfigurierte Support-Rolle wurde nicht gefunden.",
+            )
             return
 
         category_id = settings.get("category_id")
         category = guild.get_channel(int(category_id)) if category_id else None
 
-        number_key = str(guild.id)
         number = int(settings.get("next_number", 1))
         settings["next_number"] = number + 1
-        tickets[panel_key] = settings
+        tickets[panel_id] = settings
         save_json(TICKETS_FILE, tickets)
 
         slug = re.sub(
@@ -908,14 +927,16 @@ class TicketPanelView(discord.ui.View):
                 manage_messages=True,
                 attach_files=True,
             ),
-            guild.me: discord.PermissionOverwrite(
+        }
+
+        if guild.me:
+            overwrites[guild.me] = discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True,
                 manage_channels=True,
                 attach_files=True,
-            ),
-        }
+            )
 
         try:
             channel = await guild.create_text_channel(
@@ -950,7 +971,7 @@ class TicketPanelView(discord.ui.View):
         await channel.send(
             content=f"{owner.mention} {support_role.mention}",
             embed=embed,
-            view=TicketControlsView(),
+            view=TicketControlsViewWithEdit(),
         )
 
         await interaction.response.send_message(
@@ -958,6 +979,10 @@ class TicketPanelView(discord.ui.View):
             ephemeral=True,
         )
 
+
+# ============================================================
+# TICKET-COMMANDS
+# ============================================================
 
 @bot.tree.command(
     name="ticketcreat",
@@ -977,8 +1002,7 @@ async def ticketcreat(
 ):
     if ping_rolle >= interaction.guild.me.top_role:
         await interaction.response.send_message(
-            "Die Support-Rolle muss in der Rollenliste unter der höchsten "
-            "Bot-Rolle stehen.",
+            "Die Support-Rolle muss unter der höchsten Bot-Rolle stehen.",
             ephemeral=True,
         )
         return
@@ -993,8 +1017,10 @@ async def ticketcreat(
         color=discord.Color.blurple(),
     )
 
-    view = TicketPanelView(ticket_name)
-    await interaction.response.send_message(embed=embed, view=view)
+    await interaction.response.send_message(
+        embed=embed,
+        view=TicketPanelView(ticket_name),
+    )
     message = await interaction.original_response()
 
     tickets[str(message.id)] = {
@@ -1041,15 +1067,22 @@ async def on_app_command_error(interaction, error):
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
-            await interaction.response.send_message(message, ephemeral=True)
+            await interaction.response.send_message(
+                message,
+                ephemeral=True,
+            )
     except discord.HTTPException:
         pass
 
 
+# ============================================================
+# BOT STARTEN
+# ============================================================
+
 @bot.event
 async def on_ready():
     bot.add_view(SignInView())
-    bot.add_view(TicketControlsView())
+    bot.add_view(TicketControlsViewWithEdit())
     bot.add_view(TicketCloseVoteView())
 
     for panel_id, settings in tickets.items():
@@ -1070,10 +1103,6 @@ async def on_ready():
 
     print(f"Bot online: {bot.user}")
 
-
-# ============================================================
-# BOT STARTEN
-# ============================================================
 
 if not TOKEN:
     raise RuntimeError(
