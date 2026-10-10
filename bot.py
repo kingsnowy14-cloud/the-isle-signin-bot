@@ -1,4 +1,3 @@
-```python
 import os
 import json
 from pathlib import Path
@@ -231,4 +230,3 @@ async def setup_signin(interaction: discord.Interaction):
 
 
 bot.run(TOKEN)
-```
