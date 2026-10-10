@@ -238,6 +238,7 @@ class SignInModal(discord.ui.Modal):
             ephemeral=True,
         )
 @bot.event
+@bot.event
 async def on_command_error(ctx, error):
     print(f"Command-Fehler: {error}")
 
