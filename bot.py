@@ -4,12 +4,6 @@ from pathlib import Path
 
 import discord
 from discord.ext import commands
-from discord import app_commandsimport os
-import json
-from pathlib import Path
-
-import discord
-from discord.ext import commands
 from discord import app_commands
 
 
@@ -25,47 +19,18 @@ CONFIG_FILE = Path("config.json")
 
 if not TOKEN:
     raise RuntimeError(
-        "DISCORD_TOKEN fehlt. Bitte in Railway Variables setzen."
+        "DISCORD_TOKEN fehlt. Bitte in Railway unter Variables setzen."
     )
 
 
 # ==================================================
-# SPRACHEN
+# ÜBERSETZUNGEN
 # ==================================================
 
 TEXT = {
-    "de": {
-        "language_saved": "Deine Sprache wurde auf Deutsch eingestellt.",
-        "modal_title": "The Isle – Spieleranmeldung",
-        "dino": "Dinosaurier",
-        "dino_placeholder": "z. B. Stego",
-        "skin": "Skin",
-        "skin_placeholder": "Dein Skin",
-        "location": "Standort",
-        "location_placeholder": "z. B. Sumpfteich",
-        "signed_in": "Du wurdest erfolgreich angemeldet!",
-        "signed_out": "Du wurdest erfolgreich abgemeldet.",
-        "not_signed_in": "Du bist aktuell nicht angemeldet.",
-        "signin_title": "🟢 Spieler angemeldet",
-        "signout_title": "🔴 Spieler abgemeldet",
-        "player": "Spieler",
-        "last_location": "Letzter Standort",
-        "footer": "The Isle – Spieleranmeldung",
-        "no_channel": "Der Anmeldekanal wurde noch nicht eingerichtet. Bitte informiere einen Administrator.",
-        "panel_title": "🦖 THE ISLE – SPIELERANMELDUNG",
-        "panel_description": (
-            "Wähle zuerst deine Sprache aus.\n\n"
-            "🟢 **Sign In:** Melde deinen Charakter an.\n"
-            "🔴 **Sign Out:** Melde dich nach dem Spielen ab."
-        ),
-        "panel_created": "Das Anmeldepanel wurde erstellt.",
-        "admin_only": "Du benötigst Administratorrechte.",
-        "channel_set": "Der Anmeldekanal wurde auf {channel} eingestellt.",
-        "unknown": "Unbekannt",
-    },
     "en": {
         "language_saved": "Your language has been set to English.",
-        "modal_title": "The Isle – Player Sign-In",
+        "modal_title": "The Isle - Player Sign-In",
         "dino": "Dinosaur",
         "dino_placeholder": "e.g. Stego",
         "skin": "Skin",
@@ -73,28 +38,31 @@ TEXT = {
         "location": "Location",
         "location_placeholder": "e.g. Swamp",
         "signed_in": "You have successfully signed in!",
-        "signed_out": "You have successfully signed out.",
+        "signed_out": "You have successfully signed out!",
         "not_signed_in": "You are not currently signed in.",
-        "signin_title": "🟢 Player Signed In",
-        "signout_title": "🔴 Player Signed Out",
-        "player": "Player",
-        "last_location": "Last Location",
-        "footer": "The Isle – Player Sign-In",
-        "no_channel": "The sign-in announcement channel has not been configured. Please contact an administrator.",
-        "panel_title": "🦖 THE ISLE – PLAYER SIGN-IN",
-        "panel_description": (
-            "Please choose your language first.\n\n"
-            "🟢 **Sign In:** Register your character.\n"
-            "🔴 **Sign Out:** Sign out when you finish playing."
-        ),
-        "panel_created": "The sign-in panel has been created.",
+        "no_channel": "The announcement channel has not been configured. Please contact an administrator.",
         "admin_only": "You need administrator permissions.",
-        "channel_set": "The sign-in channel has been set to {channel}.",
-        "unknown": "Unknown",
+        "channel_set": "The announcement channel is now {channel}.",
+    },
+    "de": {
+        "language_saved": "Deine Sprache wurde auf Deutsch eingestellt.",
+        "modal_title": "The Isle - Spieleranmeldung",
+        "dino": "Dinosaurier",
+        "dino_placeholder": "z. B. Stego",
+        "skin": "Skin",
+        "skin_placeholder": "Dein Skin",
+        "location": "Standort",
+        "location_placeholder": "z. B. Sumpfteich",
+        "signed_in": "Du wurdest erfolgreich angemeldet!",
+        "signed_out": "Du wurdest erfolgreich abgemeldet!",
+        "not_signed_in": "Du bist aktuell nicht angemeldet.",
+        "no_channel": "Der Anmeldekanal wurde noch nicht eingerichtet. Bitte informiere einen Administrator.",
+        "admin_only": "Du benötigst Administratorrechte.",
+        "channel_set": "Der Anmeldekanal wurde auf {channel} eingestellt.",
     },
     "cs": {
         "language_saved": "Jazyk byl nastaven na češtinu.",
-        "modal_title": "The Isle – Registrace hráče",
+        "modal_title": "The Isle - Registrace hráče",
         "dino": "Dinosaurus",
         "dino_placeholder": "např. Stego",
         "skin": "Vzhled",
@@ -102,24 +70,11 @@ TEXT = {
         "location": "Poloha",
         "location_placeholder": "např. bažina",
         "signed_in": "Úspěšně ses přihlásil!",
-        "signed_out": "Úspěšně ses odhlásil.",
+        "signed_out": "Úspěšně ses odhlásil!",
         "not_signed_in": "Momentálně nejsi přihlášen.",
-        "signin_title": "🟢 Hráč přihlášen",
-        "signout_title": "🔴 Hráč odhlášen",
-        "player": "Hráč",
-        "last_location": "Poslední poloha",
-        "footer": "The Isle – Registrace hráče",
-        "no_channel": "Kanál pro oznámení registrací není nastaven. Kontaktuj správce.",
-        "panel_title": "🦖 THE ISLE – REGISTRACE HRÁČE",
-        "panel_description": (
-            "Nejprve si vyber jazyk.\n\n"
-            "🟢 **Sign In:** Zaregistruj svou postavu.\n"
-            "🔴 **Sign Out:** Odhlas se po skončení hraní."
-        ),
-        "panel_created": "Registrační panel byl vytvořen.",
+        "no_channel": "Registrační kanál není nastaven. Kontaktuj správce.",
         "admin_only": "Potřebuješ oprávnění správce.",
         "channel_set": "Registrační kanál byl nastaven na {channel}.",
-        "unknown": "Neznámý",
     },
 }
 
@@ -144,7 +99,8 @@ def save_json(path: Path, data: dict) -> None:
 
 
 def get_language(user_id: int) -> str:
-    language = load_json(LANGUAGES_FILE).get(str(user_id), "en")
+    languages = load_json(LANGUAGES_FILE)
+    language = languages.get(str(user_id), "en")
     return language if language in TEXT else "en"
 
 
@@ -157,32 +113,41 @@ def set_language(user_id: int, language: str) -> None:
     save_json(LANGUAGES_FILE, languages)
 
 
-def get_announcement_channel_id():
-    return load_json(CONFIG_FILE).get("announcement_channel_id")
+# ==================================================
+# ANMELDEKANAL PRO SERVER SPEICHERN
+# ==================================================
+
+def get_announcement_channel_id(guild_id: int):
+    config = load_json(CONFIG_FILE)
+    channels = config.get("announcement_channels", {})
+    channel_id = channels.get(str(guild_id))
+
+    # Unterstützt auch eine frühere config.json.
+    if channel_id is None:
+        channel_id = config.get("announcement_channel_id")
+
+    return int(channel_id) if channel_id else None
 
 
-async def get_announcement_channel(guild: discord.Guild):
-    channel_id = get_announcement_channel_id()
+def set_announcement_channel_id(
+    guild_id: int,
+    channel_id: int,
+) -> None:
+    config = load_json(CONFIG_FILE)
+    channels = config.get("announcement_channels", {})
 
-    if not channel_id:
-        return None
+    channels[str(guild_id)] = channel_id
+    config["announcement_channels"] = channels
 
-    channel = guild.get_channel(int(channel_id))
+    save_json(CONFIG_FILE, config)
 
-    if channel is None:
-        try:
-            channel = await bot.fetch_channel(int(channel_id))
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            return None
 
-    if not isinstance(channel, discord.TextChannel):
-        return None
-
-    return channel
+def player_key(guild_id: int, user_id: int) -> str:
+    return f"{guild_id}:{user_id}"
 
 
 # ==================================================
-# BOT
+# BOT EINRICHTEN
 # ==================================================
 
 intents = discord.Intents.default()
@@ -192,6 +157,35 @@ bot = commands.Bot(
     command_prefix="!",
     intents=intents,
 )
+
+
+async def get_announcement_channel(
+    guild: discord.Guild,
+):
+    channel_id = get_announcement_channel_id(guild.id)
+
+    if channel_id is None:
+        return None
+
+    channel = guild.get_channel(channel_id)
+
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except (
+            discord.NotFound,
+            discord.Forbidden,
+            discord.HTTPException,
+        ):
+            return None
+
+    if not isinstance(channel, discord.TextChannel):
+        return None
+
+    if channel.guild.id != guild.id:
+        return None
+
+    return channel
 
 
 # ==================================================
@@ -234,7 +228,7 @@ class SignInModal(discord.ui.Modal):
         self,
         interaction: discord.Interaction,
     ) -> None:
-        t = TEXT[self.language]
+        personal_text = TEXT[self.language]
 
         if interaction.guild is None:
             await interaction.response.send_message(
@@ -247,76 +241,94 @@ class SignInModal(discord.ui.Modal):
 
         if channel is None:
             await interaction.response.send_message(
-                t["no_channel"],
+                personal_text["no_channel"],
                 ephemeral=True,
             )
             return
 
+        guild_id = interaction.guild.id
+        user_id = interaction.user.id
+        key = player_key(guild_id, user_id)
+
         data = load_json(SIGNINS_FILE)
-        user_id = str(interaction.user.id)
+        existing = data.get(key, {})
 
-        data[user_id] = {
-            "discord_name": interaction.user.display_name,
-            "discord_id": interaction.user.id,
-            "dino": self.dinosaur.value.strip(),
-            "skin": self.skin.value.strip(),
-            "location": self.location.value.strip(),
-            "status": "Angemeldet",
-            "language": self.language,
-            "guild_id": interaction.guild_id,
-            "updated_at": discord.utils.utcnow().isoformat(),
-        }
+        # Keine doppelte aktive Anmeldung.
+        if existing.get("status") == "Signed In":
+            await interaction.response.send_message(
+                "You are already signed in. Please sign out first.",
+                ephemeral=True,
+            )
+            return
 
-        save_json(SIGNINS_FILE, data)
-
+        # Öffentliche Anmeldung: immer Englisch.
         embed = discord.Embed(
-            title=t["signin_title"],
+            title="🟢 Player Signed In",
             color=discord.Color.green(),
             timestamp=discord.utils.utcnow(),
         )
 
         embed.add_field(
-            name=t["player"],
+            name="Player",
             value=interaction.user.mention,
             inline=False,
         )
         embed.add_field(
-            name=t["dino"],
+            name="Dinosaur",
             value=self.dinosaur.value.strip(),
             inline=True,
         )
         embed.add_field(
-            name=t["skin"],
+            name="Skin",
             value=self.skin.value.strip(),
             inline=True,
         )
         embed.add_field(
-            name=t["location"],
+            name="Location",
             value=self.location.value.strip(),
             inline=False,
         )
-        embed.set_footer(text=t["footer"])
+        embed.set_footer(
+            text="The Isle - Player Registration"
+        )
 
         try:
             await channel.send(
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-        except discord.HTTPException:
+        except discord.HTTPException as error:
+            print(f"Could not publish sign-in: {error}")
+
             await interaction.response.send_message(
-                "Die Anmeldung wurde gespeichert, aber die öffentliche Nachricht konnte nicht gesendet werden. Bitte prüfe die Bot-Berechtigungen im Anmeldekanal.",
+                "Your registration could not be published. "
+                "Please contact an administrator.",
                 ephemeral=True,
             )
             return
 
+        data[key] = {
+            "discord_name": interaction.user.display_name,
+            "discord_id": user_id,
+            "dino": self.dinosaur.value.strip(),
+            "skin": self.skin.value.strip(),
+            "location": self.location.value.strip(),
+            "status": "Signed In",
+            "language": self.language,
+            "guild_id": guild_id,
+            "updated_at": discord.utils.utcnow().isoformat(),
+        }
+
+        save_json(SIGNINS_FILE, data)
+
         await interaction.response.send_message(
-            t["signed_in"],
+            personal_text["signed_in"],
             ephemeral=True,
         )
 
 
 # ==================================================
-# ANMELDEPANEL
+# PANEL: SPRACHAUSWAHL UND BUTTONS
 # ==================================================
 
 class SignInView(discord.ui.View):
@@ -392,17 +404,19 @@ class SignInView(discord.ui.View):
             return
 
         language = get_language(interaction.user.id)
-        t = TEXT["en"]
+        personal_text = TEXT[language]
+
+        key = player_key(
+            interaction.guild.id,
+            interaction.user.id,
+        )
 
         data = load_json(SIGNINS_FILE)
-        user_id = str(interaction.user.id)
+        player = data.get(key)
 
-        if (
-            user_id not in data
-            or data[user_id].get("status") != "Angemeldet"
-        ):
+        if not player or player.get("status") != "Signed In":
             await interaction.response.send_message(
-                t["not_signed_in"],
+                personal_text["not_signed_in"],
                 ephemeral=True,
             )
             return
@@ -411,101 +425,112 @@ class SignInView(discord.ui.View):
 
         if channel is None:
             await interaction.response.send_message(
-                t["no_channel"],
+                personal_text["no_channel"],
                 ephemeral=True,
             )
             return
 
-        data[user_id]["status"] = "Abgemeldet"
-        data[user_id]["updated_at"] = (
-            discord.utils.utcnow().isoformat()
-        )
-        save_json(SIGNINS_FILE, data)
-
+        # Öffentliche Abmeldung: immer Englisch.
         embed = discord.Embed(
-            title=t["signout_title"],
+            title="🔴 Player Signed Out",
             color=discord.Color.red(),
             timestamp=discord.utils.utcnow(),
         )
 
         embed.add_field(
-            name=t["player"],
+            name="Player",
             value=interaction.user.mention,
             inline=False,
         )
         embed.add_field(
-            name=t["last_location"],
-            value=data[user_id].get("location", t["unknown"]),
+            name="Last Location",
+            value=player.get("location", "Unknown"),
             inline=False,
         )
-        embed.set_footer(text=t["footer"])
+        embed.set_footer(
+            text="The Isle - Player Registration"
+        )
 
         try:
             await channel.send(
                 embed=embed,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
-        except discord.HTTPException:
+        except discord.HTTPException as error:
+            print(f"Could not publish sign-out: {error}")
+
             await interaction.response.send_message(
-                "Der Abmeldestatus wurde gespeichert, aber die öffentliche Nachricht konnte nicht gesendet werden. Bitte prüfe die Bot-Berechtigungen.",
+                "Your sign-out could not be published. "
+                "Please contact an administrator.",
                 ephemeral=True,
             )
             return
 
+        player["status"] = "Signed Out"
+        player["updated_at"] = discord.utils.utcnow().isoformat()
+        save_json(SIGNINS_FILE, data)
+
         await interaction.response.send_message(
-            t["signed_out"],
+            personal_text["signed_out"],
             ephemeral=True,
         )
+
+
 # ==================================================
 # !anmeldepannel
+# Auch !anmeldepanel funktioniert als Alias.
 # ==================================================
 
-@bot.command(name="anmeldepannel")
+@bot.command(
+    name="anmeldepannel",
+    aliases=["anmeldepanel"],
+)
 @commands.has_permissions(administrator=True)
 async def anmeldepannel(ctx: commands.Context) -> None:
     embed = discord.Embed(
-        title="🦖 THE ISLE – PLAYER SIGN-IN | SPIELERANMELDUNG",
+        title="🦖 THE ISLE - PLAYER SIGN-IN",
         color=discord.Color.blurple(),
         description=(
-            "Welcome to the official player sign-in panel!\n"
+            "Welcome to the player sign-in panel!\n"
             "Willkommen beim Spieler-Anmeldepanel!\n"
             "Vítej v registračním panelu hráčů!\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-            "🇬🇧 **ENGLISH – HOW TO SIGN IN**\n"
-            "1. Select your language from the menu below.\n"
+            "🇬🇧 **ENGLISH - HOW TO SIGN IN**\n"
+            "1. Select your language below.\n"
             "2. Click **Sign In**.\n"
             "3. Enter your dinosaur, skin and current location.\n"
-            "4. Submit the form. Your sign-in will be posted in the designated channel.\n"
+            "4. Submit the form. Your registration will be posted "
+            "in the designated announcement channel.\n"
             "5. When you finish playing, click **Sign Out**.\n\n"
 
             "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-            "🇩🇪 **DEUTSCH – SO MELDEST DU DICH AN**\n"
+            "🇩🇪 **DEUTSCH - SO MELDEST DU DICH AN**\n"
             "1. Wähle unten deine Sprache aus.\n"
-            "2. Klicke auf **Anmelden**.\n"
-            "3. Gib deinen Dinosaurier, deinen Skin und deinen aktuellen Standort ein.\n"
-            "4. Sende das Formular ab. Deine Anmeldung wird im festgelegten Kanal veröffentlicht.\n"
-            "5. Wenn du mit dem Spielen fertig bist, klicke auf **Abmelden**.\n\n"
+            "2. Klicke auf **Sign In**.\n"
+            "3. Gib deinen Dinosaurier, Skin und Standort ein.\n"
+            "4. Sende das Formular ab. Deine Anmeldung wird im "
+            "festgelegten Anmeldekanal veröffentlicht.\n"
+            "5. Wenn du fertig bist, klicke auf **Sign Out**.\n\n"
 
             "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-            "🇨🇿 **ČEŠTINA – JAK SE PŘIHLÁSIT**\n"
+            "🇨🇿 **ČEŠTINA - JAK SE PŘIHLÁSIT**\n"
             "1. Vyber si jazyk v nabídce níže.\n"
-            "2. Klikni na **Přihlásit se**.\n"
-            "3. Vyplň svého dinosaura, vzhled a aktuální polohu.\n"
-            "4. Odešli formulář. Tvoje registrace bude zveřejněna v určeném kanálu.\n"
-            "5. Až skončíš s hraním, klikni na **Odhlásit se**.\n\n"
+            "2. Klikni na **Sign In**.\n"
+            "3. Vyplň dinosaura, vzhled a aktuální polohu.\n"
+            "4. Odešli formulář. Registrace bude zveřejněna "
+            "v určeném registračním kanálu.\n"
+            "5. Po skončení hraní klikni na **Sign Out**.\n\n"
 
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🟢 Sign In / Anmelden / Přihlásit se\n"
-            "🔴 Sign Out / Abmelden / Odhlásit se\n"
-            "🌐 Choose your language / Wähle deine Sprache / Vyber si jazyk"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🌐 Choose your language / Wähle deine Sprache / Vyber jazyk"
         ),
     )
 
     embed.set_footer(
-        text="The Isle Evrima • Player Registration • Spieleranmeldung"
+        text="The Isle Evrima - Player Registration"
     )
 
     await ctx.send(
@@ -526,7 +551,8 @@ async def anmeldepannel_error(
             "Potřebuješ oprávnění správce."
         )
     else:
-        print(f"Fehler bei !anmeldepannel: {error}")
+        print(f"Error in !anmeldepannel: {error}")
+
 
 # ==================================================
 # /kanal-set
@@ -534,23 +560,33 @@ async def anmeldepannel_error(
 
 @bot.tree.command(
     name="kanal-set",
-    description="Set the channel for public player sign-in announcements.",
+    description="Set the public player announcement channel.",
 )
 @app_commands.describe(
-    kanal="The text channel where sign-ins and sign-outs are posted.",
+    kanal="Channel for public sign-in and sign-out announcements",
 )
 @app_commands.checks.has_permissions(administrator=True)
 async def kanal_set(
     interaction: discord.Interaction,
     kanal: discord.TextChannel,
 ) -> None:
-    config = load_json(CONFIG_FILE)
-    config["announcement_channel_id"] = kanal.id
-    save_json(CONFIG_FILE, config)
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "This command can only be used in a server.",
+            ephemeral=True,
+        )
+        return
+
+    set_announcement_channel_id(
+        interaction.guild.id,
+        kanal.id,
+    )
+
+    language = get_language(interaction.user.id)
 
     await interaction.response.send_message(
-        TEXT[get_language(interaction.user.id)]["channel_set"].format(
-            channel=kanal.mention
+        TEXT[language]["channel_set"].format(
+            channel=kanal.mention,
         ),
         ephemeral=True,
     )
@@ -561,26 +597,23 @@ async def kanal_set_error(
     interaction: discord.Interaction,
     error: app_commands.AppCommandError,
 ) -> None:
+    language = get_language(interaction.user.id)
+
     if isinstance(error, app_commands.MissingPermissions):
-        message = TEXT[get_language(interaction.user.id)]["admin_only"]
-
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
+        message = TEXT[language]["admin_only"]
     else:
-        print(f"Fehler bei /kanal-set: {error}")
+        print(f"Error in /kanal-set: {error}")
+        message = "An error occurred. Please check the bot logs."
 
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                "An error occurred while setting the channel. Check the bot logs.",
-                ephemeral=True,
-            )
+    if not interaction.response.is_done():
+        await interaction.response.send_message(
+            message,
+            ephemeral=True,
+        )
 
 
 # ==================================================
-# START
+# BOT STARTEN
 # ==================================================
 
 @bot.event
@@ -593,9 +626,9 @@ async def on_ready():
         try:
             synced = await bot.tree.sync()
             bot.slash_commands_synced = True
-            print(f"Slash-Befehle synchronisiert: {len(synced)}")
+            print(f"Slash commands synced: {len(synced)}")
         except discord.HTTPException as error:
-            print(f"Slash-Befehle konnten nicht synchronisiert werden: {error}")
+            print(f"Could not sync slash commands: {error}")
 
     print(f"Bot online: {bot.user} (ID: {bot.user.id})")
 
