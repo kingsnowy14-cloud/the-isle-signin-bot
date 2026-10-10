@@ -1,4 +1,11 @@
+```python
 import os
+import json
+from pathlib import Path
+
+import discord
+from discord.ext import commands
+from discord import app_commandsimport os
 import json
 from pathlib import Path
 
