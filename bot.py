@@ -187,18 +187,53 @@ class SignInModal(discord.ui.Modal):
         self.add_item(self.skin)
         self.add_item(self.location)
 
+```python
     async def on_submit(self, interaction: discord.Interaction):
         t = TEXT[self.language]
         data = load_json(SIGNINS_FILE)
-       data[str(interaction.user.id)] = {
-    "discord_name": interaction.user.display_name,
-    "discord_id": interaction.user.id,
-    "dino": self.dinosaur.value.strip(),
-    "skin": self.skin.value.strip(),
-    "location": self.location.value.strip(),
-    "status": "Angemeldet",
-    "language": self.language,
-    "guild_id": interaction.guild_id,
-    "updated_at": discord.utils.utcnow().isoformat(),
-}
-save_json(SIGNINS_FILE, data)
+
+        data[str(interaction.user.id)] = {
+            "discord_name": interaction.user.display_name,
+            "discord_id": interaction.user.id,
+            "dino": self.dinosaur.value.strip(),
+            "skin": self.skin.value.strip(),
+            "location": self.location.value.strip(),
+            "status": "Angemeldet",
+            "language": self.language,
+            "guild_id": interaction.guild_id,
+            "updated_at": discord.utils.utcnow().isoformat(),
+        }
+
+        save_json(SIGNINS_FILE, data)
+
+        embed = discord.Embed(
+            title=t["notice_title"],
+            color=discord.Color.green(),
+        )
+        embed.add_field(
+            name=t["player"],
+            value=interaction.user.mention,
+            inline=False,
+        )
+        embed.add_field(
+            name=t["dino"],
+            value=self.dinosaur.value.strip(),
+            inline=True,
+        )
+        embed.add_field(
+            name=t["skin"],
+            value=self.skin.value.strip(),
+            inline=True,
+        )
+        embed.add_field(
+            name=t["location"],
+            value=self.location.value.strip(),
+            inline=False,
+        )
+        embed.set_footer(text=t["footer"])
+
+        await interaction.response.send_message(
+            content=t["signed_in"],
+            embed=embed,
+            ephemeral=True,
+        )
