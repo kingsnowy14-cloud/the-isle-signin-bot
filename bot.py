@@ -190,7 +190,6 @@ class SignInModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         t = TEXT[self.language]
         data = load_json(SIGNINS_FILE)
-
        data[str(interaction.user.id)] = {
     "discord_name": interaction.user.display_name,
     "discord_id": interaction.user.id,
