@@ -386,7 +386,7 @@ class SignInView(discord.ui.View):
             return
 
         language = get_language(interaction.user.id)
-        t = TEXT[language]
+        t = TEXT["en"]
 
         data = load_json(SIGNINS_FILE)
         user_id = str(interaction.user.id)
