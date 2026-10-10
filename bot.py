@@ -1,5 +1,8 @@
+
 import os
 import json
+import re
+import asyncio
 from pathlib import Path
 
 import discord
@@ -11,11 +14,12 @@ from discord import app_commands
 # KONFIGURATION
 # ==================================================
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 
 SIGNINS_FILE = Path("signins.json")
 LANGUAGES_FILE = Path("languages.json")
 CONFIG_FILE = Path("config.json")
+TICKETS_FILE = Path("tickets.json")
 
 if not TOKEN:
     raise RuntimeError(
@@ -24,7 +28,7 @@ if not TOKEN:
 
 
 # ==================================================
-# ÜBERSETZUNGEN
+# ÜBERSETZUNGEN FÜR DAS ANMELDEPANEL
 # ==================================================
 
 TEXT = {
@@ -80,7 +84,7 @@ TEXT = {
 
 
 # ==================================================
-# JSON-DATEIEN
+# JSON-HILFSFUNKTIONEN
 # ==================================================
 
 def load_json(path: Path) -> dict:
@@ -92,10 +96,12 @@ def load_json(path: Path) -> dict:
 
 
 def save_json(path: Path, data: dict) -> None:
-    path.write_text(
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
         json.dumps(data, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    temporary.replace(path)
 
 
 def get_language(user_id: int) -> str:
@@ -113,8 +119,12 @@ def set_language(user_id: int, language: str) -> None:
     save_json(LANGUAGES_FILE, languages)
 
 
+def player_key(guild_id: int, user_id: int) -> str:
+    return f"{guild_id}:{user_id}"
+
+
 # ==================================================
-# ANMELDEKANAL PRO SERVER SPEICHERN
+# ANMELDEKANAL PRO SERVER
 # ==================================================
 
 def get_announcement_channel_id(guild_id: int):
@@ -122,7 +132,6 @@ def get_announcement_channel_id(guild_id: int):
     channels = config.get("announcement_channels", {})
     channel_id = channels.get(str(guild_id))
 
-    # Unterstützt auch eine frühere config.json.
     if channel_id is None:
         channel_id = config.get("announcement_channel_id")
 
@@ -135,15 +144,9 @@ def set_announcement_channel_id(
 ) -> None:
     config = load_json(CONFIG_FILE)
     channels = config.get("announcement_channels", {})
-
     channels[str(guild_id)] = channel_id
     config["announcement_channels"] = channels
-
     save_json(CONFIG_FILE, config)
-
-
-def player_key(guild_id: int, user_id: int) -> str:
-    return f"{guild_id}:{user_id}"
 
 
 # ==================================================
@@ -159,9 +162,7 @@ bot = commands.Bot(
 )
 
 
-async def get_announcement_channel(
-    guild: discord.Guild,
-):
+async def get_announcement_channel(guild: discord.Guild):
     channel_id = get_announcement_channel_id(guild.id)
 
     if channel_id is None:
@@ -205,14 +206,12 @@ class SignInModal(discord.ui.Modal):
             max_length=60,
             required=True,
         )
-
         self.skin = discord.ui.TextInput(
             label=t["skin"],
             placeholder=t["skin_placeholder"],
             max_length=80,
             required=True,
         )
-
         self.location = discord.ui.TextInput(
             label=t["location"],
             placeholder=t["location_placeholder"],
@@ -224,10 +223,7 @@ class SignInModal(discord.ui.Modal):
         self.add_item(self.skin)
         self.add_item(self.location)
 
-    async def on_submit(
-        self,
-        interaction: discord.Interaction,
-    ) -> None:
+    async def on_submit(self, interaction: discord.Interaction):
         personal_text = TEXT[self.language]
 
         if interaction.guild is None:
@@ -246,14 +242,10 @@ class SignInModal(discord.ui.Modal):
             )
             return
 
-        guild_id = interaction.guild.id
-        user_id = interaction.user.id
-        key = player_key(guild_id, user_id)
-
+        key = player_key(interaction.guild.id, interaction.user.id)
         data = load_json(SIGNINS_FILE)
         existing = data.get(key, {})
 
-        # Keine doppelte aktive Anmeldung.
         if existing.get("status") == "Signed In":
             await interaction.response.send_message(
                 "You are already signed in. Please sign out first.",
@@ -261,13 +253,12 @@ class SignInModal(discord.ui.Modal):
             )
             return
 
-        # Öffentliche Anmeldung: immer Englisch.
+        # Öffentliche Anmeldung bleibt immer auf Englisch.
         embed = discord.Embed(
             title="🟢 Player Signed In",
             color=discord.Color.green(),
             timestamp=discord.utils.utcnow(),
         )
-
         embed.add_field(
             name="Player",
             value=interaction.user.mention,
@@ -288,9 +279,7 @@ class SignInModal(discord.ui.Modal):
             value=self.location.value.strip(),
             inline=False,
         )
-        embed.set_footer(
-            text="The Isle - Player Registration"
-        )
+        embed.set_footer(text="The Isle - Player Registration")
 
         try:
             await channel.send(
@@ -299,7 +288,6 @@ class SignInModal(discord.ui.Modal):
             )
         except discord.HTTPException as error:
             print(f"Could not publish sign-in: {error}")
-
             await interaction.response.send_message(
                 "Your registration could not be published. "
                 "Please contact an administrator.",
@@ -309,16 +297,15 @@ class SignInModal(discord.ui.Modal):
 
         data[key] = {
             "discord_name": interaction.user.display_name,
-            "discord_id": user_id,
+            "discord_id": interaction.user.id,
             "dino": self.dinosaur.value.strip(),
             "skin": self.skin.value.strip(),
             "location": self.location.value.strip(),
             "status": "Signed In",
             "language": self.language,
-            "guild_id": guild_id,
+            "guild_id": interaction.guild.id,
             "updated_at": discord.utils.utcnow().isoformat(),
         }
-
         save_json(SIGNINS_FILE, data)
 
         await interaction.response.send_message(
@@ -328,7 +315,7 @@ class SignInModal(discord.ui.Modal):
 
 
 # ==================================================
-# PANEL: SPRACHAUSWAHL UND BUTTONS
+# ANMELDEPANEL
 # ==================================================
 
 class SignInView(discord.ui.View):
@@ -340,20 +327,13 @@ class SignInView(discord.ui.View):
         custom_id="isle_language",
         options=[
             discord.SelectOption(
-                label="English",
-                value="en",
-                emoji="🇬🇧",
-                default=True,
+                label="English", value="en", emoji="🇬🇧", default=True
             ),
             discord.SelectOption(
-                label="Deutsch",
-                value="de",
-                emoji="🇩🇪",
+                label="Deutsch", value="de", emoji="🇩🇪"
             ),
             discord.SelectOption(
-                label="Čeština",
-                value="cs",
-                emoji="🇨🇿",
+                label="Čeština", value="cs", emoji="🇨🇿"
             ),
         ],
     )
@@ -361,7 +341,7 @@ class SignInView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         select: discord.ui.Select,
-    ) -> None:
+    ):
         language = select.values[0]
         set_language(interaction.user.id, language)
 
@@ -379,11 +359,9 @@ class SignInView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button,
-    ) -> None:
-        language = get_language(interaction.user.id)
-
+    ):
         await interaction.response.send_modal(
-            SignInModal(language)
+            SignInModal(get_language(interaction.user.id))
         )
 
     @discord.ui.button(
@@ -395,7 +373,7 @@ class SignInView(discord.ui.View):
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button,
-    ) -> None:
+    ):
         if interaction.guild is None:
             await interaction.response.send_message(
                 "This button can only be used in a server.",
@@ -405,11 +383,7 @@ class SignInView(discord.ui.View):
 
         language = get_language(interaction.user.id)
         personal_text = TEXT[language]
-
-        key = player_key(
-            interaction.guild.id,
-            interaction.user.id,
-        )
+        key = player_key(interaction.guild.id, interaction.user.id)
 
         data = load_json(SIGNINS_FILE)
         player = data.get(key)
@@ -430,13 +404,11 @@ class SignInView(discord.ui.View):
             )
             return
 
-        # Öffentliche Abmeldung: immer Englisch.
         embed = discord.Embed(
             title="🔴 Player Signed Out",
             color=discord.Color.red(),
             timestamp=discord.utils.utcnow(),
         )
-
         embed.add_field(
             name="Player",
             value=interaction.user.mention,
@@ -447,9 +419,7 @@ class SignInView(discord.ui.View):
             value=player.get("location", "Unknown"),
             inline=False,
         )
-        embed.set_footer(
-            text="The Isle - Player Registration"
-        )
+        embed.set_footer(text="The Isle - Player Registration")
 
         try:
             await channel.send(
@@ -458,7 +428,6 @@ class SignInView(discord.ui.View):
             )
         except discord.HTTPException as error:
             print(f"Could not publish sign-out: {error}")
-
             await interaction.response.send_message(
                 "Your sign-out could not be published. "
                 "Please contact an administrator.",
@@ -478,15 +447,11 @@ class SignInView(discord.ui.View):
 
 # ==================================================
 # !anmeldepannel
-# Auch !anmeldepanel funktioniert als Alias.
 # ==================================================
 
-@bot.command(
-    name="anmeldepannel",
-    aliases=["anmeldepanel"],
-)
+@bot.command(name="anmeldepannel", aliases=["anmeldepanel"])
 @commands.has_permissions(administrator=True)
-async def anmeldepannel(ctx: commands.Context) -> None:
+async def anmeldepannel(ctx: commands.Context):
     embed = discord.Embed(
         title="🦖 THE ISLE - PLAYER SIGN-IN",
         color=discord.Color.blurple(),
@@ -495,55 +460,40 @@ async def anmeldepannel(ctx: commands.Context) -> None:
             "Willkommen beim Spieler-Anmeldepanel!\n"
             "Vítej v registračním panelu hráčů!\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
-
             "🇬🇧 **ENGLISH - HOW TO SIGN IN**\n"
             "1. Select your language below.\n"
             "2. Click **Sign In**.\n"
             "3. Enter your dinosaur, skin and current location.\n"
-            "4. Submit the form. Your registration will be posted "
-            "in the designated announcement channel.\n"
+            "4. Submit the form to publish your registration.\n"
             "5. When you finish playing, click **Sign Out**.\n\n"
-
             "━━━━━━━━━━━━━━━━━━━━\n\n"
-
             "🇩🇪 **DEUTSCH - SO MELDEST DU DICH AN**\n"
             "1. Wähle unten deine Sprache aus.\n"
             "2. Klicke auf **Sign In**.\n"
-            "3. Gib deinen Dinosaurier, Skin und Standort ein.\n"
-            "4. Sende das Formular ab. Deine Anmeldung wird im "
-            "festgelegten Anmeldekanal veröffentlicht.\n"
+            "3. Gib Dinosaurier, Skin und Standort ein.\n"
+            "4. Sende das Formular ab.\n"
             "5. Wenn du fertig bist, klicke auf **Sign Out**.\n\n"
-
             "━━━━━━━━━━━━━━━━━━━━\n\n"
-
             "🇨🇿 **ČEŠTINA - JAK SE PŘIHLÁSIT**\n"
-            "1. Vyber si jazyk v nabídce níže.\n"
+            "1. Vyber si jazyk.\n"
             "2. Klikni na **Sign In**.\n"
-            "3. Vyplň dinosaura, vzhled a aktuální polohu.\n"
-            "4. Odešli formulář. Registrace bude zveřejněna "
-            "v určeném registračním kanálu.\n"
+            "3. Vyplň dinosaura, vzhled a polohu.\n"
+            "4. Odešli formulář.\n"
             "5. Po skončení hraní klikni na **Sign Out**.\n\n"
-
             "━━━━━━━━━━━━━━━━━━━━\n"
             "🌐 Choose your language / Wähle deine Sprache / Vyber jazyk"
         ),
     )
+    embed.set_footer(text="created by KingSnowy")
 
-    embed.set_footer(
-        text="createt by KingSnowy"
-    )
-
-    await ctx.send(
-        embed=embed,
-        view=SignInView(),
-    )
+    await ctx.send(embed=embed, view=SignInView())
 
 
 @anmeldepannel.error
 async def anmeldepannel_error(
     ctx: commands.Context,
     error: commands.CommandError,
-) -> None:
+):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send(
             "You need administrator permissions. / "
@@ -569,7 +519,7 @@ async def anmeldepannel_error(
 async def kanal_set(
     interaction: discord.Interaction,
     kanal: discord.TextChannel,
-) -> None:
+):
     if interaction.guild is None:
         await interaction.response.send_message(
             "This command can only be used in a server.",
@@ -577,17 +527,11 @@ async def kanal_set(
         )
         return
 
-    set_announcement_channel_id(
-        interaction.guild.id,
-        kanal.id,
-    )
-
+    set_announcement_channel_id(interaction.guild.id, kanal.id)
     language = get_language(interaction.user.id)
 
     await interaction.response.send_message(
-        TEXT[language]["channel_set"].format(
-            channel=kanal.mention,
-        ),
+        TEXT[language]["channel_set"].format(channel=kanal.mention),
         ephemeral=True,
     )
 
@@ -596,7 +540,7 @@ async def kanal_set(
 async def kanal_set_error(
     interaction: discord.Interaction,
     error: app_commands.AppCommandError,
-) -> None:
+):
     language = get_language(interaction.user.id)
 
     if isinstance(error, app_commands.MissingPermissions):
@@ -606,149 +550,205 @@ async def kanal_set_error(
         message = "An error occurred. Please check the bot logs."
 
     if not interaction.response.is_done():
-        await interaction.response.send_message(
-            message,
-            ephemeral=True,
-        )
+        await interaction.response.send_message(message, ephemeral=True)
 
 
 # ==================================================
-# BOT STARTEN
+# TICKET-DATEN UND HILFSFUNKTIONEN
 # ==================================================
 
-@bot.event
-async def on_ready():
-    if not getattr(bot, "persistent_view_registered", False):
-        bot.add_view(SignInView())
-        bot.persistent_view_registered = True
-
-    if not getattr(bot, "slash_commands_synced", False):
-        try:
-            synced = await bot.tree.sync()
-            bot.slash_commands_synced = True
-            print(f"Slash commands synced: {len(synced)}")
-        except discord.HTTPException as error:
-            print(f"Could not sync slash commands: {error}")
-
-    print(f"Bot online: {bot.user} (ID: {bot.user.id})")
+def load_ticket_data():
+    data = load_json(TICKETS_FILE)
+    data.setdefault("panels", {})
+    data.setdefault("counters", {})
+    return data
 
 
-# ===== TICKET SYSTEM =====
+def clean_ticket_name(value: str) -> str:
+    value = value.lower().strip()
+    value = re.sub(r"[^a-z0-9-]", "-", value)
+    value = re.sub(r"-+", "-", value)
+    return value.strip("-")[:35] or "ticket"
 
-import os
-import re
-import discord
-from discord import app_commands
+
+def get_ticket_info(channel: discord.TextChannel):
+    topic = channel.topic or ""
+
+    owner = re.search(r"ticket-owner:(\d+)", topic)
+    role = re.search(r"ticket-role:(\d+)", topic)
+    number = re.search(r"ticket-number:(\d+)", topic)
+    kind = re.search(r"ticket-type:([a-z0-9-]+)", topic)
+
+    if not owner:
+        return None
+
+    return {
+        "owner_id": int(owner.group(1)),
+        "role_id": int(role.group(1)) if role else 0,
+        "number": int(number.group(1)) if number else 0,
+        "type": kind.group(1) if kind else "ticket",
+    }
 
 
-# Optional: IDs in Railway als Variables hinterlegen.
-# Ohne diese Variablen sind Tickets nur für den Ersteller
-# und Administratoren sichtbar.
-SUPPORT_ROLE_ID = int(os.getenv("SUPPORT_ROLE_ID", "0"))
-TICKET_CATEGORY_ID = int(os.getenv("TICKET_CATEGORY_ID", "0"))
+def next_ticket_number(guild_id: int, ticket_type: str) -> int:
+    data = load_ticket_data()
+    key = f"{guild_id}:{ticket_type}"
 
+    number = int(data["counters"].get(key, 0)) + 1
+    data["counters"][key] = number
+    save_json(TICKETS_FILE, data)
+
+    return number
+
+
+# ==================================================
+# TICKET SCHLIESSEN
+# ==================================================
 
 class TicketCloseView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Close Ticket",
+        label="Ticket schließen",
         emoji="🔒",
         style=discord.ButtonStyle.danger,
-        custom_id="kingsnowy_ticket_close"
+        custom_id="kingsnowy:ticket:close",
     )
     async def close_ticket(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button
+        button: discord.ui.Button,
     ):
-        if not interaction.guild or not isinstance(
-            interaction.channel, discord.TextChannel
+        if (
+            interaction.guild is None
+            or not isinstance(interaction.channel, discord.TextChannel)
         ):
             await interaction.response.send_message(
-                "This button can only be used inside a ticket.",
-                ephemeral=True
+                "Dieser Button funktioniert nur in einem Ticket.",
+                ephemeral=True,
             )
             return
 
         channel = interaction.channel
-        topic = channel.topic or ""
+        info = get_ticket_info(channel)
 
-        match = re.search(r"ticket-owner:(\d+)", topic)
-        owner_id = int(match.group(1)) if match else None
+        if info is None:
+            await interaction.response.send_message(
+                "Dieser Channel ist kein erkanntes Ticket.",
+                ephemeral=True,
+            )
+            return
 
-        support_role = (
-            interaction.guild.get_role(SUPPORT_ROLE_ID)
-            if SUPPORT_ROLE_ID else None
-        )
+        member = interaction.user
+        role = interaction.guild.get_role(info["role_id"])
 
-        is_owner = interaction.user.id == owner_id
-        is_admin = interaction.user.guild_permissions.manage_channels
+        is_owner = member.id == info["owner_id"]
+        is_admin = member.guild_permissions.manage_channels
         is_support = (
-            support_role is not None
-            and support_role in getattr(interaction.user, "roles", [])
+            isinstance(member, discord.Member)
+            and role is not None
+            and role in member.roles
         )
 
         if not (is_owner or is_admin or is_support):
             await interaction.response.send_message(
-                "Only the ticket creator or support team can close this ticket.",
-                ephemeral=True
+                "Nur der Ticket-Ersteller, das Support-Team oder "
+                "Administratoren dürfen dieses Ticket schließen.",
+                ephemeral=True,
             )
             return
 
         await interaction.response.send_message(
-            "🔒 This ticket will be deleted in 5 seconds."
+            "🔒 Dieses Ticket wird in 5 Sekunden gelöscht."
         )
 
-        import asyncio
         await asyncio.sleep(5)
 
         try:
-            await channel.delete(reason="Ticket closed")
-        except discord.HTTPException:
-            pass
+            await channel.delete(reason=f"Ticket geschlossen von {member}")
+        except discord.HTTPException as error:
+            print(f"Ticket konnte nicht gelöscht werden: {error}")
 
+
+# ==================================================
+# TICKET-PANEL
+# ==================================================
 
 class TicketPanelView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, ticket_name: str):
         super().__init__(timeout=None)
+        self.create_ticket.label = ticket_name[:80]
 
     @discord.ui.button(
-        label="Create Ticket",
+        label="Ticket erstellen",
         emoji="🎫",
         style=discord.ButtonStyle.success,
-        custom_id="kingsnowy_ticket_create"
+        custom_id="kingsnowy:ticket:create",
     )
     async def create_ticket(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button
+        button: discord.ui.Button,
     ):
         guild = interaction.guild
 
         if guild is None:
             await interaction.response.send_message(
-                "This can only be used in a server.",
-                ephemeral=True
+                "Dieser Button funktioniert nur auf einem Server.",
+                ephemeral=True,
+            )
+            return
+
+        if interaction.message is None:
+            await interaction.response.send_message(
+                "Das Panel wurde nicht gefunden.",
+                ephemeral=True,
+            )
+            return
+
+        data = load_ticket_data()
+        panel = data["panels"].get(str(interaction.message.id))
+
+        if not panel or int(panel["guild_id"]) != guild.id:
+            await interaction.response.send_message(
+                "Die Panel-Einstellungen fehlen. Bitte erstelle ein neues Panel.",
+                ephemeral=True,
             )
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        # Verhindert mehrere gleichzeitig offene Tickets pro Person.
-        existing = discord.utils.find(
-            lambda ch: isinstance(ch, discord.TextChannel)
-            and ch.topic
-            and f"ticket-owner:{interaction.user.id}" in ch.topic,
-            guild.text_channels
-        )
+        ticket_name = panel["ticket_name"]
+        ticket_type = clean_ticket_name(ticket_name)
+        role_id = int(panel["role_id"])
+        category_id = int(panel.get("category_id", 0))
+        support_role = guild.get_role(role_id)
 
-        if existing:
-            await interaction.edit_original_response(
-                content=f"You already have an open ticket: {existing.mention}"
+        if support_role is None:
+            await interaction.followup.send(
+                "Die konfigurierte Ping-Rolle existiert nicht mehr. "
+                "Bitte erstelle ein neues Ticket-Panel.",
+                ephemeral=True,
             )
             return
+
+        # Pro Nutzer höchstens ein offenes Ticket je Ticket-Typ.
+        for channel in guild.text_channels:
+            info = get_ticket_info(channel)
+            if (
+                info
+                and info["owner_id"] == interaction.user.id
+                and info["type"] == ticket_type
+            ):
+                await interaction.followup.send(
+                    f"Du hast bereits ein offenes Ticket: {channel.mention}",
+                    ephemeral=True,
+                )
+                return
+
+        number = next_ticket_number(guild.id, ticket_type)
+        channel_name = f"ticket-{ticket_type}-{number:03d}"
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(
@@ -758,130 +758,182 @@ class TicketPanelView(discord.ui.View):
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True,
-                attach_files=True
-            )
+                attach_files=True,
+                embed_links=True,
+            ),
+            support_role: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+            ),
         }
 
-        bot_member = guild.get_member(interaction.client.user.id)
-
+        bot_member = guild.me
         if bot_member:
             overwrites[bot_member] = discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True,
-                manage_channels=True
+                manage_channels=True,
             )
 
-        support_role = (
-            guild.get_role(SUPPORT_ROLE_ID)
-            if SUPPORT_ROLE_ID else None
-        )
-
-        if support_role:
-            overwrites[support_role] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            )
-
-        category = (
-            guild.get_channel(TICKET_CATEGORY_ID)
-            if TICKET_CATEGORY_ID else None
-        )
-
+        category = guild.get_channel(category_id) if category_id else None
         if not isinstance(category, discord.CategoryChannel):
             category = None
 
-        safe_name = re.sub(
-            r"[^a-z0-9-]",
-            "-",
-            interaction.user.name.lower()
-        ).strip("-")[:40] or "user"
-
         try:
             ticket_channel = await guild.create_text_channel(
-                name=f"ticket-{safe_name}",
+                name=channel_name,
                 category=category,
                 overwrites=overwrites,
-                topic=f"ticket-owner:{interaction.user.id}",
-                reason=f"Support ticket opened by {interaction.user}"
+                topic=(
+                    f"ticket-owner:{interaction.user.id} "
+                    f"ticket-role:{support_role.id} "
+                    f"ticket-number:{number} "
+                    f"ticket-type:{ticket_type}"
+                ),
+                reason=f"Ticket von {interaction.user}",
             )
 
             embed = discord.Embed(
-                title="🎫 Support Ticket",
+                title=f"🎫 {ticket_name} | Ticket #{number:03d}",
                 description=(
-                    f"Hello {interaction.user.mention}!\n\n"
-                    "Please describe your problem here. "
-                    "A member of the support team will assist you.\n\n"
-                    "Use the button below to close this ticket."
+                    f"Hallo {interaction.user.mention}!\n\n"
+                    f"Willkommen in deinem Ticket für **{ticket_name}**.\n"
+                    "Beschreibe hier dein Anliegen. Das Support-Team wird dir helfen.\n\n"
+                    "Mit dem Button unten kannst du das Ticket schließen."
                 ),
-                color=discord.Color.blue()
+                color=discord.Color.blue(),
             )
 
             await ticket_channel.send(
-                content=(
-                    f"{interaction.user.mention}"
-                    + (f" {support_role.mention}" if support_role else "")
-                ),
+                content=f"{interaction.user.mention} {support_role.mention}",
                 embed=embed,
-                view=TicketCloseView()
+                view=TicketCloseView(),
+                allowed_mentions=discord.AllowedMentions(
+                    users=True,
+                    roles=True,
+                    everyone=False,
+                ),
             )
 
-            await interaction.edit_original_response(
-                content=f"Your ticket has been created: {ticket_channel.mention}"
+            await interaction.followup.send(
+                f"✅ Dein Ticket wurde erstellt: {ticket_channel.mention}",
+                ephemeral=True,
             )
 
         except discord.Forbidden:
-            await interaction.edit_original_response(
-                content=(
-                    "I don't have permission to create ticket channels. "
-                    "Please check the bot's Manage Channels permission."
-                )
+            await interaction.followup.send(
+                "Mir fehlen Berechtigungen zum Erstellen des Ticket-Channels. "
+                "Prüfe insbesondere **Kanäle verwalten**.",
+                ephemeral=True,
             )
-        except discord.HTTPException:
-            await interaction.edit_original_response(
-                content="The ticket could not be created. Please try again."
+        except discord.HTTPException as error:
+            print(f"Ticket-Erstellungsfehler: {error}")
+            await interaction.followup.send(
+                "Das Ticket konnte nicht erstellt werden. Bitte versuche es erneut.",
+                ephemeral=True,
             )
 
 
-# Creates the slash-command group: /ticket creat
-ticket_group = app_commands.Group(
-    name="ticket",
-    description="KingSnowy support ticket system"
+# ==================================================
+# /ticketcreat
+# ==================================================
+
+@bot.tree.command(
+    name="ticketcreat",
+    description="Erstellt ein Ticket-Panel mit auswählbarer Ping-Rolle.",
 )
-
-
-@ticket_group.command(
-    name="creat",
-    description="Create a support ticket panel in this channel"
+@app_commands.describe(
+    ping_rolle="Die Rolle, die bei jedem Ticket erwähnt wird.",
+    ticket_name="Name und Button-Text, z. B. Support oder Bewerbung.",
+    kategorie="Optionale Discord-Kategorie für die Ticket-Channels.",
 )
 @app_commands.checks.has_permissions(manage_guild=True)
-async def ticket_creat(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🎫 KingSnowy Support",
-        description=(
-            "Need help? Click **Create Ticket** below to open a private "
-            "support channel.\n\n"
-            "Please create a ticket only when you need assistance."
-        ),
-        color=discord.Color.blue()
-    )
+async def ticketcreat(
+    interaction: discord.Interaction,
+    ping_rolle: discord.Role,
+    ticket_name: str,
+    kategorie: discord.CategoryChannel = None,
+):
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Dieser Befehl funktioniert nur auf einem Server.",
+            ephemeral=True,
+        )
+        return
 
+    ticket_name = ticket_name.strip()
+
+    if not ticket_name or len(ticket_name) > 80:
+        await interaction.response.send_message(
+            "Der Ticket-Name muss zwischen 1 und 80 Zeichen lang sein.",
+            ephemeral=True,
+        )
+        return
+
+    if ping_rolle.is_default():
+        await interaction.response.send_message(
+            "Bitte wähle eine echte Server-Rolle aus.",
+            ephemeral=True,
+        )
+        return
+
+    bot_member = interaction.guild.me
+    if bot_member and ping_rolle >= bot_member.top_role:
+        await interaction.response.send_message(
+            "Die ausgewählte Rolle muss in der Rollenliste unter "
+            "der höchsten Bot-Rolle stehen.",
+            ephemeral=True,
+        )
+        return
+
+    embed = discord.Embed(
+        title=f"🎫 {ticket_name}",
+        description=(
+            f"Du benötigst Hilfe bei **{ticket_name}**?\n\n"
+            "Klicke auf den Button unten, um ein privates Ticket zu erstellen.\n"
+            "Bitte eröffne nur ein Ticket, wenn du Unterstützung benötigst."
+        ),
+        color=discord.Color.blue(),
+    )
+    embed.set_footer(text="KingSnowy Support")
+
+    # Zunächst ohne Panel-ID senden, dann Einstellungen speichern.
     await interaction.response.send_message(
         embed=embed,
-        view=TicketPanelView()
+        view=TicketPanelView(ticket_name),
+    )
+
+    panel_message = await interaction.original_response()
+
+    data = load_ticket_data()
+    data["panels"][str(panel_message.id)] = {
+        "guild_id": interaction.guild.id,
+        "role_id": ping_rolle.id,
+        "ticket_name": ticket_name,
+        "category_id": kategorie.id if kategorie else 0,
+    }
+    save_json(TICKETS_FILE, data)
+
+    # Registriert genau dieses Panel auch nach einem Neustart.
+    bot.add_view(
+        TicketPanelView(ticket_name),
+        message_id=panel_message.id,
     )
 
 
-@ticket_creat.error
-async def ticket_creat_error(
+@ticketcreat.error
+async def ticketcreat_error(
     interaction: discord.Interaction,
-    error: app_commands.AppCommandError
+    error: app_commands.AppCommandError,
 ):
     if isinstance(error, app_commands.MissingPermissions):
-        message = "You need the Manage Server permission to create the panel."
+        message = "Du benötigst die Berechtigung **Server verwalten**."
     else:
-        message = "An error occurred while creating the ticket panel."
+        print(f"Fehler bei /ticketcreat: {error}")
+        message = "Beim Erstellen des Ticket-Panels ist ein Fehler aufgetreten."
 
     if interaction.response.is_done():
         await interaction.followup.send(message, ephemeral=True)
@@ -889,7 +941,38 @@ async def ticket_creat_error(
         await interaction.response.send_message(message, ephemeral=True)
 
 
-# Register the slash-command group before bot.run(TOKEN).
-bot.tree.add_command(ticket_group)
+# ==================================================
+# BOT STARTEN UND PERSISTENTE BUTTONS WIEDERHERSTELLEN
+# ==================================================
+
+@bot.event
+async def on_ready():
+    if not getattr(bot, "persistent_views_registered", False):
+        bot.add_view(SignInView())
+        bot.add_view(TicketCloseView())
+
+        data = load_ticket_data()
+
+        for message_id, panel in data["panels"].items():
+            try:
+                bot.add_view(
+                    TicketPanelView(panel["ticket_name"]),
+                    message_id=int(message_id),
+                )
+            except (KeyError, ValueError, TypeError) as error:
+                print(f"Ticket-Panel {message_id} konnte nicht geladen werden: {error}")
+
+        bot.persistent_views_registered = True
+
+    if not getattr(bot, "slash_commands_synced", False):
+        try:
+            synced = await bot.tree.sync()
+            bot.slash_commands_synced = True
+            print(f"Slash-Commands synchronisiert: {len(synced)}")
+        except discord.HTTPException as error:
+            print(f"Slash-Command-Synchronisierung fehlgeschlagen: {error}")
+
+    print(f"Bot online: {bot.user} (ID: {bot.user.id})")
+
 
 bot.run(TOKEN)
