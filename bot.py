@@ -1,241 +1,316 @@
 
 import os
-import re
 import json
-import html
 import io
-import discord
-
-from pathlib import Path
+import html
+import asyncio
 from datetime import datetime, timezone
+
+import discord
 from discord.ext import commands
 from discord import app_commands
 
 
-# ============================================================
+# =========================================================
 # GRUNDEINSTELLUNGEN
-# ============================================================
+# =========================================================
 
-TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
-PREFIX = "!"
+TOKEN = os.getenv("DISCORD_TOKEN")
 
-SIGNINS_FILE = Path("signins.json")
-LANGUAGES_FILE = Path("languages.json")
-CONFIG_FILE = Path("config.json")
-TICKETS_FILE = Path("tickets.json")
+if not TOKEN:
+    raise RuntimeError(
+        "Der Bot-Token fehlt! Setze DISCORD_TOKEN in deinen Railway-Variablen."
+    )
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+DATA_DIR = "."
+SIGNINS_FILE = os.path.join(DATA_DIR, "signins.json")
+LANGUAGES_FILE = os.path.join(DATA_DIR, "languages.json")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+TICKETS_FILE = os.path.join(DATA_DIR, "tickets.json")
+
+DEFAULT_CONFIG = {
+    "announcement_channel_id": None,
+    "ticket_log_channel_id": None,
+    "support_role_id": None,
+}
+
+# Verhindert, dass persistente Views bei jedem Reconnect
+# mehrfach registriert werden.
+views_registered = False
 
 
-# ============================================================
-# JSON-HILFSFUNKTIONEN
-# ============================================================
+# =========================================================
+# JSON-DATEIEN
+# =========================================================
 
-def load_json(path, default=None):
-    if default is None:
-        default = {}
-
-    if not path.exists():
-        return default.copy()
-
+def load_json(path, default):
     try:
-        with path.open("r", encoding="utf-8") as file:
-            result = json.load(file)
-            return result if isinstance(result, type(default)) else default.copy()
-    except (json.JSONDecodeError, OSError):
-        return default.copy()
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
 
 
 def save_json(path, data):
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
+    temp_path = path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+    os.replace(temp_path, path)
 
 
-signins = load_json(SIGNINS_FILE)
-languages = load_json(LANGUAGES_FILE)
-config = load_json(CONFIG_FILE)
-tickets = load_json(TICKETS_FILE)
+signins = load_json(SIGNINS_FILE, {})
+languages = load_json(LANGUAGES_FILE, {})
+config = load_json(CONFIG_FILE, DEFAULT_CONFIG.copy())
+tickets = load_json(TICKETS_FILE, {})
+
+for key, value in DEFAULT_CONFIG.items():
+    config.setdefault(key, value)
 
 
-# ============================================================
-# SPRACHEN
-# ============================================================
-
-TEXTS = {
-    "en": {
-        "signed_in": "Player signed in",
-        "signed_out": "Player signed out",
-        "player": "Player",
-        "dino": "Dinosaur",
-        "skin": "Skin",
-        "location": "Current location",
-        "unknown": "Not specified",
-        "not_signed_in": "You are not currently signed in.",
-        "signout_done": "You have successfully signed out.",
-        "signin_done": "You have successfully signed in.",
-    },
-    "de": {
-        "signed_in": "Spieler angemeldet",
-        "signed_out": "Spieler abgemeldet",
-        "player": "Spieler",
-        "dino": "Dinosaurier",
-        "skin": "Skin",
-        "location": "Aktueller Standort",
-        "unknown": "Nicht angegeben",
-        "not_signed_in": "Du bist derzeit nicht angemeldet.",
-        "signout_done": "Du wurdest erfolgreich abgemeldet.",
-        "signin_done": "Du wurdest erfolgreich angemeldet.",
-    },
-    "cs": {
-        "signed_in": "Hráč přihlášen",
-        "signed_out": "Hráč odhlášen",
-        "player": "Hráč",
-        "dino": "Dinosaurus",
-        "skin": "Vzhled",
-        "location": "Aktuální poloha",
-        "unknown": "Neuvedeno",
-        "not_signed_in": "Momentálně nejsi přihlášen.",
-        "signout_done": "Úspěšně ses odhlásil.",
-        "signin_done": "Úspěšně ses přihlásil.",
-    },
-}
+def save_signins():
+    save_json(SIGNINS_FILE, signins)
 
 
-def get_language(user_id):
-    return languages.get(str(user_id), "en")
+def save_languages():
+    save_json(LANGUAGES_FILE, languages)
 
 
-# ============================================================
-# ANMELDEPANEL-BESCHREIBUNG
-# ============================================================
-
-SIGNIN_DESCRIPTION = (
-    "🦖 **THE ISLE - PLAYER SIGN-IN**\n\n"
-    "Welcome to the player sign-in panel! "
-    "Willkommen beim Spieler-Anmeldepanel! "
-    "Vítej v registračním panelu hráčů!\n"
-    "━━━━━━━━━━━━━━━━━━━━\n"
-    "🇬🇧 **ENGLISH - HOW TO SIGN IN**\n\n"
-    "1. Select your language below.\n"
-    "2. Click **Sign In**.\n"
-    "3. Enter your dinosaur, skin and current location.\n"
-    "4. Submit the form. Your registration will be posted "
-    "in the designated announcement channel.\n"
-    "5. When you finish playing, click **Sign Out**.\n\n"
-    "━━━━━━━━━━━━━━━━━━━━\n"
-    "🇩🇪 **DEUTSCH - SO MELDEST DU DICH AN**\n\n"
-    "1. Wähle unten deine Sprache aus.\n"
-    "2. Klicke auf **Sign In**.\n"
-    "3. Gib deinen Dinosaurier, Skin und Standort ein.\n"
-    "4. Sende das Formular ab. Deine Anmeldung wird im "
-    "festgelegten Anmeldekanal veröffentlicht.\n"
-    "5. Wenn du fertig bist, klicke auf **Sign Out**.\n\n"
-    "━━━━━━━━━━━━━━━━━━━━\n"
-    "🇨🇿 **ČEŠTINA - JAK SE PŘIHLÁSIT**\n\n"
-    "1. Vyber si jazyk v nabídce níže.\n"
-    "2. Klikni na **Sign In**.\n"
-    "3. Vyplň dinosaura, vzhled a aktuální polohu.\n"
-    "4. Odešli formulář. Registrace bude zveřejněna "
-    "v určeném registračním kanálu.\n"
-    "5. Po skončení hraní klikni na **Sign Out**.\n\n"
-    "━━━━━━━━━━━━━━━━━━━━\n"
-    "🌐 Choose your language / Wähle deine Sprache / Vyber jazyk\n\n"
-    "**Created by KingSnowy**"
-)
+def save_config():
+    save_json(CONFIG_FILE, config)
 
 
-# ============================================================
-# ANMELDEFORMULAR
-# ============================================================
+def save_tickets():
+    save_json(TICKETS_FILE, tickets)
 
-class SignInModal(discord.ui.Modal, title="The Isle - Player Sign In"):
+
+# =========================================================
+# HILFSFUNKTIONEN
+# =========================================================
+
+async def get_text_channel(channel_id):
+    if not channel_id:
+        return None
+
+    channel = bot.get_channel(int(channel_id))
+
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(int(channel_id))
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return None
+
+    if isinstance(channel, discord.TextChannel):
+        return channel
+
+    return None
+
+
+async def send_announcement(embed):
+    """Sendet Anmeldungen immer in den konfigurierten Log-Kanal."""
+    channel = await get_text_channel(
+        config.get("announcement_channel_id")
+    )
+
+    if channel is None:
+        print("Anmeldungs-Log nicht eingerichtet oder nicht erreichbar.")
+        return
+
+    try:
+        await channel.send(embed=embed)
+    except discord.HTTPException as error:
+        print(f"Anmeldungs-Log konnte nicht gesendet werden: {error}")
+
+
+async def send_ticket_log(channel, content=None, embed=None, file=None):
+    """Sendet Nachrichten in den konfigurierten Ticket-Log-Kanal."""
+    log_channel = await get_text_channel(
+        config.get("ticket_log_channel_id")
+    )
+
+    if log_channel is None:
+        return
+
+    try:
+        await log_channel.send(
+            content=content,
+            embed=embed,
+            file=file,
+        )
+    except discord.HTTPException as error:
+        print(f"Ticket-Log konnte nicht gesendet werden: {error}")
+
+
+def is_support_member(member, channel=None):
+    """Erlaubt Support-Rollen oder Mitglieder mit Verwaltungsrechten."""
+    if not isinstance(member, discord.Member):
+        return False
+
+    if member.guild_permissions.administrator:
+        return True
+
+    if member.guild_permissions.manage_channels:
+        return True
+
+    role_id = config.get("support_role_id")
+
+    if role_id:
+        if any(role.id == int(role_id) for role in member.roles):
+            return True
+
+    # Alternativ kann die Berechtigung zum Verwalten von Nachrichten
+    # als Support-Berechtigung verwendet werden.
+    if member.guild_permissions.manage_messages:
+        return True
+
+    return False
+
+
+async def ticket_ephemeral(interaction, message):
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
+
+
+# =========================================================
+# TICKET-KANALDATEN
+# =========================================================
+
+def make_ticket_topic(owner_id, claimed_id=None,
+                      close_owner=0, close_support=0):
+    return (
+        f"ks_ticket|owner:{owner_id}"
+        f"|claimed:{claimed_id or 0}"
+        f"|close_owner:{close_owner}"
+        f"|close_support:{close_support}"
+    )
+
+
+def parse_ticket_topic(topic):
+    if not topic or not topic.startswith("ks_ticket|"):
+        return None
+
+    result = {}
+
+    for part in topic.split("|")[1:]:
+        if ":" not in part:
+            continue
+
+        key, value = part.split(":", 1)
+
+        try:
+            result[key] = int(value)
+        except ValueError:
+            continue
+
+    return result
+
+
+async def update_ticket_topic(channel, **updates):
+    data = parse_ticket_topic(channel.topic)
+
+    if data is None:
+        return None
+
+    data.update(updates)
+
+    new_topic = make_ticket_topic(
+        owner_id=data.get("owner", 0),
+        claimed_id=data.get("claimed", 0),
+        close_owner=data.get("close_owner", 0),
+        close_support=data.get("close_support", 0),
+    )
+
+    await channel.edit(topic=new_topic)
+    return data
+
+
+# =========================================================
+# ANMELDE-SYSTEM
+# =========================================================
+
+class SignInModal(discord.ui.Modal, title="The Isle - Sign In"):
 
     dinosaur = discord.ui.TextInput(
         label="Dinosaur",
-        placeholder="e.g. Deinosuchus",
-        max_length=80,
+        placeholder="For example: Deinosuchus",
+        max_length=100,
+        required=True,
     )
 
     skin = discord.ui.TextInput(
         label="Skin",
-        placeholder="Enter your dinosaur skin",
+        placeholder="Enter your skin",
         max_length=100,
+        required=True,
     )
 
     location = discord.ui.TextInput(
         label="Current location",
-        placeholder="Where are you currently?",
-        max_length=150,
+        placeholder="Where are you currently located?",
+        max_length=200,
+        required=True,
     )
 
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
-        language = get_language(user_id)
-        text = TEXTS.get(language, TEXTS["en"])
 
         signins[user_id] = {
-            "discord_name": str(interaction.user),
-            "discord_id": interaction.user.id,
-            "dino": str(self.dinosaur.value),
-            "skin": str(self.skin.value),
-            "location": str(self.location.value),
-            "status": "online",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "dino": self.dinosaur.value,
+            "skin": self.skin.value,
+            "location": self.location.value,
+            "username": interaction.user.name,
+            "guild_id": interaction.guild_id,
+            "signed_in_at": datetime.now(timezone.utc).isoformat(),
         }
-        save_json(SIGNINS_FILE, signins)
 
+        save_signins()
+
+        # Der öffentliche Anmeldungs-Log ist IMMER auf Englisch.
         embed = discord.Embed(
-            title=f"🟢 {text['signed_in']}",
+            title="🟢 Player signed in",
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc),
         )
+
         embed.add_field(
-            name=text["player"],
+            name="Player",
             value=interaction.user.mention,
             inline=False,
         )
         embed.add_field(
-            name=text["dino"],
+            name="Dinosaur",
             value=self.dinosaur.value,
             inline=True,
         )
         embed.add_field(
-            name=text["skin"],
+            name="Skin",
             value=self.skin.value,
             inline=True,
         )
         embed.add_field(
-            name=text["location"],
+            name="Current location",
             value=self.location.value,
             inline=False,
         )
 
-        channel_id = config.get("announcement_channel_id")
-        channel = bot.get_channel(int(channel_id)) if channel_id else None
-
-        if channel:
-            await channel.send(embed=embed)
+        await send_announcement(embed)
 
         await interaction.response.send_message(
-            text["signin_done"],
+            "✅ Du bist angemeldet! Deine Anmeldung wurde gespeichert.",
             ephemeral=True,
         )
 
 
-# ============================================================
-# SPRACHAUSWAHL
-# ============================================================
-
 class LanguageSelect(discord.ui.Select):
 
-    def __init__(
-        self,
-        placeholder="🌐 Choose your language / Sprache auswählen",
-    ):
+    def __init__(self):
         options = [
             discord.SelectOption(
                 label="English",
@@ -255,33 +330,28 @@ class LanguageSelect(discord.ui.Select):
         ]
 
         super().__init__(
-            placeholder=placeholder,
+            placeholder="Choose your language / Sprache auswählen",
             min_values=1,
             max_values=1,
             options=options,
-            custom_id="isle:language",
+            custom_id="kingsnowy:signin:language",
         )
 
     async def callback(self, interaction: discord.Interaction):
-        language = self.values[0]
-        languages[str(interaction.user.id)] = language
-        save_json(LANGUAGES_FILE, languages)
+        languages[str(interaction.user.id)] = self.values[0]
+        save_languages()
 
         labels = {
-            "en": "Your language is now English.",
-            "de": "Deine Sprache ist jetzt Deutsch.",
-            "cs": "Tvým jazykem je nyní čeština.",
+            "en": "Language set to English.",
+            "de": "Sprache auf Deutsch eingestellt.",
+            "cs": "Jazyk byl nastaven na češtinu.",
         }
 
         await interaction.response.send_message(
-            labels[language],
+            labels.get(self.values[0], "Language updated."),
             ephemeral=True,
         )
 
-
-# ============================================================
-# ANMELDE- UND ABMELDEBUTTONS
-# ============================================================
 
 class SignInView(discord.ui.View):
 
@@ -293,20 +363,29 @@ class SignInView(discord.ui.View):
         label="Sign In",
         emoji="🟢",
         style=discord.ButtonStyle.success,
-        custom_id="isle:signin",
+        custom_id="kingsnowy:signin:open",
     )
     async def sign_in(
         self,
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
+        user_id = str(interaction.user.id)
+
+        if user_id in signins:
+            await interaction.response.send_message(
+                "Du bist bereits angemeldet. Melde dich zuerst ab.",
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.send_modal(SignInModal())
 
     @discord.ui.button(
         label="Sign Out",
         emoji="🔴",
         style=discord.ButtonStyle.danger,
-        custom_id="isle:signout",
+        custom_id="kingsnowy:signin:close",
     )
     async def sign_out(
         self,
@@ -314,294 +393,263 @@ class SignInView(discord.ui.View):
         button: discord.ui.Button,
     ):
         user_id = str(interaction.user.id)
-        language = get_language(user_id)
-        text = TEXTS.get(language, TEXTS["en"])
 
-        if (
-            user_id not in signins
-            or signins[user_id].get("status") != "online"
-        ):
+        if user_id not in signins:
             await interaction.response.send_message(
-                text["not_signed_in"],
+                "Du bist aktuell nicht angemeldet.",
                 ephemeral=True,
             )
             return
 
-        signins[user_id]["status"] = "offline"
-        signins[user_id]["updated_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-        save_json(SIGNINS_FILE, signins)
+        saved = signins.pop(user_id)
+        save_signins()
 
+        # Auch Abmeldungen werden immer auf Englisch geloggt.
         embed = discord.Embed(
-            title=f"🔴 {text['signed_out']}",
+            title="🔴 Player signed out",
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
         )
+
         embed.add_field(
-            name=text["player"],
+            name="Player",
             value=interaction.user.mention,
             inline=False,
         )
         embed.add_field(
-            name=text["dino"],
-            value=signins[user_id].get("dino", text["unknown"]),
+            name="Dinosaur",
+            value=saved.get("dino", "Not specified"),
+            inline=True,
+        )
+        embed.add_field(
+            name="Skin",
+            value=saved.get("skin", "Not specified"),
             inline=True,
         )
 
-        channel_id = config.get("announcement_channel_id")
-        channel = bot.get_channel(int(channel_id)) if channel_id else None
-
-        if channel:
-            await channel.send(embed=embed)
+        await send_announcement(embed)
 
         await interaction.response.send_message(
-            text["signout_done"],
+            "✅ Du wurdest abgemeldet.",
             ephemeral=True,
         )
 
 
-# ============================================================
-# ANMELDEPANEL ERSTELLEN
-# ============================================================
-
 @bot.command(name="anmeldepannel", aliases=["anmeldepanel"])
 @commands.has_permissions(manage_guild=True)
-async def anmeldepannel(ctx):
+async def anmeldepanel(ctx):
     embed = discord.Embed(
-        description=SIGNIN_DESCRIPTION,
-        color=discord.Color.from_rgb(70, 170, 220),
+        title="❄️ The Isle – Player Sign-In",
+        description=(
+            "Use the buttons below to sign in or sign out.\n\n"
+            "Wähle zuerst deine Sprache aus und nutze danach "
+            "die Anmelde-Buttons."
+        ),
+        color=discord.Color.blue(),
     )
-    embed.set_footer(text="The Isle • Player Sign-In • KingSnowy")
 
     await ctx.send(embed=embed, view=SignInView())
 
 
 @bot.tree.command(
     name="kanal-set",
-    description="Set the channel for player sign-in announcements",
+    description="Set the channel for player sign-in logs",
 )
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(
-    kanal="Channel for sign-in and sign-out announcements"
-)
+@app_commands.describe(channel="The channel for sign-in and sign-out logs")
 async def kanal_set(
     interaction: discord.Interaction,
-    kanal: discord.TextChannel,
+    channel: discord.TextChannel,
 ):
-    config["announcement_channel_id"] = kanal.id
-    save_json(CONFIG_FILE, config)
+    config["announcement_channel_id"] = channel.id
+    save_config()
 
     await interaction.response.send_message(
-        f"Anmelde- und Abmeldeankündigungen werden jetzt in "
-        f"{kanal.mention} veröffentlicht.",
+        f"✅ Anmeldungs-Log eingestellt: {channel.mention}\n"
+        "Die fertigen Anmeldungen und Abmeldungen werden dort "
+        "immer auf Englisch veröffentlicht.",
         ephemeral=True,
     )
 
 
-# ============================================================
-# TICKET-HILFSFUNKTIONEN
-# ============================================================
+# =========================================================
+# TICKET-NACHRICHT BEARBEITEN
+# =========================================================
 
-def topic_value(channel, key, default="0"):
-    topic = channel.topic or ""
-    match = re.search(
-        rf"(?:^|\s){re.escape(key)}:([^\s]+)",
-        topic,
-    )
-    return match.group(1) if match else default
+class EditTicketMessageModal(discord.ui.Modal):
 
+    def __init__(self, message_id, current_embed):
+        super().__init__(title="Ticket-Nachricht bearbeiten")
 
-def update_topic(channel, **values):
-    data = {}
+        self.message_id = message_id
 
-    for item in (channel.topic or "").split():
-        if ":" in item:
-            key, value = item.split(":", 1)
-            data[key] = value
+        current_title = ""
+        current_description = ""
 
-    data.update({key: str(value) for key, value in values.items()})
-    return " ".join(f"{key}:{value}" for key, value in data.items())
+        if current_embed is not None:
+            current_title = current_embed.title or ""
+            current_description = current_embed.description or ""
 
-
-def get_support_role_id(channel):
-    value = topic_value(channel, "role")
-    return int(value) if value.isdigit() else None
-
-
-def get_ticket_owner_id(channel):
-    value = topic_value(channel, "owner")
-    return int(value) if value.isdigit() else None
-
-
-def is_support_member(member, channel):
-    role_id = get_support_role_id(channel)
-
-    return bool(
-        role_id
-        and isinstance(member, discord.Member)
-        and any(role.id == role_id for role in member.roles)
-    )
-
-
-async def ticket_ephemeral(interaction, message):
-    if interaction.response.is_done():
-        await interaction.followup.send(message, ephemeral=True)
-    else:
-        await interaction.response.send_message(message, ephemeral=True)
-
-
-# ============================================================
-# TICKET-TRANSKRIPT
-# ============================================================
-
-async def create_ticket_transcript(channel):
-    lines = [
-        "<!DOCTYPE html>",
-        '<html lang="en"><head><meta charset="utf-8">',
-        f"<title>Transcript - {html.escape(channel.name)}</title>",
-        "<style>",
-        "body{font-family:Arial,sans-serif;background:#202225;color:#eee;padding:24px}",
-        ".message{padding:12px;margin:10px 0;background:#2f3136;border-radius:8px}",
-        ".meta{color:#aaa;font-size:12px;margin-bottom:6px}",
-        "a{color:#00aff4}",
-        "</style></head><body>",
-        f"<h1>Ticket Transcript: {html.escape(channel.name)}</h1>",
-        f"<p>Server: {html.escape(channel.guild.name)}</p>",
-    ]
-
-    async for message in channel.history(limit=None, oldest_first=True):
-        timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-        author = html.escape(str(message.author))
-        content = html.escape(message.content or "").replace("\n", "<br>")
-
-        lines.append(
-            f'<div class="message"><div class="meta">'
-            f"{author} • {timestamp}</div><div>{content}</div>"
+        self.new_title = discord.ui.TextInput(
+            label="Neuer Titel",
+            placeholder="Leer lassen, um den Titel beizubehalten",
+            default=current_title[:256] if current_title else None,
+            max_length=256,
+            required=False,
         )
 
-        for attachment in message.attachments:
-            url = html.escape(attachment.url, quote=True)
-            name = html.escape(attachment.filename)
-            lines.append(f'<p><a href="{url}">{name}</a></p>')
-
-        for embed in message.embeds:
-            if embed.title:
-                lines.append(f"<p><b>{html.escape(embed.title)}</b></p>")
-            if embed.description:
-                lines.append(f"<p>{html.escape(embed.description)}</p>")
-
-        lines.append("</div>")
-
-    lines.append("</body></html>")
-    content = "\n".join(lines)
-
-    return discord.File(
-        io.BytesIO(content.encode("utf-8")),
-        filename=f"transkript-{channel.id}.html",
-    )
-
-
-async def close_ticket(channel, reason, closed_by):
-    owner_id = get_ticket_owner_id(channel)
-    transcript = await create_ticket_transcript(channel)
-
-    if owner_id:
-        try:
-            owner = await bot.fetch_user(owner_id)
-            await owner.send(
-                f"Dein Ticket **{channel.name}** wurde geschlossen.\n"
-                f"Grund: {reason}\n"
-                "Das HTML-Transkript ist angehängt.",
-                file=transcript,
-            )
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-    log_channel_id = config.get("ticket_log_channel_id")
-    log_channel = (
-        bot.get_channel(int(log_channel_id))
-        if log_channel_id
-        else None
-    )
-
-    if log_channel:
-        log_embed = discord.Embed(
-            title="Ticket geschlossen",
-            description=(
-                f"**Ticket:** {channel.name}\n"
-                f"**Geschlossen von:** {closed_by.mention}\n"
-                f"**Grund:** {reason}"
+        self.new_description = discord.ui.TextInput(
+            label="Neue Beschreibung",
+            placeholder="Leer lassen, um die Beschreibung beizubehalten",
+            default=(
+                current_description[:4000]
+                if current_description
+                else None
             ),
-            color=discord.Color.red(),
-            timestamp=datetime.now(timezone.utc),
+            style=discord.TextStyle.paragraph,
+            max_length=4000,
+            required=False,
         )
-        await log_channel.send(embed=log_embed, file=transcript)
 
-    try:
-        await channel.delete(reason=reason)
-    except discord.HTTPException:
-        pass
+        self.add_item(self.new_title)
+        self.add_item(self.new_description)
 
-
-# ============================================================
-# BOT-NACHRICHT BEARBEITEN
-# ============================================================
-
-class EditTicketMessageModal(
-    discord.ui.Modal,
-    title="Bot-Nachricht bearbeiten",
-):
-
-    message_id = discord.ui.TextInput(
-        label="Nachrichten-ID",
-        placeholder="ID der Bot-Nachricht",
-        max_length=25,
-    )
-
-    new_text = discord.ui.TextInput(
-        label="Neuer Nachrichtentext",
-        style=discord.TextStyle.paragraph,
-        max_length=2000,
-    )
-
-    async def on_submit(self, interaction):
-        channel = interaction.channel
-
-        if not is_support_member(interaction.user, channel):
+    async def on_submit(self, interaction: discord.Interaction):
+        if not is_support_member(interaction.user, interaction.channel):
             await interaction.response.send_message(
-                "Nur das Support-Team darf Bot-Nachrichten bearbeiten.",
+                "❌ Nur das Support-Team darf diese Nachricht bearbeiten.",
+                ephemeral=True,
+            )
+            return
+
+        if not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "Diese Nachricht kann hier nicht bearbeitet werden.",
                 ephemeral=True,
             )
             return
 
         try:
-            message = await channel.fetch_message(int(self.message_id.value))
-        except (ValueError, discord.NotFound, discord.Forbidden):
+            message = await interaction.channel.fetch_message(
+                self.message_id
+            )
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message(
-                "Nachricht nicht gefunden oder kein Zugriff.",
+                "❌ Die Nachricht wurde nicht gefunden oder kann nicht "
+                "bearbeitet werden.",
                 ephemeral=True,
             )
             return
 
         if message.author.id != bot.user.id:
             await interaction.response.send_message(
-                "Ich kann nur Nachrichten bearbeiten, die der Bot selbst "
-                "geschrieben hat.",
+                "❌ Ich kann nur meine eigenen Bot-Nachrichten bearbeiten.",
                 ephemeral=True,
             )
             return
 
-        await message.edit(content=self.new_text.value)
+        if message.embeds:
+            embed = discord.Embed.from_dict(
+                message.embeds[0].to_dict()
+            )
+        else:
+            embed = discord.Embed(
+                color=discord.Color.blue()
+            )
+
+        if self.new_title.value.strip():
+            embed.title = self.new_title.value.strip()
+
+        if self.new_description.value.strip():
+            embed.description = self.new_description.value.strip()
+
+        try:
+            await message.edit(embed=embed)
+        except discord.HTTPException as error:
+            await interaction.response.send_message(
+                f"❌ Die Nachricht konnte nicht bearbeitet werden: {error}",
+                ephemeral=True,
+            )
+            return
+
         await interaction.response.send_message(
-            "Bot-Nachricht bearbeitet.",
+            "✅ Die Ticket-Bot-Nachricht wurde bearbeitet.",
             ephemeral=True,
         )
 
 
-# ============================================================
-# TICKET-SCHLIESSUNGSABSTIMMUNG
-# ============================================================
+# =========================================================
+# TICKET-TRANSKRIPT
+# =========================================================
+
+async def create_ticket_transcript(channel):
+    lines = [
+        "<!DOCTYPE html>",
+        "<html><head><meta charset='utf-8'>",
+        "<title>Ticket Transcript</title>",
+        """
+        <style>
+        body { font-family: Arial, sans-serif; margin: 25px; }
+        .message { padding: 10px; margin: 10px 0;
+                   border-bottom: 1px solid #ddd; }
+        .author { font-weight: bold; }
+        .time { color: #777; font-size: 12px; }
+        .content { margin-top: 5px; white-space: pre-wrap; }
+        </style>
+        """,
+        "</head><body>",
+        f"<h1>Ticket Transcript: {html.escape(channel.name)}</h1>",
+    ]
+
+    async for message in channel.history(
+        limit=None,
+        oldest_first=True,
+    ):
+        timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        author = html.escape(str(message.author))
+        content = html.escape(message.content or "")
+
+        lines.append("<div class='message'>")
+        lines.append(
+            f"<div class='author'>{author}</div>"
+        )
+        lines.append(
+            f"<div class='time'>{html.escape(timestamp)}</div>"
+        )
+        lines.append(
+            f"<div class='content'>{content}</div>"
+        )
+
+        for embed in message.embeds:
+            if embed.title:
+                lines.append(
+                    f"<div><b>{html.escape(embed.title)}</b></div>"
+                )
+            if embed.description:
+                lines.append(
+                    f"<div class='content'>"
+                    f"{html.escape(embed.description)}</div>"
+                )
+
+        if message.attachments:
+            for attachment in message.attachments:
+                lines.append(
+                    "<div>Attachment: "
+                    + html.escape(attachment.filename)
+                    + "</div>"
+                )
+
+        lines.append("</div>")
+
+    lines.append("</body></html>")
+
+    content = "\n".join(lines).encode("utf-8")
+    return content
+
+
+# =========================================================
+# TICKET SCHLIESSEN
+# =========================================================
 
 class TicketCloseVoteView(discord.ui.View):
 
@@ -609,99 +657,146 @@ class TicketCloseVoteView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Ja, schließen",
-        style=discord.ButtonStyle.success,
-        custom_id="kingsnowy:ticket:vote-yes",
+        label="Bestätigen als Ticket-Ersteller",
+        emoji="👤",
+        style=discord.ButtonStyle.primary,
+        custom_id="kingsnowy:ticket:close-owner",
     )
-    async def vote_yes(self, interaction, button):
+    async def owner_vote(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         channel = interaction.channel
-        owner_id = get_ticket_owner_id(channel)
-        support = is_support_member(interaction.user, channel)
 
-        if interaction.user.id != owner_id and not support:
+        if not isinstance(channel, discord.TextChannel):
+            await ticket_ephemeral(interaction, "Ungültiger Ticket-Kanal.")
+            return
+
+        data = parse_ticket_topic(channel.topic)
+
+        if data is None:
+            await ticket_ephemeral(interaction, "Dieses Ticket ist ungültig.")
+            return
+
+        if interaction.user.id != data.get("owner"):
             await ticket_ephemeral(
                 interaction,
-                "Nur der Ticket-Ersteller oder das Support-Team darf abstimmen.",
+                "Nur der Ticket-Ersteller kann diese Bestätigung abgeben.",
             )
             return
 
-        if topic_value(channel, "close-request") != "1":
+        await update_ticket_topic(channel, close_owner=1)
+        await self.finish_if_approved(interaction, channel)
+
+    @discord.ui.button(
+        label="Bestätigen als Support",
+        emoji="🛡️",
+        style=discord.ButtonStyle.success,
+        custom_id="kingsnowy:ticket:close-support",
+    )
+    async def support_vote(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        channel = interaction.channel
+
+        if not isinstance(channel, discord.TextChannel):
+            await ticket_ephemeral(interaction, "Ungültiger Ticket-Kanal.")
+            return
+
+        data = parse_ticket_topic(channel.topic)
+
+        if data is None:
+            await ticket_ephemeral(interaction, "Dieses Ticket ist ungültig.")
+            return
+
+        if not is_support_member(interaction.user, channel):
             await ticket_ephemeral(
                 interaction,
-                "Es gibt keinen offenen Schließungsantrag.",
+                "Nur das Support-Team kann diese Bestätigung abgeben.",
             )
             return
 
-        if interaction.user.id == owner_id:
-            topic = update_topic(channel, **{"owner-yes": 1})
-        else:
-            topic = update_topic(channel, **{"support-yes": 1})
+        await update_ticket_topic(channel, close_support=1)
+        await self.finish_if_approved(interaction, channel)
 
-        await channel.edit(topic=topic)
+    async def finish_if_approved(self, interaction, channel):
+        data = parse_ticket_topic(channel.topic)
 
-        owner_yes = topic_value(channel, "owner-yes") == "1"
-        support_yes = topic_value(channel, "support-yes") == "1"
+        if data is None:
+            await ticket_ephemeral(interaction, "Ticket-Daten fehlen.")
+            return
 
-        if owner_yes and support_yes:
+        if data.get("close_owner") and data.get("close_support"):
             await interaction.response.send_message(
-                "Beide Seiten haben zugestimmt. Das Ticket wird geschlossen."
+                "✅ Beide Bestätigungen liegen vor. Das Ticket wird geschlossen.",
+                ephemeral=True,
             )
-            await close_ticket(
-                channel,
-                "Beide Seiten haben zugestimmt",
-                interaction.user,
-            )
+            await close_ticket(channel, interaction.user)
             return
 
         await interaction.response.send_message(
-            "Deine Zustimmung wurde gespeichert. Die andere Seite muss "
-            "ebenfalls zustimmen.",
+            "✅ Bestätigung gespeichert. Zum Schließen werden beide "
+            "Bestätigungen benötigt.",
             ephemeral=True,
         )
 
-    @discord.ui.button(
-        label="Nein, abbrechen",
-        style=discord.ButtonStyle.danger,
-        custom_id="kingsnowy:ticket:vote-no",
+
+async def close_ticket(channel, closed_by):
+    data = parse_ticket_topic(channel.topic)
+
+    if data is None:
+        return
+
+    transcript_bytes = await create_ticket_transcript(channel)
+    filename = f"{channel.name}-transcript.html"
+
+    owner = channel.guild.get_member(data.get("owner", 0))
+
+    # Jede Sendung bekommt eine eigene Datei, damit der Datei-Stream
+    # beim Senden an mehrere Empfänger korrekt verwendet wird.
+    if owner is not None:
+        try:
+            await owner.send(
+                "Hier ist das Transkript deines geschlossenen Tickets.",
+                file=discord.File(
+                    io.BytesIO(transcript_bytes),
+                    filename=filename,
+                ),
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    log_channel = await get_text_channel(
+        config.get("ticket_log_channel_id")
     )
-    async def vote_no(self, interaction, button):
-        channel = interaction.channel
-        owner_id = get_ticket_owner_id(channel)
-        support = is_support_member(interaction.user, channel)
 
-        if interaction.user.id != owner_id and not support:
-            await ticket_ephemeral(
-                interaction,
-                "Nur der Ticket-Ersteller oder das Support-Team darf abstimmen.",
+    if log_channel is not None:
+        try:
+            await log_channel.send(
+                f"🔒 Ticket **{channel.name}** wurde von "
+                f"{closed_by.mention} geschlossen.",
+                file=discord.File(
+                    io.BytesIO(transcript_bytes),
+                    filename=filename,
+                ),
             )
-            return
+        except discord.HTTPException:
+            pass
 
-        if topic_value(channel, "close-request") != "1":
-            await ticket_ephemeral(
-                interaction,
-                "Es gibt keinen offenen Schließungsantrag.",
-            )
-            return
+    tickets.pop(str(channel.id), None)
+    save_tickets()
 
-        topic = update_topic(
-            channel,
-            **{
-                "owner-yes": 0,
-                "support-yes": 0,
-                "close-request": 0,
-            },
-        )
-        await channel.edit(topic=topic)
-
-        await interaction.response.send_message(
-            f"Der Schließungsantrag wurde von {interaction.user.mention} "
-            "abgelehnt. Das Ticket bleibt offen."
-        )
+    await channel.delete(
+        reason=f"Ticket closed by {closed_by}"
+    )
 
 
-# ============================================================
+# =========================================================
 # TICKET-STEUERUNG
-# ============================================================
+# =========================================================
 
 class TicketControlsView(discord.ui.View):
 
@@ -710,120 +805,174 @@ class TicketControlsView(discord.ui.View):
 
     @discord.ui.button(
         label="Ticket übernehmen",
-        emoji="🙋",
-        style=discord.ButtonStyle.primary,
+        emoji="🛡️",
+        style=discord.ButtonStyle.success,
         custom_id="kingsnowy:ticket:claim",
     )
-    async def claim(self, interaction, button):
+    async def claim_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         channel = interaction.channel
+
+        if not isinstance(channel, discord.TextChannel):
+            await ticket_ephemeral(interaction, "Ungültiger Kanal.")
+            return
 
         if not is_support_member(interaction.user, channel):
             await ticket_ephemeral(
                 interaction,
-                "Nur Support darf Tickets übernehmen.",
+                "Nur das Support-Team darf Tickets übernehmen.",
             )
             return
 
-        if topic_value(channel, "claimed") != "0":
+        data = parse_ticket_topic(channel.topic)
+
+        if data is None:
+            await ticket_ephemeral(interaction, "Ticket nicht gefunden.")
+            return
+
+        if data.get("claimed"):
             await ticket_ephemeral(
                 interaction,
-                "Dieses Ticket wurde bereits übernommen.",
+                f"Dieses Ticket wurde bereits von <@{data['claimed']}> "
+                "übernommen.",
             )
             return
 
-        await channel.edit(
-            topic=update_topic(channel, claimed=interaction.user.id)
-        )
+        await update_ticket_topic(channel, claimed=interaction.user.id)
 
         await interaction.response.send_message(
-            f"🙋 {interaction.user.mention} hat dieses Ticket übernommen."
+            f"🛡️ {interaction.user.mention} hat das Ticket übernommen."
         )
 
     @discord.ui.button(
-        label="Ticket freigeben",
+        label="Übernahme freigeben",
         emoji="↩️",
         style=discord.ButtonStyle.secondary,
         custom_id="kingsnowy:ticket:release",
     )
-    async def release(self, interaction, button):
+    async def release_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         channel = interaction.channel
-        claimer = topic_value(channel, "claimed")
 
-        if claimer == "0":
+        if not isinstance(channel, discord.TextChannel):
+            await ticket_ephemeral(interaction, "Ungültiger Kanal.")
+            return
+
+        if not is_support_member(interaction.user, channel):
             await ticket_ephemeral(
                 interaction,
-                "Dieses Ticket ist nicht übernommen.",
+                "Nur das Support-Team darf die Übernahme freigeben.",
             )
             return
 
-        if str(interaction.user.id) != claimer:
-            await ticket_ephemeral(
-                interaction,
-                "Nur die Person, die das Ticket übernommen hat, darf es freigeben.",
-            )
+        data = parse_ticket_topic(channel.topic)
+
+        if data is None:
+            await ticket_ephemeral(interaction, "Ticket nicht gefunden.")
             return
 
-        await channel.edit(topic=update_topic(channel, claimed=0))
+        if data.get("claimed") not in (0, interaction.user.id):
+            await ticket_ephemeral(
+                interaction,
+                "Nur der zuständige Support-Mitarbeiter oder ein "
+                "Administrator kann die Übernahme freigeben.",
+            )
+            if not interaction.user.guild_permissions.administrator:
+                return
+
+        await update_ticket_topic(channel, claimed=0)
 
         await interaction.response.send_message(
-            f"↩️ {interaction.user.mention} hat das Ticket freigegeben."
+            f"↩️ {interaction.user.mention} hat die Ticket-Übernahme "
+            "freigegeben."
         )
 
     @discord.ui.button(
-        label="Ticket direkt schließen",
-        emoji="🔒",
-        style=discord.ButtonStyle.danger,
-        custom_id="kingsnowy:ticket:close",
+        label="Ticket-Nachricht bearbeiten",
+        emoji="✏️",
+        style=discord.ButtonStyle.secondary,
+        custom_id="kingsnowy:ticket:edit-message",
     )
-    async def close(self, interaction, button):
+    async def edit_message(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         if not is_support_member(interaction.user, interaction.channel):
             await ticket_ephemeral(
                 interaction,
-                "Nur das Support-Team darf ein Ticket direkt schließen.",
+                "Nur das Support-Team darf Ticket-Bot-Nachrichten bearbeiten.",
             )
             return
 
-        await interaction.response.send_message(
-            "Das Ticket wird geschlossen."
+        current_embed = (
+            interaction.message.embeds[0]
+            if interaction.message.embeds
+            else None
         )
-        await close_ticket(
-            interaction.channel,
-            "Vom Support direkt geschlossen",
-            interaction.user,
+
+        await interaction.response.send_modal(
+            EditTicketMessageModal(
+                interaction.message.id,
+                current_embed,
+            )
         )
 
     @discord.ui.button(
-        label="Schließung beantragen",
-        emoji="🗳️",
-        style=discord.ButtonStyle.secondary,
+        label="Schließen anfordern",
+        emoji="🔒",
+        style=discord.ButtonStyle.danger,
         custom_id="kingsnowy:ticket:request-close",
     )
-    async def request_close(self, interaction, button):
+    async def request_close(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         channel = interaction.channel
 
-        if topic_value(channel, "close-request") == "1":
+        if not isinstance(channel, discord.TextChannel):
+            await ticket_ephemeral(interaction, "Ungültiger Kanal.")
+            return
+
+        data = parse_ticket_topic(channel.topic)
+
+        if data is None:
+            await ticket_ephemeral(interaction, "Ticket nicht gefunden.")
+            return
+
+        is_owner = interaction.user.id == data.get("owner")
+        is_support = is_support_member(interaction.user, channel)
+
+        if not is_owner and not is_support:
             await ticket_ephemeral(
                 interaction,
-                "Es gibt bereits einen offenen Schließungsantrag.",
+                "Nur der Ticket-Ersteller oder das Support-Team "
+                "kann das Schließen anfordern.",
             )
             return
 
-        topic = update_topic(
+        # Eine neue Schließanfrage beginnt ohne alte Bestätigungen.
+        await update_ticket_topic(
             channel,
-            **{
-                "close-request": 1,
-                "owner-yes": 0,
-                "support-yes": 0,
-            },
+            close_owner=0,
+            close_support=0,
         )
-        await channel.edit(topic=topic)
 
         embed = discord.Embed(
-            title="Ticket schließen?",
+            title="🔒 Ticket-Schließung",
             description=(
-                "Das Ticket wird nur geschlossen, wenn sowohl der Ersteller "
-                "als auch das Support-Team zustimmen.\n"
-                "Ein Nein bricht den Antrag ab."
+                "Das Ticket soll geschlossen werden.\n\n"
+                "Für die endgültige Schließung werden zwei Bestätigungen "
+                "benötigt:\n"
+                "• vom Ticket-Ersteller\n"
+                "• vom Support-Team"
             ),
             color=discord.Color.orange(),
         )
@@ -834,280 +983,270 @@ class TicketControlsView(discord.ui.View):
         )
 
 
-# Die Bearbeitungs-Schaltfläche wird separat registriert,
-# damit das Ticket-Control-Panel übersichtlich bleibt.
 class TicketControlsViewWithEdit(TicketControlsView):
-
-    @discord.ui.button(
-        label="Bot-Nachricht bearbeiten",
-        emoji="✏️",
-        style=discord.ButtonStyle.secondary,
-        custom_id="kingsnowy:ticket:edit-message",
-    )
-    async def edit_message(self, interaction, button):
-        if not is_support_member(interaction.user, interaction.channel):
-            await ticket_ephemeral(
-                interaction,
-                "Nur das Support-Team darf Bot-Nachrichten bearbeiten.",
-            )
-            return
-
-        await interaction.response.send_modal(EditTicketMessageModal())
+    """Persistente Ticket-Steuerung inklusive Bearbeiten-Button."""
+    pass
 
 
-# ============================================================
-# TICKET-PANEL
-# ============================================================
+# =========================================================
+# TICKET ERSTELLEN
+# =========================================================
 
 class TicketPanelView(discord.ui.View):
 
-    def __init__(self, ticket_name="Support-Ticket"):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.ticket_name = ticket_name
 
     @discord.ui.button(
         label="Ticket erstellen",
         emoji="🎫",
-        style=discord.ButtonStyle.success,
+        style=discord.ButtonStyle.primary,
         custom_id="kingsnowy:ticket:create",
     )
-    async def create_ticket(self, interaction, button):
-        panel_id = str(interaction.message.id)
-        settings = tickets.get(panel_id)
-
-        if not settings:
-            await ticket_ephemeral(
-                interaction,
-                "Diese Ticket-Konfiguration wurde nicht gefunden. "
-                "Bitte erstelle das Panel erneut.",
-            )
-            return
-
+    async def create_ticket(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
         guild = interaction.guild
-        owner = interaction.user
-        support_role = guild.get_role(int(settings["role_id"]))
 
-        if support_role is None:
+        if guild is None:
             await ticket_ephemeral(
                 interaction,
-                "Die konfigurierte Support-Rolle wurde nicht gefunden.",
+                "Tickets können nur auf einem Server erstellt werden.",
             )
             return
 
-        category_id = settings.get("category_id")
-        category = guild.get_channel(int(category_id)) if category_id else None
+        # Prüfen, ob der Nutzer bereits ein Ticket hat.
+        for channel in guild.text_channels:
+            data = parse_ticket_topic(channel.topic)
 
-        number = int(settings.get("next_number", 1))
-        settings["next_number"] = number + 1
-        tickets[panel_id] = settings
-        save_json(TICKETS_FILE, tickets)
-
-        slug = re.sub(
-            r"[^a-z0-9-]+",
-            "-",
-            settings.get("ticket_name", "ticket").lower(),
-        ).strip("-")[:35] or "ticket"
-
-        channel_name = f"{slug}-{number:04d}"
+            if data and data.get("owner") == interaction.user.id:
+                await ticket_ephemeral(
+                    interaction,
+                    f"Du hast bereits ein offenes Ticket: {channel.mention}",
+                )
+                return
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(
-                view_channel=False,
+                view_channel=False
             ),
-            owner: discord.PermissionOverwrite(
+            interaction.user: discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True,
                 attach_files=True,
+                embed_links=True,
             ),
-            support_role: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                manage_messages=True,
-                attach_files=True,
-            ),
-        }
-
-        if guild.me:
-            overwrites[guild.me] = discord.PermissionOverwrite(
+            guild.me: discord.PermissionOverwrite(
                 view_channel=True,
                 send_messages=True,
                 read_message_history=True,
                 manage_channels=True,
                 attach_files=True,
-            )
+                embed_links=True,
+            ),
+        }
+
+        support_role_id = config.get("support_role_id")
+
+        if support_role_id:
+            role = guild.get_role(int(support_role_id))
+            if role is not None:
+                overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    attach_files=True,
+                    embed_links=True,
+                )
+
+        username = "".join(
+            char.lower()
+            for char in interaction.user.name
+            if char.isalnum() or char in "-_"
+        )[:30] or "user"
 
         try:
             channel = await guild.create_text_channel(
-                name=channel_name,
-                category=category,
+                name=f"ticket-{username}",
                 overwrites=overwrites,
-                topic=(
-                    f"owner:{owner.id} role:{support_role.id} "
-                    "claimed:0 close-request:0 owner-yes:0 support-yes:0"
-                ),
-                reason=f"Ticket erstellt von {owner}",
+                topic=make_ticket_topic(interaction.user.id),
+                reason=f"Ticket created by {interaction.user}",
             )
-        except discord.HTTPException:
+        except discord.Forbidden:
             await ticket_ephemeral(
                 interaction,
-                "Das Ticket konnte nicht erstellt werden. Prüfe die Bot-Rechte.",
+                "❌ Der Bot darf keine Ticket-Kanäle erstellen. "
+                "Gib ihm die Berechtigung „Kanäle verwalten“.",
+            )
+            return
+        except discord.HTTPException as error:
+            await ticket_ephemeral(
+                interaction,
+                f"❌ Ticket konnte nicht erstellt werden: {error}",
             )
             return
 
+        tickets[str(channel.id)] = {
+            "owner_id": interaction.user.id,
+            "guild_id": guild.id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        save_tickets()
+
         embed = discord.Embed(
-            title=f"🎫 {settings.get('ticket_name', 'Support-Ticket')} #{number:04d}",
+            title="🎫 Support-Ticket",
             description=(
-                f"Hallo {owner.mention}!\n\n"
-                f"Beschreibe hier dein Anliegen. {support_role.mention} "
-                "wird dir helfen.\n\n"
-                "Nutze die Buttons unten, um das Ticket zu verwalten."
+                f"Hallo {interaction.user.mention}!\n\n"
+                "Beschreibe hier dein Problem möglichst genau.\n"
+                "Das Support-Team wird dir so schnell wie möglich helfen.\n\n"
+                "Verwende die Buttons unten, um das Ticket zu verwalten."
             ),
-            color=discord.Color.blurple(),
+            color=discord.Color.blue(),
             timestamp=datetime.now(timezone.utc),
         )
 
         await channel.send(
-            content=f"{owner.mention} {support_role.mention}",
+            content=interaction.user.mention,
             embed=embed,
             view=TicketControlsViewWithEdit(),
         )
 
+        await send_ticket_log(
+            channel,
+            content=f"🎫 Neues Ticket: {channel.mention} "
+                    f"von {interaction.user.mention}",
+        )
+
         await interaction.response.send_message(
-            f"Dein Ticket wurde erstellt: {channel.mention}",
+            f"✅ Dein Ticket wurde erstellt: {channel.mention}",
             ephemeral=True,
         )
 
 
-# ============================================================
-# TICKET-COMMANDS
-# ============================================================
-
-@bot.tree.command(
+@bot.hybrid_command(
     name="ticketcreat",
-    description="Create a ticket panel",
+    description="Create the support ticket panel",
 )
-@app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(
-    ping_rolle="Support-Rolle, die bei neuen Tickets benachrichtigt wird",
-    ticket_name="Name des Tickets und des Panels",
-    kategorie="Optionale Kategorie für neue Tickets",
-)
-async def ticketcreat(
-    interaction: discord.Interaction,
-    ping_rolle: discord.Role,
-    ticket_name: app_commands.Range[str, 1, 80],
-    kategorie: discord.CategoryChannel = None,
-):
-    if ping_rolle >= interaction.guild.me.top_role:
-        await interaction.response.send_message(
-            "Die Support-Rolle muss unter der höchsten Bot-Rolle stehen.",
-            ephemeral=True,
-        )
-        return
-
+@commands.has_permissions(manage_guild=True)
+async def ticketcreat(ctx):
     embed = discord.Embed(
-        title=f"🎫 {ticket_name}",
+        title="🎫 KingSnowy Support",
         description=(
-            "Benötigst du Hilfe? Erstelle mit dem Button unten ein privates "
-            "Ticket.\n\n"
-            f"Support-Rolle: {ping_rolle.mention}"
+            "Du brauchst Hilfe? Erstelle über den Button ein privates "
+            "Support-Ticket.\n\n"
+            "Bitte beschreibe dein Anliegen nach der Erstellung so genau "
+            "wie möglich."
         ),
-        color=discord.Color.blurple(),
+        color=discord.Color.blue(),
     )
 
-    await interaction.response.send_message(
-        embed=embed,
-        view=TicketPanelView(ticket_name),
-    )
-    message = await interaction.original_response()
-
-    tickets[str(message.id)] = {
-        "guild_id": interaction.guild.id,
-        "role_id": ping_rolle.id,
-        "category_id": kategorie.id if kategorie else None,
-        "ticket_name": ticket_name,
-        "next_number": 1,
-    }
-    save_json(TICKETS_FILE, tickets)
+    await ctx.send(embed=embed, view=TicketPanelView())
 
 
 @bot.tree.command(
     name="ticketlog-set",
-    description="Set the channel for ticket logs and transcripts",
+    description="Set the channel for ticket logs",
 )
 @app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(channel="The channel where ticket logs are sent")
 async def ticketlog_set(
     interaction: discord.Interaction,
-    kanal: discord.TextChannel,
+    channel: discord.TextChannel,
 ):
-    config["ticket_log_channel_id"] = kanal.id
-    save_json(CONFIG_FILE, config)
+    config["ticket_log_channel_id"] = channel.id
+    save_config()
 
     await interaction.response.send_message(
-        f"Ticket-Protokolle werden jetzt in {kanal.mention} gespeichert.",
+        f"✅ Ticket-Log-Kanal eingestellt: {channel.mention}",
         ephemeral=True,
     )
 
 
-# ============================================================
-# FEHLERBEHANDLUNG
-# ============================================================
+@bot.tree.command(
+    name="ticket-support-set",
+    description="Set the role allowed to manage support tickets",
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(role="The support team role")
+async def ticket_support_set(
+    interaction: discord.Interaction,
+    role: discord.Role,
+):
+    config["support_role_id"] = role.id
+    save_config()
+
+    await interaction.response.send_message(
+        f"✅ Support-Rolle eingestellt: {role.mention}",
+        ephemeral=True,
+    )
+
+
+# =========================================================
+# FEHLERMELDUNGEN
+# =========================================================
+
+@anmeldepanel.error
+async def anmeldepanel_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send(
+            "❌ Du benötigst die Berechtigung „Server verwalten“."
+        )
+    else:
+        print(f"Fehler bei anmeldepanel: {error}")
+        await ctx.send("❌ Beim Erstellen des Anmelde-Panels ist ein Fehler aufgetreten.")
+
+
+@ticketcreat.error
+async def ticketcreat_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send(
+            "❌ Du benötigst die Berechtigung „Server verwalten“."
+        )
+    else:
+        print(f"Fehler bei ticketcreat: {error}")
+        await ctx.send("❌ Das Ticket-Panel konnte nicht erstellt werden.")
+
 
 @bot.tree.error
-async def on_app_command_error(interaction, error):
+async def app_command_error(
+    interaction: discord.Interaction,
+    error: app_commands.AppCommandError,
+):
     if isinstance(error, app_commands.MissingPermissions):
-        message = "Du hast nicht die erforderlichen Berechtigungen."
+        message = "❌ Du hast nicht die nötigen Berechtigungen."
     else:
-        print(f"Slash-Command-Fehler: {repr(error)}")
-        message = "Der Befehl ist fehlgeschlagen. Prüfe die Railway-Logs."
+        print(f"Slash-Command-Fehler: {error}")
+        message = "❌ Beim Ausführen des Befehls ist ein Fehler aufgetreten."
 
-    try:
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(
-                message,
-                ephemeral=True,
-            )
-    except discord.HTTPException:
-        pass
+    await ticket_ephemeral(interaction, message)
 
 
-# ============================================================
+# =========================================================
 # BOT STARTEN
-# ============================================================
+# =========================================================
 
 @bot.event
 async def on_ready():
-    bot.add_view(SignInView())
-    bot.add_view(TicketControlsViewWithEdit())
-    bot.add_view(TicketCloseVoteView())
+    global views_registered
 
-    for panel_id, settings in tickets.items():
-        try:
-            bot.add_view(
-                TicketPanelView(settings.get("ticket_name", "Support-Ticket")),
-                message_id=int(panel_id),
-            )
-        except (ValueError, TypeError):
-            continue
+    if not views_registered:
+        bot.add_view(SignInView())
+        bot.add_view(TicketPanelView())
+        bot.add_view(TicketControlsViewWithEdit())
+        bot.add_view(TicketCloseVoteView())
+        views_registered = True
 
     try:
         synced = await bot.tree.sync()
-        print(f"Slash-Commands synchronisiert: {len(synced)}")
-        print("Commands:", ", ".join(command.name for command in synced))
+        print(f"{len(synced)} Slash-Commands synchronisiert.")
     except Exception as error:
-        print(f"Fehler beim Synchronisieren der Slash-Commands: {error}")
+        print(f"Slash-Commands konnten nicht synchronisiert werden: {error}")
 
-    print(f"Bot online: {bot.user}")
+    print(f"Eingeloggt als {bot.user} (ID: {bot.user.id})")
+    print("KingSnowy Bot ist online!")
 
-
-if not TOKEN:
-    raise RuntimeError(
-        "DISCORD_TOKEN fehlt. Trage deinen Bot-Token als "
-        "Environment Variable in Railway ein."
-    )
 
 bot.run(TOKEN)
