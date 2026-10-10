@@ -450,8 +450,6 @@ class SignInView(discord.ui.View):
             t["signed_out"],
             ephemeral=True,
         )
-
-
 # ==================================================
 # !anmeldepannel
 # ==================================================
@@ -459,12 +457,49 @@ class SignInView(discord.ui.View):
 @bot.command(name="anmeldepannel")
 @commands.has_permissions(administrator=True)
 async def anmeldepannel(ctx: commands.Context) -> None:
-    t = TEXT["en"]
-
     embed = discord.Embed(
-        title=t["panel_title"],
-        description=t["panel_description"],
+        title="🦖 THE ISLE – PLAYER SIGN-IN | SPIELERANMELDUNG",
         color=discord.Color.blurple(),
+        description=(
+            "Welcome to the official player sign-in panel!\n"
+            "Willkommen beim Spieler-Anmeldepanel!\n"
+            "Vítej v registračním panelu hráčů!\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🇬🇧 **ENGLISH – HOW TO SIGN IN**\n"
+            "1. Select your language from the menu below.\n"
+            "2. Click **Sign In**.\n"
+            "3. Enter your dinosaur, skin and current location.\n"
+            "4. Submit the form. Your sign-in will be posted in the designated channel.\n"
+            "5. When you finish playing, click **Sign Out**.\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🇩🇪 **DEUTSCH – SO MELDEST DU DICH AN**\n"
+            "1. Wähle unten deine Sprache aus.\n"
+            "2. Klicke auf **Anmelden**.\n"
+            "3. Gib deinen Dinosaurier, deinen Skin und deinen aktuellen Standort ein.\n"
+            "4. Sende das Formular ab. Deine Anmeldung wird im festgelegten Kanal veröffentlicht.\n"
+            "5. Wenn du mit dem Spielen fertig bist, klicke auf **Abmelden**.\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🇨🇿 **ČEŠTINA – JAK SE PŘIHLÁSIT**\n"
+            "1. Vyber si jazyk v nabídce níže.\n"
+            "2. Klikni na **Přihlásit se**.\n"
+            "3. Vyplň svého dinosaura, vzhled a aktuální polohu.\n"
+            "4. Odešli formulář. Tvoje registrace bude zveřejněna v určeném kanálu.\n"
+            "5. Až skončíš s hraním, klikni na **Odhlásit se**.\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🟢 Sign In / Anmelden / Přihlásit se\n"
+            "🔴 Sign Out / Abmelden / Odhlásit se\n"
+            "🌐 Choose your language / Wähle deine Sprache / Vyber si jazyk"
+        ),
+    )
+
+    embed.set_footer(
+        text="The Isle Evrima • Player Registration • Spieleranmeldung"
     )
 
     await ctx.send(
@@ -479,10 +514,13 @@ async def anmeldepannel_error(
     error: commands.CommandError,
 ) -> None:
     if isinstance(error, commands.MissingPermissions):
-        await ctx.send(TEXT["en"]["admin_only"])
+        await ctx.send(
+            "You need administrator permissions. / "
+            "Du benötigst Administratorrechte. / "
+            "Potřebuješ oprávnění správce."
+        )
     else:
         print(f"Fehler bei !anmeldepannel: {error}")
-
 
 # ==================================================
 # /kanal-set
