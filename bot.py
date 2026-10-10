@@ -247,4 +247,13 @@ async def on_ready():
 async def on_command_error(ctx, error):
     print(f"Command-Fehler: {error}")
 
+# Hier kommen deine neuen Klassen und Befehle hin
+
+@bot.event
+async def on_ready():
+    if not getattr(bot, "signin_view_registered", False):
+        bot.add_view(SignInView())
+        bot.signin_view_registered = True
+    print(f"Bot online: {bot.user}")
+
 bot.run(TOKEN)
