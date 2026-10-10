@@ -191,8 +191,15 @@ class SignInModal(discord.ui.Modal):
         t = TEXT[self.language]
         data = load_json(SIGNINS_FILE)
 
-        data[str(interaction.user.id)] = {
-            "discord_name": interaction.user.display_name,
-            "discord_id": interaction.user.id,
-            "dino": self.dinosaur.value.strip(),
-            "skin": self.skin.value
+       data[str(interaction.user.id)] = {
+    "discord_name": interaction.user.display_name,
+    "discord_id": interaction.user.id,
+    "dino": self.dinosaur.value.strip(),
+    "skin": self.skin.value.strip(),
+    "location": self.location.value.strip(),
+    "status": "Angemeldet",
+    "language": self.language,
+    "guild_id": interaction.guild_id,
+    "updated_at": discord.utils.utcnow().isoformat(),
+}
+save_json(SIGNINS_FILE, data)
