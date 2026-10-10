@@ -248,4 +248,5 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx, error):
     print(f"Command-Fehler: {error}")
+
 bot.run(TOKEN)
