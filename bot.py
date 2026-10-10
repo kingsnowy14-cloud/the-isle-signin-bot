@@ -530,7 +530,7 @@ async def anmeldepannel(ctx: commands.Context) -> None:
     )
 
     embed.set_footer(
-        text="The Isle Evrima - Player Registration"
+        text="createt by KingSnowy"
     )
 
     await ctx.send(
