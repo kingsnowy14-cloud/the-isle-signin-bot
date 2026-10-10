@@ -237,3 +237,18 @@ class SignInModal(discord.ui.Modal):
             embed=embed,
             ephemeral=True,
         )
+            ephemeral=True,
+        )
+
+@bot.event
+async def on_ready():
+    print(f"Bot online: {bot.user} (ID: {bot.user.id})")
+
+
+@bot.event
+async def on_command_error(ctx, error):
+    print(f"Command-Fehler: {error}")
+
+
+bot.run(TOKEN)
+
