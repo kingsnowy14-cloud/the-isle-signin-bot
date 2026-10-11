@@ -16,6 +16,8 @@ from datetime import datetime, timezone, timedelta
 # Set your bot token as the DISCORD_TOKEN environment variable.
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+# Optional: set your Discord server ID in Railway for instant guild slash-command sync.
+GUILD_ID = os.getenv("GUILD_ID")
 CONFIG_FILE = "config.json"
 DATA_FILE = "data.json"
 
@@ -963,10 +965,17 @@ async def on_ready():
             except Exception:
                 pass
     try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} slash commands.")
+        if GUILD_ID:
+            guild_obj = discord.Object(id=int(GUILD_ID))
+            # Copy registered commands to this server and sync them immediately.
+            bot.tree.copy_global_to(guild=guild_obj)
+            synced = await bot.tree.sync(guild=guild_obj)
+            print(f"Synced {len(synced)} slash commands to guild {GUILD_ID}.")
+        else:
+            synced = await bot.tree.sync()
+            print(f"Synced {len(synced)} global slash commands. Global commands may take a while to appear; set GUILD_ID in Railway for faster server-only sync.")
     except Exception as exc:
-        print(f"Could not sync slash commands: {exc}")
+        print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 
