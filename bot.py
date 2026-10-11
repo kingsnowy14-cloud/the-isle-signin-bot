@@ -1,4 +1,3 @@
-
 # =========================================================
 # TICKET STEUERN: ÜBERNEHMEN, FREIGEBEN, SCHLIESSEN
 # Nur die Support-Rolle darf Tickets schließen.
