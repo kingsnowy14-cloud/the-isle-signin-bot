@@ -2,10 +2,13 @@ import os
 import json
 import html
 import io
+import time
+import asyncio
+from collections import defaultdict, deque
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
@@ -42,7 +45,7 @@ data = load_json(DATA_FILE, {"languages": {}, "registrations": {}})
 
 
 def guild_config(guild_id):
-    return config.setdefault(str(guild_id), {
+    cfg = config.setdefault(str(guild_id), {
         "registration_channel": None,
         "ticket_category": None,
         "ticket_log_channel": None,
@@ -50,6 +53,15 @@ def guild_config(guild_id):
         "ticket_panels": {},
         "ticket_counter": 0,
     })
+    # Security settings are added safely to existing config files too.
+    cfg.setdefault("security_log_channel", None)
+    cfg.setdefault("honeypot_channel", None)
+    cfg.setdefault("anti_nuke_enabled", True)
+    cfg.setdefault("anti_nuke_threshold", 4)
+    cfg.setdefault("anti_raid_enabled", True)
+    cfg.setdefault("raid_threshold", 8)
+    cfg.setdefault("trusted_security_role", None)
+    return cfg
 
 
 def user_language(user_id):
@@ -614,6 +626,326 @@ async def registration_command_error(ctx, error):
         await ctx.reply("You need the **Manage Server** permission to create this panel.", mention_author=False)
     else:
         await ctx.reply(f"Command error: `{error}`", mention_author=False)
+
+
+
+
+# ----------------------------- SECURITY: HONEYPOT / ANTI-NUKE / ANTI-RAID -----------------------------
+
+# Rolling counters live in memory; they reset when the bot restarts.
+_nuke_events = defaultdict(deque)       # (guild_id, actor_id) -> timestamps
+_raid_joins = defaultdict(deque)        # guild_id -> (timestamp, member_id)
+_raid_lockdown_until = {}               # guild_id -> monotonic timestamp
+_nuke_handled = set()                   # avoid handling the same audit entry twice
+
+
+async def security_log(guild: discord.Guild, title: str, description: str, color=discord.Color.orange()):
+    cfg = guild_config(guild.id)
+    channel_id = cfg.get("security_log_channel")
+    channel = guild.get_channel(channel_id) if channel_id else None
+    if isinstance(channel, discord.TextChannel):
+        try:
+            embed = discord.Embed(title=title, description=description, color=color,
+                                  timestamp=datetime.now(timezone.utc))
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            pass
+
+
+def is_security_trusted(member: discord.Member, cfg: dict):
+    if member.id == member.guild.owner_id:
+        return True
+    role_id = cfg.get("trusted_security_role")
+    if role_id and any(role.id == role_id for role in member.roles):
+        return True
+    return False
+
+
+async def get_audit_actor(guild: discord.Guild, action: discord.AuditLogAction, target_id=None):
+    # Audit entries can appear a moment after the Discord event.
+    for attempt in range(4):
+        try:
+            async for entry in guild.audit_logs(limit=8, action=action):
+                if target_id is None or getattr(entry.target, "id", None) == target_id:
+                    if entry.id not in _nuke_handled:
+                        _nuke_handled.add(entry.id)
+                        return entry.user, entry.id, entry.reason
+        except (discord.Forbidden, discord.HTTPException):
+            return None, None, None
+        if attempt < 3:
+            await asyncio.sleep(0.7)
+    return None, None, None
+
+
+async def record_nuke_action(guild: discord.Guild, action_name: str, action: discord.AuditLogAction,
+                             target_id=None, target_name="unknown"):
+    cfg = guild_config(guild.id)
+    if not cfg.get("anti_nuke_enabled", True):
+        return
+    actor, entry_id, reason = await get_audit_actor(guild, action, target_id)
+    if actor is None or actor.bot:
+        return
+    member = guild.get_member(actor.id)
+    if member is None or is_security_trusted(member, cfg):
+        return
+
+    now = time.monotonic()
+    key = (guild.id, actor.id)
+    events = _nuke_events[key]
+    while events and now - events[0] > 60:
+        events.popleft()
+    events.append(now)
+
+    threshold = max(2, min(10, int(cfg.get("anti_nuke_threshold", 4))))
+    await security_log(
+        guild,
+        "🛡️ Anti-Nuke: Aktion erkannt",
+        f"**Akteur:** {actor.mention} (`{actor.id}`)\n"
+        f"**Aktion:** {discord.utils.escape_markdown(action_name)}\n"
+        f"**Ziel:** {discord.utils.escape_markdown(str(target_name))}\n"
+        f"**Aktionen in 60 Sekunden:** {len(events)}/{threshold}\n"
+        f"**Audit-Grund:** {discord.utils.escape_markdown(reason or 'Keiner')}",
+    )
+
+    if len(events) >= threshold:
+        try:
+            await member.kick(reason=f"Anti-Nuke: {len(events)} destructive actions in 60 seconds")
+            await security_log(
+                guild, "🚨 Anti-Nuke: Mitglied entfernt",
+                f"{actor.mention} wurde nach **{len(events)} verdächtigen Aktionen innerhalb von 60 Sekunden** gekickt.",
+                discord.Color.red(),
+            )
+            events.clear()
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            await security_log(
+                guild, "⚠️ Anti-Nuke konnte nicht eingreifen",
+                f"Verdächtiger Akteur: {actor.mention}\n"
+                f"Der Bot konnte ihn nicht kicken. Prüfe die Bot-Rollenposition und die Berechtigung **Mitglieder entfernen**.\n"
+                f"Fehler: `{type(exc).__name__}`",
+                discord.Color.red(),
+            )
+
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.guild and not message.author.bot:
+        cfg = guild_config(message.guild.id)
+        honeypot_id = cfg.get("honeypot_channel")
+        if honeypot_id and message.channel.id == honeypot_id:
+            # Exempt the owner and administrators to reduce accidental staff lockouts.
+            member = message.author if isinstance(message.author, discord.Member) else None
+            if member and member.id != message.guild.owner_id and not member.guild_permissions.administrator:
+                try:
+                    await message.delete()
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+                try:
+                    await member.timeout(datetime.now(timezone.utc) + timedelta(hours=1),
+                                         reason="Honeypot channel message")
+                    punishment = "für 1 Stunde timeoutet"
+                except (discord.Forbidden, discord.HTTPException):
+                    punishment = "konnte nicht timeoutet werden (Berechtigungen/Rollenposition prüfen)"
+                await security_log(
+                    message.guild, "🍯 Honeypot ausgelöst",
+                    f"{member.mention} (`{member.id}`) hat im Honeypot-Kanal geschrieben und {punishment}.",
+                    discord.Color.red(),
+                )
+                try:
+                    await member.send(
+                        f"Du hast in einem Honeypot-Kanal auf **{message.guild.name}** geschrieben. "
+                        "Deine Nachricht wurde entfernt und ein Moderator wurde informiert."
+                    )
+                except discord.HTTPException:
+                    pass
+    await bot.process_commands(message)
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    if member.bot:
+        # Bot additions are also monitored by the anti-nuke system below.
+        return
+    cfg = guild_config(member.guild.id)
+    if not cfg.get("anti_raid_enabled", True):
+        return
+
+    now = time.monotonic()
+    joins = _raid_joins[member.guild.id]
+    joins.append((now, member.id))
+    while joins and now - joins[0][0] > 10:
+        joins.popleft()
+
+    threshold = max(3, min(30, int(cfg.get("raid_threshold", 8))))
+    if len(joins) >= threshold and now >= _raid_lockdown_until.get(member.guild.id, 0):
+        _raid_lockdown_until[member.guild.id] = now + 60
+        await security_log(
+            member.guild, "🚨 Anti-Raid: Beitrittswelle erkannt",
+            f"**{len(joins)} Mitglieder in 10 Sekunden.**\n"
+            f"Raid-Schutz für 60 Sekunden aktiviert. Neu beitretende Nicht-Bots werden in dieser Zeit "
+            f"für 10 Minuten timeoutet, sofern die Bot-Berechtigungen dies erlauben.",
+            discord.Color.red(),
+        )
+
+    if now < _raid_lockdown_until.get(member.guild.id, 0):
+        try:
+            await member.timeout(datetime.now(timezone.utc) + timedelta(minutes=10),
+                                 reason="Anti-Raid: member joined during raid lockdown")
+            await security_log(
+                member.guild, "🧯 Anti-Raid: Beitritt eingeschränkt",
+                f"{member.mention} (`{member.id}`) wurde während des Raid-Schutzes für 10 Minuten timeoutet.",
+                discord.Color.orange(),
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            await security_log(
+                member.guild, "⚠️ Anti-Raid: Timeout fehlgeschlagen",
+                f"{member.mention} ist während des Raid-Schutzes beigetreten, konnte aber nicht timeoutet werden. "
+                "Prüfe die Bot-Berechtigungen und Rollenposition.",
+                discord.Color.red(),
+            )
+
+
+@bot.event
+async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
+    await record_nuke_action(channel.guild, "Channel gelöscht", discord.AuditLogAction.channel_delete,
+                             channel.id, channel.name)
+
+
+@bot.event
+async def on_guild_channel_create(channel: discord.abc.GuildChannel):
+    await record_nuke_action(channel.guild, "Channel erstellt", discord.AuditLogAction.channel_create,
+                             channel.id, channel.name)
+
+
+@bot.event
+async def on_guild_role_delete(role: discord.Role):
+    await record_nuke_action(role.guild, "Rolle gelöscht", discord.AuditLogAction.role_delete,
+                             role.id, role.name)
+
+
+@bot.event
+async def on_guild_role_create(role: discord.Role):
+    await record_nuke_action(role.guild, "Rolle erstellt", discord.AuditLogAction.role_create,
+                             role.id, role.name)
+
+
+@bot.event
+async def on_member_ban(guild: discord.Guild, user: discord.User):
+    await record_nuke_action(guild, "Mitglied gebannt", discord.AuditLogAction.ban,
+                             user.id, str(user))
+
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    # Fires for both voluntary leaves and kicks; only a matching kick audit entry is counted.
+    await record_nuke_action(member.guild, "Mitglied gekickt", discord.AuditLogAction.kick,
+                             member.id, str(member))
+
+
+@bot.event
+async def on_guild_role_update(before: discord.Role, after: discord.Role):
+    dangerous = discord.Permissions(administrator=True, manage_guild=True, manage_roles=True,
+                                    manage_channels=True, ban_members=True, kick_members=True)
+    if (before.permissions.value & dangerous.value) != (after.permissions.value & dangerous.value):
+        await record_nuke_action(after.guild, "Gefährliche Rollenrechte geändert",
+                                 discord.AuditLogAction.role_update, after.id, after.name)
+
+
+@bot.event
+async def on_guild_channel_update(before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
+    # Channel permission overwrites can be used to hide or expose many channels.
+    if before.overwrites != after.overwrites:
+        await record_nuke_action(after.guild, "Channel-Berechtigungen geändert",
+                                 discord.AuditLogAction.overwrite_update, after.id, after.name)
+
+
+@bot.event
+async def on_webhooks_update(channel: discord.abc.GuildChannel):
+    await record_nuke_action(channel.guild, "Webhooks geändert",
+                             discord.AuditLogAction.webhook_create, None, channel.name)
+
+
+@bot.event
+async def on_member_join_bot_security(member: discord.Member):
+    # This named helper is intentionally not a Discord event handler.
+    return
+
+
+@bot.tree.command(name="security-set-log", description="Set the security log channel")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(kanal="Channel for honeypot, anti-nuke and anti-raid logs")
+async def security_set_log(interaction: discord.Interaction, kanal: discord.TextChannel):
+    cfg = guild_config(interaction.guild_id)
+    cfg["security_log_channel"] = kanal.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"Security logs will be sent to {kanal.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="security-set-honeypot", description="Set the honeypot channel")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(kanal="A hidden channel that ordinary members should not write in")
+async def security_set_honeypot(interaction: discord.Interaction, kanal: discord.TextChannel):
+    cfg = guild_config(interaction.guild_id)
+    cfg["honeypot_channel"] = kanal.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"Honeypot channel set to {kanal.mention}. Members who write there will be timeouted for one hour.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="security-set-raid", description="Set the anti-raid join threshold")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(anzahl="Join count within 10 seconds (3–30)")
+async def security_set_raid(interaction: discord.Interaction, anzahl: app_commands.Range[int, 3, 30]):
+    cfg = guild_config(interaction.guild_id)
+    cfg["raid_threshold"] = int(anzahl)
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"Anti-raid threshold set to {anzahl} joins in 10 seconds. During a detected raid, new members are timeouted for 10 minutes for 60 seconds.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="security-set-antinuke", description="Set the anti-nuke action threshold")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(anzahl="Destructive actions within 60 seconds before the actor is kicked (2–10)")
+async def security_set_antinueke(interaction: discord.Interaction, anzahl: app_commands.Range[int, 2, 10]):
+    cfg = guild_config(interaction.guild_id)
+    cfg["anti_nuke_threshold"] = int(anzahl)
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"Anti-nuke threshold set to {anzahl} tracked actions within 60 seconds.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="security-toggle", description="Enable or disable anti-nuke or anti-raid")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(system="Choose a security system", aktiviert="Enable or disable it")
+@app_commands.choices(system=[
+    app_commands.Choice(name="Anti-Nuke", value="anti_nuke_enabled"),
+    app_commands.Choice(name="Anti-Raid", value="anti_raid_enabled"),
+])
+async def security_toggle(interaction: discord.Interaction, system: app_commands.Choice[str], aktiviert: bool):
+    cfg = guild_config(interaction.guild_id)
+    cfg[system.value] = aktiviert
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"{system.name} {'enabled' if aktiviert else 'disabled'}.", ephemeral=True
+    )
+
+
+@bot.tree.command(name="security-set-trusted-role", description="Set a role exempt from anti-nuke actions")
+@app_commands.checks.has_permissions(administrator=True)
+@app_commands.describe(rolle="Trusted role (use carefully)")
+async def security_set_trusted_role(interaction: discord.Interaction, rolle: discord.Role):
+    cfg = guild_config(interaction.guild_id)
+    cfg["trusted_security_role"] = rolle.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"Members with {rolle.mention} are exempt from anti-nuke. Only assign this role to trusted staff.",
+        ephemeral=True,
+    )
 
 
 @bot.event
