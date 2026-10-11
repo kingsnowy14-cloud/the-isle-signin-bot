@@ -5,6 +5,9 @@ import io
 import zipfile
 import time
 import asyncio
+import random
+import shutil
+from pathlib import Path
 from collections import defaultdict, deque
 import discord
 from discord import app_commands
@@ -53,6 +56,8 @@ config = load_json(CONFIG_FILE, {})
 data = load_json(DATA_FILE, {"languages": {}, "registrations": {}})
 # Stats are stored per server and per user in data.json.
 data.setdefault("stats", {})
+data.setdefault("moderation_warnings", {})
+data.setdefault("giveaways", {})
 # Active voice sessions are kept in memory so bot downtime is not counted.
 _active_voice_sessions = {}
 
@@ -92,6 +97,9 @@ def guild_config(guild_id):
     cfg.setdefault("anti_raid_enabled", True)
     cfg.setdefault("raid_threshold", 8)
     cfg.setdefault("trusted_security_role", None)
+    cfg.setdefault("welcome_channel", None)
+    cfg.setdefault("welcome_message", "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.")
+    cfg.setdefault("social_links", {})
     return cfg
 
 
@@ -986,6 +994,265 @@ async def registration_command_error(ctx, error):
 
 
 
+# ----------------------------- MODERATION -----------------------------
+
+def _moderation_log(guild_id):
+    return data.setdefault("moderation_warnings", {}).setdefault(str(guild_id), {})
+
+
+def _can_moderate(interaction: discord.Interaction, member: discord.Member):
+    if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+        return False, "Dieser Befehl funktioniert nur auf einem Server."
+    if member.id == interaction.user.id:
+        return False, "Du kannst diese Aktion nicht gegen dich selbst ausführen."
+    if member.id == interaction.guild.owner_id:
+        return False, "Der Serverinhaber kann nicht moderiert werden."
+    if interaction.user.id != interaction.guild.owner_id and member.top_role >= interaction.user.top_role:
+        return False, "Deine höchste Rolle muss über der höchsten Rolle des Zielmitglieds liegen."
+    if interaction.guild.me and member.top_role >= interaction.guild.me.top_role:
+        return False, "Die höchste Rolle des Bots muss über der höchsten Rolle des Zielmitglieds liegen."
+    return True, ""
+
+
+@bot.tree.command(name="warn", description="Warne ein Mitglied und speichere den Grund")
+@app_commands.checks.has_permissions(moderate_members=True)
+@app_commands.describe(mitglied="Mitglied, das verwarnt werden soll", grund="Grund der Verwarnung")
+async def moderation_warn(interaction: discord.Interaction, mitglied: discord.Member, grund: str):
+    ok, error = _can_moderate(interaction, mitglied)
+    if not ok:
+        await interaction.response.send_message(error, ephemeral=True); return
+    records = _moderation_log(interaction.guild_id).setdefault(str(mitglied.id), [])
+    records.append({"moderator_id": interaction.user.id, "reason": grund[:1000], "timestamp": datetime.now(timezone.utc).isoformat()})
+    save_json(DATA_FILE, data)
+    try:
+        await mitglied.send(f"Du wurdest auf **{interaction.guild.name}** verwarnt. Grund: {grund[:1000]}")
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+    await interaction.response.send_message(f"⚠️ {mitglied.mention} wurde verwarnt. Verwarnungen insgesamt: **{len(records)}**. Grund: {grund[:500]}", ephemeral=True)
+    await security_log(interaction.guild, "⚠️ Mitglied verwarnt", f"Mitglied: {mitglied.mention} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.orange())
+
+
+@bot.tree.command(name="warnings", description="Zeige gespeicherte Verwarnungen eines Mitglieds")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def moderation_warnings(interaction: discord.Interaction, mitglied: discord.Member):
+    records = _moderation_log(interaction.guild_id).get(str(mitglied.id), [])
+    if not records:
+        await interaction.response.send_message(f"Für {mitglied.mention} sind keine Verwarnungen gespeichert.", ephemeral=True); return
+    lines = [f"**{i}.** {r.get('reason','Kein Grund')} — <@{r.get('moderator_id','0')}> · {r.get('timestamp','')[:10]}" for i, r in enumerate(records[-15:], 1)]
+    await interaction.response.send_message(embed=create_embed(title=f"Verwarnungen: {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.orange()), ephemeral=True)
+
+
+@bot.tree.command(name="clear-warnings", description="Lösche alle gespeicherten Verwarnungen eines Mitglieds")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def moderation_clear_warnings(interaction: discord.Interaction, mitglied: discord.Member):
+    _moderation_log(interaction.guild_id).pop(str(mitglied.id), None)
+    save_json(DATA_FILE, data)
+    await interaction.response.send_message(f"Verwarnungen für {mitglied.mention} wurden gelöscht.", ephemeral=True)
+
+
+@bot.tree.command(name="timeout", description="Schalte ein Mitglied vorübergehend stumm")
+@app_commands.checks.has_permissions(moderate_members=True)
+@app_commands.describe(mitglied="Zielmitglied", minuten="Dauer in Minuten (1–10080)", grund="Grund")
+async def moderation_timeout(interaction: discord.Interaction, mitglied: discord.Member, minuten: app_commands.Range[int, 1, 10080], grund: str = "Kein Grund angegeben"):
+    ok, error = _can_moderate(interaction, mitglied)
+    if not ok:
+        await interaction.response.send_message(error, ephemeral=True); return
+    try:
+        await mitglied.timeout(timedelta(minutes=minuten), reason=f"{interaction.user}: {grund[:400]}")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Timeout fehlgeschlagen: {type(exc).__name__}. Prüfe Bot-Rechte und Rollenposition.", ephemeral=True); return
+    await interaction.response.send_message(f"🔇 {mitglied.mention} erhielt einen Timeout für **{minuten} Minuten**. Grund: {grund[:500]}")
+    await security_log(interaction.guild, "🔇 Timeout", f"Mitglied: {mitglied.mention}\nModerator: {interaction.user.mention}\nDauer: {minuten} Minuten\nGrund: {grund[:800]}", discord.Color.orange())
+
+
+@bot.tree.command(name="untimeout", description="Entferne den Timeout eines Mitglieds")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def moderation_untimeout(interaction: discord.Interaction, mitglied: discord.Member, grund: str = "Kein Grund angegeben"):
+    ok, error = _can_moderate(interaction, mitglied)
+    if not ok:
+        await interaction.response.send_message(error, ephemeral=True); return
+    try:
+        await mitglied.timeout(None, reason=f"{interaction.user}: {grund[:400]}")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Timeout konnte nicht entfernt werden: {type(exc).__name__}.", ephemeral=True); return
+    await interaction.response.send_message(f"🔊 Timeout von {mitglied.mention} wurde entfernt.")
+
+
+@bot.tree.command(name="kick", description="Entferne ein Mitglied vom Server")
+@app_commands.checks.has_permissions(kick_members=True)
+async def moderation_kick(interaction: discord.Interaction, mitglied: discord.Member, grund: str = "Kein Grund angegeben"):
+    ok, error = _can_moderate(interaction, mitglied)
+    if not ok:
+        await interaction.response.send_message(error, ephemeral=True); return
+    try:
+        await mitglied.kick(reason=f"{interaction.user}: {grund[:400]}")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Kick fehlgeschlagen: {type(exc).__name__}.", ephemeral=True); return
+    await interaction.response.send_message(f"👢 {mitglied} wurde entfernt. Grund: {grund[:500]}")
+    await security_log(interaction.guild, "👢 Mitglied gekickt", f"Mitglied: {mitglied} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.orange())
+
+
+@bot.tree.command(name="ban", description="Sperre ein Mitglied vom Server")
+@app_commands.checks.has_permissions(ban_members=True)
+@app_commands.describe(mitglied="Zielmitglied", grund="Grund", nachrichten_tage="Nachrichten der letzten 0–7 Tage löschen")
+async def moderation_ban(interaction: discord.Interaction, mitglied: discord.Member, grund: str = "Kein Grund angegeben", nachrichten_tage: app_commands.Range[int, 0, 7] = 0):
+    ok, error = _can_moderate(interaction, mitglied)
+    if not ok:
+        await interaction.response.send_message(error, ephemeral=True); return
+    try:
+        await interaction.guild.ban(mitglied, reason=f"{interaction.user}: {grund[:400]}", delete_message_seconds=nachrichten_tage * 86400)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Ban fehlgeschlagen: {type(exc).__name__}.", ephemeral=True); return
+    await interaction.response.send_message(f"🔨 {mitglied} wurde gebannt. Grund: {grund[:500]}")
+    await security_log(interaction.guild, "🔨 Mitglied gebannt", f"Mitglied: {mitglied} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.red())
+
+
+@bot.tree.command(name="purge", description="Lösche bis zu 100 Nachrichten im aktuellen Kanal")
+@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.describe(anzahl="Anzahl der Nachrichten (1–100)")
+async def moderation_purge(interaction: discord.Interaction, anzahl: app_commands.Range[int, 1, 100]):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    try:
+        deleted = await interaction.channel.purge(limit=anzahl)
+        await interaction.followup.send(f"🧹 {len(deleted)} Nachrichten gelöscht.", ephemeral=True)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.followup.send(f"Löschen fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
+
+
+@bot.tree.command(name="slowmode", description="Setze den Nachrichten-Abstand für den aktuellen Kanal")
+@app_commands.checks.has_permissions(manage_channels=True)
+@app_commands.describe(sekunden="0 deaktiviert Slowmode; maximal 21600 Sekunden")
+async def moderation_slowmode(interaction: discord.Interaction, sekunden: app_commands.Range[int, 0, 21600]):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True); return
+    try:
+        await interaction.channel.edit(slowmode_delay=sekunden, reason=f"Slowmode von {interaction.user}")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Slowmode konnte nicht geändert werden: {type(exc).__name__}.", ephemeral=True); return
+    await interaction.response.send_message(f"Slowmode gesetzt: **{sekunden} Sekunden**.")
+
+
+# ----------------------------- WELCOME -----------------------------
+
+@bot.tree.command(name="welcome-set", description="Setze den Begrüßungskanal")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def welcome_set(interaction: discord.Interaction, kanal: discord.TextChannel):
+    guild_config(interaction.guild_id)["welcome_channel"] = kanal.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"Begrüßungen werden künftig in {kanal.mention} gesendet.", ephemeral=True)
+
+
+@bot.tree.command(name="welcome-message", description="Lege den Begrüßungstext fest")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(text="Platzhalter: {mention}, {user}, {server}, {count}")
+async def welcome_message(interaction: discord.Interaction, text: str):
+    if len(text) > 1500:
+        await interaction.response.send_message("Der Text darf maximal 1500 Zeichen lang sein.", ephemeral=True); return
+    guild_config(interaction.guild_id)["welcome_message"] = text
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message("Begrüßungstext gespeichert. Platzhalter: `{mention}`, `{user}`, `{server}`, `{count}`.", ephemeral=True)
+
+
+# ----------------------------- BACKUP -----------------------------
+
+@bot.tree.command(name="backup", description="Erstelle ein ZIP-Backup der Bot-Konfigurations- und Datendateien")
+@app_commands.checks.has_permissions(administrator=True)
+async def backup_command(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for filename in (CONFIG_FILE, DATA_FILE):
+            path = Path(filename)
+            if path.exists():
+                archive.write(path, arcname=path.name)
+    buffer.seek(0)
+    try:
+        await interaction.followup.send("Hier ist dein Backup von `config.json` und `data.json`.", file=discord.File(buffer, filename=f"bot-backup-{interaction.guild_id}.zip"), ephemeral=True)
+    except discord.HTTPException:
+        await interaction.followup.send("Backup konnte nicht gesendet werden. Prüfe Dateigröße und Bot-Verbindung.", ephemeral=True)
+
+
+# ----------------------------- GIVEAWAY -----------------------------
+
+async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winners_count: int, prize: str):
+    try:
+        await asyncio.sleep(1)
+        record = data.get("giveaways", {}).get(str(message_id))
+        if not record:
+            return
+        wait_seconds = max(0, float(record.get("ends_at", time.time())) - time.time())
+        await asyncio.sleep(wait_seconds)
+        guild = bot.get_guild(guild_id)
+        channel = guild.get_channel(channel_id) if guild else None
+        if not isinstance(channel, discord.TextChannel):
+            return
+        try:
+            message = await channel.fetch_message(message_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return
+        entrants = []
+        for reaction in message.reactions:
+            if str(reaction.emoji) == "🎉":
+                async for user in reaction.users():
+                    if not user.bot:
+                        entrants.append(user)
+        entrants = list({u.id: u for u in entrants}.values())
+        winners = random.sample(entrants, min(winners_count, len(entrants))) if entrants else []
+        record["ended"] = True
+        record["winners"] = [u.id for u in winners]
+        save_json(DATA_FILE, data)
+        if winners:
+            await channel.send(f"🎉 Giveaway beendet! Preis: **{prize}** — Gewinner: {', '.join(u.mention for u in winners)}")
+        else:
+            await channel.send(f"Giveaway für **{prize}** beendet. Es gab keine gültigen Teilnehmer.")
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        print(f"Giveaway task error: {type(exc).__name__}: {exc}")
+
+
+@bot.tree.command(name="giveaway-start", description="Starte ein Giveaway mit Reaktion 🎉")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(preis="Zu gewinnender Preis", minuten="Laufzeit in Minuten (1–10080)", gewinner="Anzahl der Gewinner (1–10)")
+async def giveaway_start(interaction: discord.Interaction, preis: str, minuten: app_commands.Range[int, 1, 10080], gewinner: app_commands.Range[int, 1, 10] = 1):
+    await interaction.response.send_message("Giveaway wird erstellt …", ephemeral=True)
+    ends_at = time.time() + minuten * 60
+    embed = create_embed(title="🎉 GIVEAWAY", description=f"**Preis:** {preis[:200]}\n**Gewinner:** {gewinner}\n**Endet:** <t:{int(ends_at)}:R>\n\nReagiere mit 🎉, um teilzunehmen!", color=discord.Color.gold())
+    message = await interaction.channel.send(embed=embed)
+    await message.add_reaction("🎉")
+    data.setdefault("giveaways", {})[str(message.id)] = {"guild_id": interaction.guild_id, "channel_id": interaction.channel_id, "ends_at": ends_at, "winners": gewinner, "prize": preis[:200], "ended": False}
+    save_json(DATA_FILE, data)
+    asyncio.create_task(_finish_giveaway(interaction.guild_id, interaction.channel_id, message.id, gewinner, preis[:200]))
+    await interaction.followup.send(f"Giveaway gestartet: {message.jump_url}", ephemeral=True)
+
+
+# ----------------------------- SOCIAL LINKS -----------------------------
+
+@bot.tree.command(name="social-set", description="Speichere einen Social-Media-Link für diesen Server")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch"), app_commands.Choice(name="TikTok", value="tiktok"), app_commands.Choice(name="Instagram", value="instagram"), app_commands.Choice(name="Website", value="website")])
+@app_commands.describe(plattform="Plattform", link="Vollständiger Link mit https://")
+async def social_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], link: str):
+    if not (link.startswith("https://") or link.startswith("http://")) or len(link) > 500:
+        await interaction.response.send_message("Bitte gib einen vollständigen Link mit `https://` ein.", ephemeral=True); return
+    guild_config(interaction.guild_id).setdefault("social_links", {})[plattform.value] = link
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"{plattform.name}-Link gespeichert.", ephemeral=True)
+
+
+@bot.tree.command(name="social", description="Zeige die gespeicherten Social-Media-Links des Servers")
+async def social_show(interaction: discord.Interaction):
+    links = guild_config(interaction.guild_id).get("social_links", {})
+    if not links:
+        await interaction.response.send_message("Noch keine Social-Links eingerichtet. Ein Admin kann `/social-set` verwenden.", ephemeral=True); return
+    embed = create_embed(title=f"🌐 Social Links — {interaction.guild.name}", color=discord.Color.blurple())
+    for platform, link in sorted(links.items()):
+        embed.add_field(name=platform.capitalize(), value=f"[Hier öffnen]({link})", inline=True)
+    await interaction.response.send_message(embed=embed)
+
+
 # ----------------------------- SECURITY: HONEYPOT / ANTI-NUKE / ANTI-RAID -----------------------------
 
 # Rolling counters live in memory; they reset when the bot restarts.
@@ -1233,6 +1500,20 @@ async def on_member_join(member: discord.Member):
         # Bot additions are also monitored by the anti-nuke system below.
         return
     cfg = guild_config(member.guild.id)
+    # Welcome message is independent from whether anti-raid is enabled.
+    welcome_channel_id = cfg.get("welcome_channel")
+    if welcome_channel_id:
+        welcome_channel = member.guild.get_channel(welcome_channel_id)
+        if isinstance(welcome_channel, discord.TextChannel):
+            template = cfg.get("welcome_message", "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.")
+            welcome_text = (template.replace("{mention}", member.mention)
+                            .replace("{user}", discord.utils.escape_markdown(member.display_name))
+                            .replace("{server}", discord.utils.escape_markdown(member.guild.name))
+                            .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
+            try:
+                await welcome_channel.send(welcome_text[:1900], allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
+            except (discord.Forbidden, discord.HTTPException):
+                pass
     if not cfg.get("anti_raid_enabled", True):
         return
 
@@ -1425,6 +1706,17 @@ async def on_ready():
         for member in guild.members:
             if not member.bot and member.voice and member.voice.channel:
                 _active_voice_sessions.setdefault((guild.id, member.id), now)
+
+    # Resume giveaway timers saved in data.json after a reconnect/restart.
+    if not getattr(bot, "_giveaways_resumed", False):
+        bot._giveaways_resumed = True
+        for message_id, record in data.setdefault("giveaways", {}).items():
+            if record.get("ended"):
+                continue
+            try:
+                asyncio.create_task(_finish_giveaway(int(record["guild_id"]), int(record["channel_id"]), int(message_id), int(record.get("winners", 1)), str(record.get("prize", "Giveaway"))))
+            except (KeyError, TypeError, ValueError):
+                pass
 
     # Register persistent views so old buttons keep working after restart.
     bot.add_view(RegistrationView())
