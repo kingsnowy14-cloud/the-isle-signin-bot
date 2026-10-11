@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
-# Optional translation library is not required by this version.
+# Translation support: install deep-translator (see requirements below).
 # Set your bot token as the DISCORD_TOKEN environment variable.
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -27,6 +27,13 @@ intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+
+def create_embed(*args, **kwargs):
+    """Create an embed with the standard bot attribution footer."""
+    embed = discord.Embed(*args, **kwargs)
+    embed.set_footer(text="Created by KingSnowy")
+    return embed
 
 
 def load_json(path, default):
@@ -160,7 +167,7 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
         return
     # Public registration announcements are ALWAYS in English.
     if action == "Sign In":
-        embed = discord.Embed(
+        embed = create_embed(
             title="✅ Player Signed In",
             description=f"**Player:** {user.mention}\n**Dinosaur:** {discord.utils.escape_markdown(dinosaur)}\n"
                         f"**Skin:** {discord.utils.escape_markdown(skin)}\n"
@@ -169,7 +176,7 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
             timestamp=datetime.now(timezone.utc),
         )
     else:
-        embed = discord.Embed(
+        embed = create_embed(
             title="🚪 Player Signed Out",
             description=f"**Player:** {user.mention}\n**Dinosaur:** {discord.utils.escape_markdown(dinosaur or 'Not provided')}\n"
                         f"**Skin:** {discord.utils.escape_markdown(skin or 'Not provided')}\n"
@@ -341,7 +348,7 @@ class TicketCreateModal(discord.ui.Modal):
         data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
         save_json(DATA_FILE, data)
 
-        embed = discord.Embed(
+        embed = create_embed(
             title=f"🎫 {self.button_label}",
             description=f"Hello {interaction.user.mention}!\n\n**Issue:**\n{self.reason.value}",
             color=discord.Color.blurple(),
@@ -453,7 +460,7 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
     log_channel_id = cfg.get("ticket_log_channel")
     log_channel = guild.get_channel(log_channel_id) if log_channel_id else None
     if isinstance(log_channel, discord.TextChannel):
-        embed = discord.Embed(title="🔒 Ticket closed", color=discord.Color.red(), timestamp=datetime.now(timezone.utc))
+        embed = create_embed(title="🔒 Ticket closed", color=discord.Color.red(), timestamp=datetime.now(timezone.utc))
         embed.add_field(name="Ticket", value=channel.name, inline=True)
         embed.add_field(name="Owner", value=f"<@{meta.get('owner_id')}>", inline=True)
         embed.add_field(name="Closed by", value=closed_by.mention, inline=True)
@@ -462,6 +469,32 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
     data.setdefault("tickets", {}).pop(str(channel.id), None)
     save_json(DATA_FILE, data)
     await channel.delete(reason=f"Ticket closed by {closed_by}")
+
+
+# ----------------------------- TRANSLATION HELPERS -----------------------------
+
+def normalize_translation_language(language: str) -> str:
+    """Resolve a language name or language code to a GoogleTranslator target code."""
+    from deep_translator import GoogleTranslator
+
+    requested = (language or "").strip().lower()
+    supported = GoogleTranslator(source="auto", target="en").get_supported_languages(as_dict=True)
+    # deep-translator returns {language name: language code}.
+    if requested in supported:
+        return supported[requested]
+    for name, code in supported.items():
+        if requested == code.lower():
+            return code
+    raise ValueError(f"Unbekannte Sprache: {language}")
+
+
+async def translate_text(text: str, target_language: str) -> str:
+    """Run the blocking translation request outside the asyncio event loop."""
+    from deep_translator import GoogleTranslator
+    target_code = normalize_translation_language(target_language)
+    return await asyncio.to_thread(
+        lambda: GoogleTranslator(source="auto", target=target_code).translate(text)
+    )
 
 
 # ----------------------------- SLASH COMMANDS -----------------------------
@@ -556,8 +589,8 @@ async def ticketcreat(
         "channel_id": kanal.id,
     }
     save_json(CONFIG_FILE, config)
-    embed = discord.Embed(title=titel, description=beschreibung, color=discord.Color.blurple())
-    embed.set_footer(text="Choose a button to open a ticket.")
+    embed = create_embed(title=titel, description=beschreibung, color=discord.Color.blurple())
+    embed.set_footer(text="Choose a button to open a ticket. • Created by KingSnowy")
     await kanal.send(embed=embed, view=TicketPanelView(panel_key, labels))
     await interaction.response.send_message(f"Ticket panel posted in {kanal.mention}.", ephemeral=True)
 
@@ -597,8 +630,8 @@ async def ticketbearbeiten(
     if not isinstance(channel, discord.TextChannel):
         await interaction.response.send_message("Panel channel not found. The panel config was updated.", ephemeral=True)
         return
-    embed = discord.Embed(title=titel, description=beschreibung, color=discord.Color.blurple())
-    embed.set_footer(text=f"Edited panel ID: {panel_id}")
+    embed = create_embed(title=titel, description=beschreibung, color=discord.Color.blurple())
+    embed.set_footer(text=f"Edited panel ID: {panel_id} • Created by KingSnowy")
     message = await channel.send(embed=embed, view=TicketPanelView(panel_id, labels))
     await interaction.response.send_message(
         f"Updated panel posted in {channel.mention}. New message ID: `{message.id}`. Panel ID: `{panel_id}`",
@@ -606,6 +639,93 @@ async def ticketbearbeiten(
     )
 
 
+
+
+@bot.tree.command(name="translate", description="Translate text into any supported language")
+@app_commands.describe(text="Text to translate", sprache="Language name or code, e.g. German, de, Japanese, ja")
+async def translate_command(interaction: discord.Interaction, text: str, sprache: str):
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        result = await translate_text(text, sprache)
+    except ImportError:
+        await interaction.followup.send(
+            "Die Übersetzungsbibliothek fehlt. Installiere `deep-translator` (siehe requirements.txt).", ephemeral=True
+        )
+        return
+    except Exception as exc:
+        await interaction.followup.send(
+            f"Übersetzung fehlgeschlagen. Prüfe den Sprachnamen/-code (z. B. `de`, `en`, `ja`). Fehler: `{type(exc).__name__}`",
+            ephemeral=True,
+        )
+        return
+    if len(result) > 1900:
+        result = result[:1900] + "…"
+    await interaction.followup.send(f"**Übersetzung ({discord.utils.escape_markdown(sprache)}):**\n{result}", ephemeral=True)
+
+
+@bot.tree.command(name="channeltranslate", description="Automatically translate this channel into up to five languages")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    sprache1="First target language (required), e.g. de or German",
+    sprache2="Optional second target language",
+    sprache3="Optional third target language",
+    sprache4="Optional fourth target language",
+    sprache5="Optional fifth target language",
+)
+async def channeltranslate(
+    interaction: discord.Interaction,
+    sprache1: str,
+    sprache2: str = None,
+    sprache3: str = None,
+    sprache4: str = None,
+    sprache5: str = None,
+):
+    if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message("Nutze diesen Befehl in einem normalen Textkanal eines Servers.", ephemeral=True)
+        return
+    raw_languages = [x.strip() for x in [sprache1, sprache2, sprache3, sprache4, sprache5] if x and x.strip()]
+    resolved = []
+    try:
+        for language in raw_languages:
+            code = normalize_translation_language(language)
+            if code not in resolved:
+                resolved.append(code)
+    except ImportError:
+        await interaction.response.send_message("Die Übersetzungsbibliothek fehlt. Installiere `deep-translator`.", ephemeral=True)
+        return
+    except Exception:
+        await interaction.response.send_message(
+            f"Unbekannte Sprache: `{discord.utils.escape_markdown(language)}`. Nutze z. B. `de`, `en`, `fr`, `es`, `ja` oder den englischen Sprachnamen.",
+            ephemeral=True,
+        )
+        return
+    if not resolved:
+        await interaction.response.send_message("Bitte gib mindestens eine Zielsprache an.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild.id)
+    cfg.setdefault("channel_translations", {})[str(interaction.channel.id)] = resolved
+    save_json(CONFIG_FILE, config)
+    names = ", ".join(resolved)
+    await interaction.response.send_message(
+        f"Automatische Übersetzung für {interaction.channel.mention} aktiviert. Zielsprachen: **{names}**.\n"
+        "Neue Nachrichten werden als Übersetzungen in diesem Kanal gepostet. Mit `/channeltranslate-stop` kannst du es ausschalten.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="channeltranslate-stop", description="Disable automatic translation in this channel")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def channeltranslate_stop(interaction: discord.Interaction):
+    if interaction.guild is None or interaction.channel is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur in einem Serverkanal.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild.id)
+    removed = cfg.setdefault("channel_translations", {}).pop(str(interaction.channel.id), None)
+    save_json(CONFIG_FILE, config)
+    if removed:
+        await interaction.response.send_message("Automatische Übersetzung in diesem Kanal wurde ausgeschaltet.", ephemeral=True)
+    else:
+        await interaction.response.send_message("Für diesen Kanal war keine automatische Übersetzung aktiviert.", ephemeral=True)
 
 
 @bot.tree.command(name="help", description="Show the commands you are allowed to use")
@@ -626,6 +746,7 @@ async def help_command(interaction: discord.Interaction):
     manage_server_commands = {
         "kanal-set", "ticket-log-set", "ticket-support-set", "ticket-category-set",
         "ticketcreat", "ticketbearbeiten", "security-set-log", "security-set-honeypot",
+        "channeltranslate", "channeltranslate-stop",
         "security-set-raid", "security-set-antinuke", "security-toggle",
     }
     administrator_commands = {"security-set-trusted-role"}
@@ -645,14 +766,14 @@ async def help_command(interaction: discord.Interaction):
     if can_manage_server:
         visible.append(("!anmeldepannel", "Erstellt das Server-Anmeldepanel (Alternative: !anmeldepanel)."))
 
-    embed = discord.Embed(
+    embed = create_embed(
         title="📖 Hilfe – verfügbare Befehle",
         description="Hier siehst du die Befehle, die du mit deinen aktuellen Server-Berechtigungen nutzen kannst.",
         color=discord.Color.blurple(),
     )
     for command_name, description in visible:
         embed.add_field(name=command_name, value=description, inline=False)
-    embed.set_footer(text=f"{len(visible)} verfügbare Befehle")
+    embed.set_footer(text=f"{len(visible)} verfügbare Befehle • Created by KingSnowy")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -676,7 +797,7 @@ async def stats_command(ctx, member: discord.Member = None):
             0, int((datetime.now(timezone.utc) - started_at).total_seconds())
         )
 
-    embed = discord.Embed(
+    embed = create_embed(
         title=f"📊 Stats von {target.display_name}",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
@@ -692,14 +813,14 @@ async def stats_command(ctx, member: discord.Member = None):
         value=format_duration(voice_seconds),
         inline=True,
     )
-    embed.set_footer(text="Die Statistiken werden ab Aktivierung dieses Systems gezählt.")
+    embed.set_footer(text="Die Statistiken werden ab Aktivierung dieses Systems gezählt. • Created by KingSnowy")
     await ctx.reply(embed=embed, mention_author=False)
 
 
 @bot.command(name="anmeldepannel", aliases=["anmeldepanel"])
 @commands.has_guild_permissions(manage_guild=True)
 async def anmeldepannel(ctx):
-    embed = discord.Embed(
+    embed = create_embed(
         title="🦖 The Isle — Server Sign-In",
         description=(
             "Welcome to the server registration panel!\n"
@@ -724,7 +845,7 @@ async def anmeldepannel(ctx):
     )
     embed.set_footer(text="Created by KingSnowy")
     await ctx.send(embed=embed, view=RegistrationView())
-    language_embed = discord.Embed(
+    language_embed = create_embed(
         title="🌐 Language / Sprache / Jazyk",
         description="Choose the language for your private form and confirmation.",
         color=discord.Color.teal(),
@@ -757,7 +878,7 @@ async def security_log(guild: discord.Guild, title: str, description: str, color
     channel = guild.get_channel(channel_id) if channel_id else None
     if isinstance(channel, discord.TextChannel):
         try:
-            embed = discord.Embed(title=title, description=description, color=color,
+            embed = create_embed(title=title, description=description, color=color,
                                   timestamp=datetime.now(timezone.utc))
             await channel.send(embed=embed)
         except discord.HTTPException:
@@ -867,7 +988,7 @@ async def on_message(message: discord.Message):
 
                 # Warn the member privately before removing them from the server.
                 try:
-                    dm_embed = discord.Embed(
+                    dm_embed = create_embed(
                         title="🚫 Du wurdest vom Server entfernt",
                         description=(
                             f"Du wurdest von **{guild.name}** gekickt, weil du im "
@@ -946,6 +1067,28 @@ async def on_message(message: discord.Message):
 
                 # Do not let a honeypot message accidentally execute a prefix command.
                 return
+
+    # Automatically translate human messages when this channel has been configured.
+    if message.guild and not message.author.bot and isinstance(message.channel, discord.TextChannel):
+        channel_languages = guild_config(message.guild.id).get("channel_translations", {}).get(str(message.channel.id), [])
+        source_text = (message.content or "").strip()
+        if channel_languages and source_text and not source_text.startswith(("!", "/")):
+            for target_language in channel_languages[:5]:
+                try:
+                    translated = await translate_text(source_text, target_language)
+                    if translated and translated.strip():
+                        embed = create_embed(
+                            description=translated[:4000],
+                            color=discord.Color.blurple(),
+                            timestamp=message.created_at,
+                        )
+                        embed.set_author(
+                            name=f"{message.author.display_name} · Übersetzung: {target_language}",
+                            icon_url=message.author.display_avatar.url,
+                        )
+                        await message.channel.send(embed=embed, reference=message, mention_author=False)
+                except Exception as exc:
+                    print(f"Auto-translation failed for {target_language}: {type(exc).__name__}: {exc}")
 
     await bot.process_commands(message)
 
