@@ -38,25 +38,25 @@ def save_config(data):
 
 config = load_config()
 
-def guild_channel_langs(guild_id):
+def guild_config(guild_id):
     return config.setdefault(str(guild_id), {})
 
 def set_channel_languages(guild_id, channel_id, languages):
-    guild_cfg = guild_channel_langs(guild_id)
+    guild_cfg = guild_config(guild_id)
     guild_cfg[str(channel_id)] = languages
     save_config(config)
 
 def get_channel_languages(guild_id, channel_id):
-    return guild_channel_langs(guild_id).get(str(channel_id), [])
+    return guild_config(guild_id).get(str(channel_id), [])
 
 def remove_channel_languages(guild_id, channel_id):
-    guild_cfg = guild_channel_langs(guild_id)
+    guild_cfg = guild_config(guild_id)
     removed = guild_cfg.pop(str(channel_id), None)
     save_config(config)
     return removed
 
 # -----------------------------
-# Sprachen / Mapping
+# Sprachmapping
 # -----------------------------
 _LANGUAGE_ALIASES = {
     "german": "de", "deutsch": "de",
@@ -91,7 +91,18 @@ _LANGUAGE_ALIASES = {
 _ARGOS_TRANSLATION_LOCK = asyncio.Lock()
 
 def normalize_translation_language(language: str) -> str:
-    requested = (language or "").strip().lower()
+    if language is None:
+        raise ValueError("Bitte gib eine Zielsprache an.")
+
+    if isinstance(language, (list, tuple, set)):
+        if not language:
+            raise ValueError("Leere Sprachliste.")
+        language = next(iter(language))
+
+    if not isinstance(language, str):
+        raise TypeError(f"Sprachwert muss String sein, bekam: {type(language).__name__}")
+
+    requested = language.strip().lower()
     if not requested:
         raise ValueError("Bitte gib eine Zielsprache an.")
 
@@ -109,6 +120,10 @@ def _argos_translate_blocking(text: str, target_code: str) -> str:
     import argostranslate.translate
     from langdetect import detect, LangDetectException
 
+    text = (text or "").strip()
+    if not text:
+        return ""
+
     try:
         source_code = detect(text)
     except LangDetectException:
@@ -116,9 +131,6 @@ def _argos_translate_blocking(text: str, target_code: str) -> str:
 
     if source_code == target_code:
         return text
-
-    installed = argostranslate.translate.get_installed_languages()
-    installed_codes = {lang.code for lang in installed}
 
     def has_pair(src: str, dst: str) -> bool:
         current = argostranslate.translate.get_installed_languages()
@@ -144,9 +156,7 @@ def _argos_translate_blocking(text: str, target_code: str) -> str:
         argostranslate.package.install_from_path(path)
         return has_pair(src, dst)
 
-    # Direktes Modell versuchen
     if not install_pair(source_code, target_code):
-        # Über Englisch
         if source_code != "en" and not install_pair(source_code, "en"):
             raise ValueError(f"Argos Translate hat kein Modell von '{source_code}' nach Englisch.")
         if target_code != "en" and not install_pair("en", target_code):
@@ -161,7 +171,6 @@ def _argos_translate_blocking(text: str, target_code: str) -> str:
         if translations:
             return translations[0].translate(text)
 
-    # Fallback über Englisch
     english = next((lang for lang in installed if lang.code == "en"), None)
     if not source_lang or not english or not target_lang:
         raise ValueError("Die benötigten Argos-Sprachmodelle konnten nicht geladen werden.")
@@ -174,12 +183,22 @@ def _argos_translate_blocking(text: str, target_code: str) -> str:
     return second[0].translate(first[0].translate(text))
 
 async def translate_text(text: str, target_language: str) -> str:
+    if not isinstance(text, str):
+        raise TypeError(f"Text muss String sein, bekam: {type(text).__name__}")
+    if not isinstance(target_language, str):
+        raise TypeError(f"Zielsprache muss String sein, bekam: {type(target_language).__name__}")
+
+    clean_text = text.strip()
+    if not clean_text:
+        return ""
+
     target_code = normalize_translation_language(target_language)
+
     async with _ARGOS_TRANSLATION_LOCK:
-        return await asyncio.to_thread(_argos_translate_blocking, text, target_code)
+        return await asyncio.to_thread(_argos_translate_blocking, clean_text, target_code)
 
 # -----------------------------
-# Hilfsfunktionen für Discord
+# Discord-Hilfsfunktionen
 # -----------------------------
 def create_embed(*args, **kwargs):
     embed = discord.Embed(*args, **kwargs)
@@ -214,7 +233,7 @@ async def translate_command(interaction: discord.Interaction, text: str, sprache
     embed = create_embed(
         title=f"🌐 Übersetzung · {discord.utils.escape_markdown(sprache)[:200]}",
         description=result,
-        color=discord.Color.blurple()
+        color=discord.Color.blurple(),
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -244,17 +263,17 @@ async def channeltranslate(
         return
 
     resolved = []
-    try:
-        for language in raw_languages:
+    for language in raw_languages:
+        try:
             code = normalize_translation_language(language)
-            if code not in resolved:
-                resolved.append(code)
-    except Exception:
-        await interaction.response.send_message(
-            f"Unbekannte Sprache. Nutze z. B. `de`, `en`, `fr`, `es`, `ja` oder einen Namen wie `German`.",
-            ephemeral=True,
-        )
-        return
+        except Exception:
+            await interaction.response.send_message(
+                "Unbekannte Sprache. Nutze z. B. `de`, `en`, `fr`, `es`, `ja` oder Namen wie `German`.",
+                ephemeral=True,
+            )
+            return
+        if code not in resolved:
+            resolved.append(code)
 
     set_channel_languages(interaction.guild.id, interaction.channel.id, resolved)
 
@@ -281,8 +300,13 @@ async def channeltranslate_stop(interaction: discord.Interaction):
 async def help_command(interaction: discord.Interaction):
     embed = create_embed(
         title="📖 Hilfe",
-        description="Verfügbare Befehle:\n\n`/translate` – Übersetze Text\n`/channeltranslate` – Automatische Übersetzung für einen Kanal\n`/channeltranslate-stop` – Deaktiviert automatische Übersetzung",
-        color=discord.Color.blurple()
+        description=(
+            "Verfügbare Befehle:\n\n"
+            "`/translate` – Übersetze Text\n"
+            "`/channeltranslate` – Automatische Übersetzung für einen Kanal\n"
+            "`/channeltranslate-stop` – Deaktiviert automatische Übersetzung"
+        ),
+        color=discord.Color.blurple(),
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -296,15 +320,16 @@ async def on_message(message: discord.Message):
         return
 
     if message.guild and isinstance(message.channel, discord.TextChannel):
-        guild_id = message.guild.id
-        channel_id = message.channel.id
-        target_languages = get_channel_languages(guild_id, channel_id)
+        target_languages = get_channel_languages(message.guild.id, message.channel.id)
 
         if target_languages:
             text = (message.content or "").strip()
             if text and not text.startswith(("!", "/")):
                 for target_language in target_languages[:5]:
                     try:
+                        if not isinstance(target_language, str):
+                            continue
+
                         translated = await translate_text(text, target_language)
                         if translated and translated.strip():
                             translated_message = (
@@ -315,27 +340,4 @@ async def on_message(message: discord.Message):
                                 translated_message,
                                 reference=message,
                                 mention_author=False,
-                                allowed_mentions=discord.AllowedMentions.none(),
-                            )
-                    except Exception as exc:
-                        print(f"Auto-Translation failed for {target_language}: {type(exc).__name__}: {exc}")
-
-    await bot.process_commands(message)
-
-# -----------------------------
-# READY Event
-# -----------------------------
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} slash commands.")
-    except Exception as exc:
-        print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
-
-# -----------------------------
-# Start
-# -----------------------------
-if __name__ == "__main__":
-    bot.run(TOKEN)
+                                allowed
