@@ -1,3 +1,1006 @@
+
+import os
+import io
+import json
+import html
+import asyncio
+import logging
+from datetime import datetime, timezone
+
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+# Übersetzung ist optional: Der Bot startet auch, wenn das Paket fehlt.
+try:
+    from deep_translator import GoogleTranslator
+except ImportError:
+    GoogleTranslator = None
+
+
+# =========================================================
+# GRUNDEINSTELLUNGEN
+# =========================================================
+
+logging.basicConfig(level=logging.INFO)
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+CONFIG_FILE = "config.json"
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+LANGUAGES = [
+    app_commands.Choice(name="Deutsch", value="de"),
+    app_commands.Choice(name="Englisch", value="en"),
+    app_commands.Choice(name="Französisch", value="fr"),
+    app_commands.Choice(name="Spanisch", value="es"),
+    app_commands.Choice(name="Polnisch", value="pl"),
+    app_commands.Choice(name="Türkisch", value="tr"),
+]
+
+DEFAULT_CONFIG = {
+    "language": "de",
+    "support_role_id": None,
+    "category_id": None,
+    "log_channel_id": None,
+    "panel_channel_id": None,
+    "welcome_message": "Willkommen! Beschreibe bitte dein Anliegen. Unser Support hilft dir so bald wie möglich.",
+    "button_labels": ["Support"],
+    "tickets": {}
+}
+
+data = {"guilds": {}, "tickets": {}}
+
+
+# =========================================================
+# KONFIGURATION SPEICHERN UND LADEN
+# =========================================================
+
+def load_data():
+    global data
+
+    if not os.path.exists(CONFIG_FILE):
+        save_data()
+        return
+
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as file:
+            loaded = json.load(file)
+
+        if isinstance(loaded, dict):
+            data = loaded
+
+        data.setdefault("guilds", {})
+        data.setdefault("tickets", {})
+
+    except (json.JSONDecodeError, OSError) as error:
+        logging.error("Konfiguration konnte nicht geladen werden: %s", error)
+
+
+def save_data():
+    temporary_file = CONFIG_FILE + ".tmp"
+
+    with open(temporary_file, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
+    os.replace(temporary_file, CONFIG_FILE)
+
+
+def get_config(guild_id):
+    guild_key = str(guild_id)
+
+    if guild_key not in data["guilds"]:
+        data["guilds"][guild_key] = DEFAULT_CONFIG.copy()
+        data["guilds"][guild_key]["button_labels"] = ["Support"]
+        data["guilds"][guild_key]["tickets"] = {}
+
+    config = data["guilds"][guild_key]
+
+    for key, value in DEFAULT_CONFIG.items():
+        if key not in config:
+            config[key] = value.copy() if isinstance(value, (list, dict)) else value
+
+    return config
+
+
+# =========================================================
+# SPRACHÜBERSETZUNG
+# =========================================================
+
+async def translate(guild_id, text):
+    """Übersetzt Bot-Texte, sofern deep-translator verfügbar ist."""
+
+    if not text or not guild_id:
+        return text
+
+    config = get_config(guild_id)
+    target_language = config.get("language", "de")
+
+    if target_language == "de" or GoogleTranslator is None:
+        return text
+
+    try:
+        result = await asyncio.to_thread(
+            GoogleTranslator(
+                source="auto",
+                target=target_language
+            ).translate,
+            text
+        )
+
+        return result or text
+
+    except Exception as error:
+        logging.warning("Übersetzung fehlgeschlagen: %s", error)
+        return text
+
+
+async def reply(interaction, text, ephemeral=True):
+    translated_text = await translate(
+        interaction.guild_id,
+        text
+    )
+
+    if interaction.response.is_done():
+        await interaction.followup.send(
+            translated_text,
+            ephemeral=ephemeral
+        )
+    else:
+        await interaction.response.send_message(
+            translated_text,
+            ephemeral=ephemeral
+        )
+
+
+# =========================================================
+# HILFSFUNKTIONEN
+# =========================================================
+
+def is_support(member, config):
+    role_id = config.get("support_role_id")
+
+    if not role_id or not isinstance(member, discord.Member):
+        return False
+
+    return any(role.id == role_id for role in member.roles)
+
+
+def get_ticket_info(channel_id):
+    return data["tickets"].get(str(channel_id))
+
+
+def save_ticket_info(channel_id, info):
+    data["tickets"][str(channel_id)] = info
+    save_data()
+
+
+def remove_ticket_info(channel_id):
+    data["tickets"].pop(str(channel_id), None)
+    save_data()
+
+
+def safe_channel_name(name):
+    cleaned = "".join(
+        character.lower()
+        if character.isalnum() else "-"
+        for character in name
+    )
+
+    cleaned = "-".join(part for part in cleaned.split("-") if part)
+    return cleaned[:70] or "ticket"
+
+
+# =========================================================
+# TICKET-PANEL
+# =========================================================
+
+class TicketPanelButton(discord.ui.Button):
+    def __init__(self, guild_id, button_index, label):
+        self.guild_id = guild_id
+        self.button_index = button_index
+
+        super().__init__(
+            label=label[:80],
+            style=discord.ButtonStyle.primary,
+            custom_id=f"ticket:create:{guild_id}:{button_index}"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        guild = interaction.guild
+
+        if guild is None:
+            await reply(interaction, "Dieser Befehl funktioniert nur auf einem Server.")
+            return
+
+        config = get_config(guild.id)
+
+        support_role_id = config.get("support_role_id")
+        category_id = config.get("category_id")
+
+        support_role = guild.get_role(support_role_id) if support_role_id else None
+        category = guild.get_channel(category_id) if category_id else None
+
+        if support_role is None or not isinstance(category, discord.CategoryChannel):
+            await reply(
+                interaction,
+                "Das Ticketsystem ist noch nicht vollständig eingerichtet. "
+                "Bitte informiere die Serveradministration."
+            )
+            return
+
+        # Prüfen, ob der Benutzer bereits ein Ticket besitzt.
+        for channel_id, info in data["tickets"].items():
+            if (
+                info.get("guild_id") == guild.id
+                and info.get("creator_id") == interaction.user.id
+            ):
+                existing_channel = guild.get_channel(int(channel_id))
+
+                if existing_channel:
+                    await reply(
+                        interaction,
+                        f"Du hast bereits ein offenes Ticket: {existing_channel.mention}"
+                    )
+                    return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(
+                view_channel=False
+            ),
+            interaction.user: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                embed_links=True
+            ),
+            support_role: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_messages=True
+            )
+        }
+
+        try:
+            channel = await guild.create_text_channel(
+                name=safe_channel_name(
+                    f"ticket-{interaction.user.display_name}"
+                ),
+                category=category,
+                overwrites=overwrites,
+                topic=f"Support-Ticket von {interaction.user} ({interaction.user.id})",
+                reason="Support-Ticket erstellt"
+            )
+
+            info = {
+                "guild_id": guild.id,
+                "creator_id": interaction.user.id,
+                "support_role_id": support_role.id,
+                "claimed_by": None,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+
+            save_ticket_info(channel.id, info)
+
+            embed = discord.Embed(
+                title="Support-Ticket",
+                description=config.get("welcome_message"),
+                color=discord.Color.blurple(),
+                timestamp=datetime.now(timezone.utc)
+            )
+
+            embed.add_field(
+                name="Erstellt von",
+                value=interaction.user.mention,
+                inline=True
+            )
+
+            embed.add_field(
+                name="Zuständiges Team",
+                value=support_role.mention,
+                inline=True
+            )
+
+            embed.set_footer(text="Bitte beschreibe dein Anliegen möglichst genau.")
+
+            await channel.send(
+                content=f"{interaction.user.mention} {support_role.mention}",
+                embed=embed,
+                view=TicketControlView(channel.id)
+            )
+
+            await interaction.followup.send(
+                f"Dein Ticket wurde erstellt: {channel.mention}",
+                ephemeral=True
+            )
+
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "Der Bot hat nicht die nötigen Rechte, um ein Ticket zu erstellen.",
+                ephemeral=True
+            )
+
+        except Exception:
+            logging.exception("Ticket konnte nicht erstellt werden.")
+            await interaction.followup.send(
+                "Beim Erstellen des Tickets ist ein Fehler aufgetreten. "
+                "Bitte prüfe die Bot-Rechte und die Kategorie.",
+                ephemeral=True
+            )
+
+
+class TicketPanelView(discord.ui.View):
+    def __init__(self, guild_id, labels):
+        super().__init__(timeout=None)
+
+        for index, label in enumerate(labels[:5]):
+            self.add_item(
+                TicketPanelButton(
+                    guild_id,
+                    index,
+                    label or f"Ticket {index + 1}"
+                )
+            )
+
+
+# =========================================================
+# TICKET STEUERN: ÜBERNEHMEN, FREIGEBEN, SCHLIESSEN
+# =========================================================
+
+class TicketControlView(discord.ui.View):
+    def __init__(self, channel_id):
+        super().__init__(timeout=None)
+        self.channel_id = channel_id
+
+        self.add_item(
+            discord.ui.Button(
+                label="Ticket übernehmen",
+                style=discord.ButtonStyle.success,
+                custom_id=f"ticket:claim:{channel_id}"
+            )
+        )
+
+        self.add_item(
+            discord.ui.Button(
+                label="Ticket freigeben",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"ticket:release:{channel_id}"
+            )
+        )
+
+        self.add_item(
+            discord.ui.Button(
+                label="Ticket schließen",
+                style=discord.ButtonStyle.danger,
+                custom_id=f"ticket:close:{channel_id}"
+            )
+        )
+
+        # Callbacks für die drei Buttons zuweisen.
+        for item in self.children:
+            item.callback = self.make_callback(item.custom_id)
+
+
+    def make_callback(self, custom_id):
+        async def callback(interaction: discord.Interaction):
+            await self.handle_action(interaction, custom_id)
+
+        return callback
+
+
+    async def handle_action(self, interaction, custom_id):
+        guild = interaction.guild
+        channel = interaction.channel
+
+        if guild is None or channel is None:
+            await reply(interaction, "Der Server oder Ticketkanal wurde nicht gefunden.")
+            return
+
+        config = get_config(guild.id)
+        info = get_ticket_info(channel.id)
+
+        if not info:
+            await reply(interaction, "Für diesen Kanal wurden keine Ticketdaten gefunden.")
+            return
+
+        support = is_support(interaction.user, config)
+
+        if custom_id.startswith("ticket:claim:"):
+            if not support:
+                await reply(interaction, "Nur das Support-Team darf Tickets übernehmen.")
+                return
+
+            info["claimed_by"] = interaction.user.id
+            save_ticket_info(channel.id, info)
+
+            await reply(
+                interaction,
+                f"{interaction.user.mention} hat dieses Ticket übernommen.",
+                ephemeral=False
+            )
+            return
+
+        if custom_id.startswith("ticket:release:"):
+            if not support:
+                await reply(interaction, "Nur das Support-Team darf Tickets freigeben.")
+                return
+
+            info["claimed_by"] = None
+            save_ticket_info(channel.id, info)
+
+            await reply(
+                interaction,
+                f"{interaction.user.mention} hat das Ticket freigegeben.",
+                ephemeral=False
+            )
+            return
+
+        if custom_id.startswith("ticket:close:"):
+            if interaction.user.id != info.get("creator_id") and not support:
+                await reply(
+                    interaction,
+                    "Nur der Ticket-Ersteller oder das Support-Team darf das Ticket schließen."
+                )
+                return
+
+            await reply(
+                interaction,
+                "Die Schließung benötigt zwei Bestätigungen: eine vom Ticket-Ersteller "
+                "und eine von einem Support-Mitglied.",
+                ephemeral=True
+            )
+
+            try:
+                await channel.send(
+                    "🔒 **Ticket-Schließung angefordert**\n"
+                    "Der Ticket-Ersteller und ein Support-Mitglied müssen jeweils "
+                    "über den Bestätigungsbutton zustimmen.",
+                    view=TicketCloseConfirmView(channel.id)
+                )
+            except discord.Forbidden:
+                logging.warning("Keine Berechtigung, Bestätigung in Ticket zu senden.")
+
+
+# =========================================================
+# TICKET SCHLIESSEN: ZWEI UNTERSCHIEDLICHE BESTÄTIGUNGEN
+# =========================================================
+
+class TicketCloseConfirmView(discord.ui.View):
+    def __init__(self, channel_id):
+        super().__init__(timeout=600)
+        self.channel_id = channel_id
+
+    @discord.ui.button(
+        label="Schließung bestätigen",
+        style=discord.ButtonStyle.danger
+    )
+    async def confirm(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        guild = interaction.guild
+        channel = interaction.channel
+
+        if guild is None or channel is None:
+            await reply(interaction, "Server oder Ticketkanal nicht gefunden.")
+            return
+
+        info = get_ticket_info(self.channel_id)
+        config = get_config(guild.id)
+
+        if not info:
+            await reply(interaction, "Ticketdaten nicht gefunden.")
+            return
+
+        creator_id = info.get("creator_id")
+        support = is_support(interaction.user, config)
+
+        if interaction.user.id == creator_id:
+            confirmation_type = "creator"
+        elif support:
+            confirmation_type = "support"
+        else:
+            await reply(
+                interaction,
+                "Du bist weder der Ticket-Ersteller noch Mitglied des Support-Teams."
+            )
+            return
+
+        confirmations = info.setdefault("close_confirmations", [])
+
+        if interaction.user.id in confirmations:
+            await reply(interaction, "Du hast bereits bestätigt.")
+            return
+
+        confirmations.append(interaction.user.id)
+        save_ticket_info(channel.id, info)
+
+        await reply(
+            interaction,
+            "Deine Bestätigung wurde gespeichert.",
+            ephemeral=True
+        )
+
+        creator_confirmed = creator_id in confirmations
+        support_confirmed = any(
+            user_id != creator_id
+            and (
+                member := guild.get_member(user_id)
+            ) is not None
+            and is_support(member, config)
+            for user_id in confirmations
+        )
+
+        if not creator_confirmed or not support_confirmed:
+            try:
+                await channel.send(
+                    "Eine Bestätigung wurde gespeichert. Es fehlt noch die "
+                    "Bestätigung der anderen Seite."
+                )
+            except discord.HTTPException:
+                pass
+            return
+
+        await close_ticket(channel, guild, info, config)
+
+
+# =========================================================
+# TRANSKRIPT UND TICKET-LOG
+# =========================================================
+
+async def close_ticket(channel, guild, info, config):
+    log_channel_id = config.get("log_channel_id")
+    log_channel = guild.get_channel(log_channel_id) if log_channel_id else None
+
+    if not isinstance(log_channel, discord.TextChannel):
+        try:
+            await channel.send(
+                "Das Ticket kann nicht geschlossen werden, weil kein gültiger "
+                "Log-Kanal eingerichtet ist. Bitte informiere die Administration."
+            )
+        except discord.HTTPException:
+            pass
+        return
+
+    try:
+        messages = []
+
+        async for message in channel.history(limit=None, oldest_first=True):
+            timestamp = message.created_at.strftime("%d.%m.%Y %H:%M:%S UTC")
+            author = html.escape(
+                f"{message.author} ({message.author.id})"
+            )
+            content = html.escape(message.content or "")
+
+            attachments = ""
+            if message.attachments:
+                attachment_links = [
+                    html.escape(attachment.url)
+                    for attachment in message.attachments
+                ]
+                attachments = (
+                    "<p>Anhänge: "
+                    + ", ".join(attachment_links)
+                    + "</p>"
+                )
+
+            embeds = ""
+            if message.embeds:
+                embeds = "<p>[Nachricht enthält ein Embed]</p>"
+
+            messages.append(
+                f"<article><small>{timestamp}</small>"
+                f"<strong>{author}</strong>"
+                f"<p>{content}</p>{attachments}{embeds}</article>"
+            )
+
+        transcript_html = f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Ticket-Transkript – {html.escape(channel.name)}</title>
+<style>
+body {{ font-family: Arial, sans-serif; background: #1e1f22; color: #f2f3f5; padding: 24px; }}
+article {{ background: #2b2d31; border-radius: 8px; padding: 12px; margin: 12px 0; overflow-wrap: anywhere; }}
+small {{ display: block; color: #b5bac1; margin-bottom: 6px; }}
+p {{ white-space: pre-wrap; }}
+a {{ color: #00a8fc; }}
+</style>
+</head>
+<body>
+<h1>Ticket-Transkript: {html.escape(channel.name)}</h1>
+<p>Server: {html.escape(guild.name)}</p>
+<p>Erstellt von: {info.get('creator_id')}</p>
+<p>Übernommen von: {info.get('claimed_by') or 'Niemand'}</p>
+<p>Geschlossen am: {datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M:%S UTC')}</p>
+<hr>
+{''.join(messages)}
+</body>
+</html>"""
+
+        transcript_file = discord.File(
+            fp=io.BytesIO(transcript_html.encode("utf-8")),
+            filename=f"{safe_channel_name(channel.name)}-transkript.html"
+        )
+
+        creator_id = info.get("creator_id")
+        claimer_id = info.get("claimed_by")
+
+        embed = discord.Embed(
+            title="Ticket geschlossen",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+
+        embed.add_field(
+            name="Ticket",
+            value=f"`{channel.name}` (`{channel.id}`)",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Ticket-Ersteller",
+            value=f"<@{creator_id}>" if creator_id else "Unbekannt",
+            inline=True
+        )
+
+        embed.add_field(
+            name="Übernommen von",
+            value=f"<@{claimer_id}>" if claimer_id else "Niemand",
+            inline=True
+        )
+
+        embed.add_field(
+            name="Geschlossen von",
+            value="Bestätigt durch Ersteller und Support",
+            inline=False
+        )
+
+        # Log wird vor dem Löschen des Kanals verschickt.
+        await log_channel.send(
+            embed=embed,
+            file=transcript_file
+        )
+
+        remove_ticket_info(channel.id)
+
+        await channel.delete(reason="Ticket geschlossen und Transkript protokolliert")
+
+    except discord.Forbidden:
+        logging.exception("Fehlende Rechte beim Erstellen des Ticket-Logs.")
+        try:
+            await channel.send(
+                "Das Ticket konnte nicht geschlossen werden: "
+                "Der Bot hat keine ausreichenden Rechte für den Log-Kanal."
+            )
+        except discord.HTTPException:
+            pass
+
+    except Exception:
+        logging.exception("Fehler beim Schließen des Tickets.")
+        try:
+            await channel.send(
+                "Beim Schließen oder Protokollieren ist ein Fehler aufgetreten. "
+                "Der Kanal wurde nicht absichtlich gelöscht."
+            )
+        except discord.HTTPException:
+            pass
+
+
+# =========================================================
+# SLASH-BEFEHL: SPRACHE
+# =========================================================
+
+@bot.tree.command(name="sprache", description="Stellt die Sprache des Bots ein.")
+@app_commands.describe(language="Wähle die Sprache des Bots.")
+@app_commands.choices(language=LANGUAGES)
+@app_commands.checks.has_permissions(manage_guild=True)
+async def sprache(
+    interaction: discord.Interaction,
+    language: app_commands.Choice[str]
+):
+    config = get_config(interaction.guild_id)
+    config["language"] = language.value
+    save_data()
+
+    await reply(
+        interaction,
+        f"Die Sprache des Bots wurde auf {language.name} eingestellt."
+    )
+
+
+# =========================================================
+# SLASH-BEFEHL: TICKET-PANEL ERSTELLEN
+# =========================================================
+
+@bot.tree.command(
+    name="ticketcreat",
+    description="Erstellt ein Ticket-Panel mit bis zu fünf Buttons."
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    support_role="Rolle, die Support-Tickets sehen und bearbeiten darf.",
+    category="Kategorie, in der neue Tickets erstellt werden.",
+    button_count="Anzahl der Ticket-Buttons (1 bis 5).",
+    welcome_message="Nachricht, die im neuen Ticket angezeigt wird.",
+    button1="Beschriftung des ersten Buttons.",
+    button2="Beschriftung des zweiten Buttons.",
+    button3="Beschriftung des dritten Buttons.",
+    button4="Beschriftung des vierten Buttons.",
+    button5="Beschriftung des fünften Buttons."
+)
+async def ticketcreat(
+    interaction: discord.Interaction,
+    support_role: discord.Role,
+    category: discord.CategoryChannel,
+    button_count: app_commands.Range[int, 1, 5],
+    welcome_message: str,
+    button1: str = "Support",
+    button2: str = "Technische Hilfe",
+    button3: str = "Frage",
+    button4: str = "Meldung",
+    button5: str = "Sonstiges"
+):
+    config = get_config(interaction.guild_id)
+
+    labels = [
+        button1,
+        button2,
+        button3,
+        button4,
+        button5
+    ][:button_count]
+
+    config["support_role_id"] = support_role.id
+    config["category_id"] = category.id
+    config["welcome_message"] = welcome_message
+    config["button_labels"] = labels
+    save_data()
+
+    await interaction.response.send_message(
+        "Das Ticket-Panel wurde erstellt. Alte Panels werden nicht automatisch "
+        "aktualisiert; verwende dieses neue Panel für die neuen Einstellungen.",
+        ephemeral=True
+    )
+
+    embed = discord.Embed(
+        title="Support",
+        description=welcome_message,
+        color=discord.Color.blurple()
+    )
+
+    embed.set_footer(text="Wähle unten die passende Ticket-Kategorie.")
+
+    await interaction.channel.send(
+        embed=embed,
+        view=TicketPanelView(interaction.guild_id, labels)
+    )
+
+
+# =========================================================
+# SLASH-BEFEHL: TICKET-EINSTELLUNGEN BEARBEITEN
+# =========================================================
+
+@bot.tree.command(
+    name="ticketbearbeiten",
+    description="Bearbeitet die Ticket-Nachricht und Button-Beschriftungen."
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    welcome_message="Neue Willkommensnachricht für Tickets.",
+    button1="Neue Beschriftung des ersten Buttons.",
+    button2="Neue Beschriftung des zweiten Buttons.",
+    button3="Neue Beschriftung des dritten Buttons.",
+    button4="Neue Beschriftung des vierten Buttons.",
+    button5="Neue Beschriftung des fünften Buttons."
+)
+async def ticketbearbeiten(
+    interaction: discord.Interaction,
+    welcome_message: str,
+    button1: str = None,
+    button2: str = None,
+    button3: str = None,
+    button4: str = None,
+    button5: str = None
+):
+    config = get_config(interaction.guild_id)
+
+    config["welcome_message"] = welcome_message
+
+    supplied_labels = [button1, button2, button3, button4, button5]
+    old_labels = config.get("button_labels", ["Support"])
+
+    new_labels = []
+    for index, old_label in enumerate(old_labels[:5]):
+        new_labels.append(
+            supplied_labels[index]
+            if supplied_labels[index] is not None
+            else old_label
+        )
+
+    config["button_labels"] = new_labels or ["Support"]
+    save_data()
+
+    await reply(
+        interaction,
+        "Die Einstellungen wurden gespeichert. "
+        "Führe /ticketcreat erneut aus, um ein neues Panel mit den Änderungen zu posten. "
+        "Bereits bestehende Panels bleiben unverändert."
+    )
+
+
+# =========================================================
+# SLASH-BEFEHL: TICKET-LOG-KANAL
+# =========================================================
+
+@bot.tree.command(
+    name="ticketlog-set",
+    description="Legt den Kanal für geschlossene Tickets und Transkripte fest."
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+async def ticketlog_set(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+    config = get_config(interaction.guild_id)
+    config["log_channel_id"] = channel.id
+    save_data()
+
+    await reply(
+        interaction,
+        f"Ticket-Logs werden ab jetzt in {channel.mention} gespeichert."
+    )
+
+
+# =========================================================
+# SLASH-BEFEHL: PANEL-KANAL SPEICHERN
+# =========================================================
+
+@bot.tree.command(
+    name="kanal-set",
+    description="Speichert den Kanal für dein Anmeldepanel."
+)
+@app_commands.checks.has_permissions(manage_guild=True)
+async def kanal_set(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel
+):
+    config = get_config(interaction.guild_id)
+    config["panel_channel_id"] = channel.id
+    save_data()
+
+    await reply(
+        interaction,
+        f"Der Anmeldepanel-Kanal wurde auf {channel.mention} eingestellt."
+    )
+
+
+# =========================================================
+# EINFACHES ANMELDEPANEL
+# =========================================================
+
+class RegistrationView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Anmelden",
+        style=discord.ButtonStyle.success,
+        custom_id="registration:register"
+    )
+    async def register(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await reply(
+            interaction,
+            "Du bist auf dem Anmeldepanel. Bitte lies die Serverregeln "
+            "und wende dich bei Fragen an das Team."
+        )
+
+
+@bot.command(name="anmeldepannel", aliases=["anmeldepanel"])
+@commands.has_guild_permissions(manage_guild=True)
+async def anmeldepannel(ctx):
+    embed = discord.Embed(
+        title="Server-Anmeldung",
+        description=(
+            "Willkommen auf dem Server!\n\n"
+            "Klicke auf **Anmelden**, um die Anmeldehinweise zu erhalten."
+        ),
+        color=discord.Color.blurple()
+    )
+
+    await ctx.send(embed=embed, view=RegistrationView())
+
+
+# =========================================================
+# FEHLERMELDUNGEN
+# =========================================================
+
+@sprache.error
+@ticketcreat.error
+@ticketbearbeiten.error
+@ticketlog_set.error
+@kanal_set.error
+async def admin_command_error(
+    interaction: discord.Interaction,
+    error: app_commands.AppCommandError
+):
+    if isinstance(error, app_commands.MissingPermissions):
+        message = "Du benötigst die Berechtigung „Server verwalten“."
+    else:
+        logging.exception("Fehler bei einem Slash-Befehl:", exc_info=error)
+        message = "Der Befehl ist fehlgeschlagen. Prüfe die Railway-Logs."
+
+    await reply(interaction, message)
+
+
+@anmeldepannel.error
+async def registration_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("Du benötigst die Berechtigung „Server verwalten“. ")
+    else:
+        logging.exception("Fehler beim Anmeldepanel:", exc_info=error)
+        await ctx.reply("Das Anmeldepanel konnte nicht erstellt werden.")
+
+
+# =========================================================
+# BOT STARTEN
+# =========================================================
+
+@bot.event
+async def on_ready():
+    load_data()
+
+    # Persistente Buttons für gespeicherte Ticket-Panels registrieren.
+    for guild_key, config in data.get("guilds", {}).items():
+        try:
+            guild_id = int(guild_key)
+            labels = config.get("button_labels", ["Support"])
+            bot.add_view(TicketPanelView(guild_id, labels))
+        except Exception:
+            logging.exception("Ticket-Panel konnte nicht registriert werden.")
+
+    # Persistente Ticket-Steuerungen für noch vorhandene Tickets registrieren.
+    for channel_key in data.get("tickets", {}):
+        try:
+            bot.add_view(TicketControlView(int(channel_key)))
+        except Exception:
+            logging.exception("Ticket-Steuerung konnte nicht registriert werden.")
+
+    # Anmeldebutton registrieren.
+    bot.add_view(RegistrationView())
+
+    try:
+        synced = await bot.tree.sync()
+        logging.info("%s Slash-Befehle synchronisiert.", len(synced))
+    except Exception:
+        logging.exception("Slash-Befehle konnten nicht synchronisiert werden.")
+
+    logging.info("Bot ist online als %s", bot.user)
+
+
+if __name__ == "__main__":
+    load_data()
+
+    if not TOKEN:
+        raise RuntimeError(
+            "DISCORD_TOKEN fehlt. Trage deinen Bot-Token in Railway unter "
+            "Variables als DISCORD_TOKEN ein."
+        )
+
+    bot.run(TOKEN)
 import os
 import json
 import io
