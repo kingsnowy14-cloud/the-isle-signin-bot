@@ -3,6 +3,7 @@ Set DASHBOARD_PASSWORD and expose Railway's PORT. Use HTTPS in production.
 """
 import os
 import json
+import asyncio
 import hmac
 import hashlib
 import html
@@ -164,4 +165,11 @@ document.getElementById('all-off').addEventListener('click',()=>{{if(!confirm('W
         print(f'Admin dashboard listening on 0.0.0.0:{port}')
         bot._dashboard_runner = runner
 
-    bot.loop.create_task(runner_start())
+    async def runner_start_guarded():
+        try:
+            await runner_start()
+        except Exception as exc:
+            bot._dashboard_started = False
+            print(f'Could not start dashboard web server: {type(exc).__name__}: {exc}', flush=True)
+
+    asyncio.get_running_loop().create_task(runner_start_guarded())
