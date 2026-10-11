@@ -1164,36 +1164,32 @@ async def record_nuke_action(guild: discord.Guild, action_name: str, action: dis
 
 @bot.event
 async def on_message(message: discord.Message):
+    # Handle regular member messages only when they belong to a server.
     if message.guild and not message.author.bot:
         guild = message.guild
 
-       
-# Count messages and award XP with a cooldown.
-stats = get_user_stats(guild.id, message.author.id)
-stats["messages"] = int(stats.get("messages", 0)) + 1
+        # Count messages and award XP with a cooldown.
+        stats = get_user_stats(guild.id, message.author.id)
+        stats["messages"] = int(stats.get("messages", 0)) + 1
+        earned_xp, reached_level = add_message_xp(guild.id, message.author.id)
+        save_json(DATA_FILE, data)
 
-earned_xp, reached_level = add_message_xp(
-    guild.id, message.author.id
-)
-save_json(DATA_FILE, data)
+        if reached_level:
+            embed = create_embed(
+                title="🎉 Levelaufstieg!",
+                description=(
+                    f"Glückwunsch {message.author.mention}!\n"
+                    f"Du hast **Level {reached_level}** erreicht!"
+                ),
+                color=discord.Color.gold(),
+            )
+            await message.channel.send(embed=embed)
 
-if reached_level:
-    embed = create_embed(
-        title="🎉 Levelaufstieg!",
-        description=(
-            f"Glückwunsch {message.author.mention}!\n"
-            f"Du hast **Level {reached_level}** erreicht!"
-        ),
-        color=discord.Color.gold(),
-    )
-    await message.channel.send(embed=embed)
-
+        # Honeypot: log the violation, remove recent messages, then kick.
         cfg = guild_config(guild.id)
         honeypot_id = cfg.get("honeypot_channel")
-
         if honeypot_id and message.channel.id == honeypot_id:
             member = message.author if isinstance(message.author, discord.Member) else None
-
             if member is not None and member.id != guild.owner_id:
                 reason = (
                     f"Honeypot-Regelverstoß: Nachricht im Honeypot-Kanal "
@@ -1205,7 +1201,6 @@ if reached_level:
                 original_message = message.content or "[Keine Textnachricht / möglicherweise nur ein Anhang]"
                 original_message = discord.utils.escape_markdown(original_message[:700])
 
-                # Warn the member privately before removing them from the server.
                 try:
                     dm_embed = create_embed(
                         title="🚫 Du wurdest vom Server entfernt",
@@ -1223,8 +1218,6 @@ if reached_level:
                 except (discord.Forbidden, discord.HTTPException):
                     pass
 
-                # Remove all messages by this member from the previous 24 hours,
-                # across server text channels and active threads.
                 channels = list(guild.text_channels)
                 try:
                     channels.extend(thread for thread in guild.threads if thread not in channels)
@@ -1235,9 +1228,7 @@ if reached_level:
                     if not hasattr(channel, "history"):
                         continue
                     try:
-                        async for old_message in channel.history(
-                            limit=None, after=cutoff, oldest_first=False
-                        ):
+                        async for old_message in channel.history(limit=None, after=cutoff, oldest_first=False):
                             if old_message.author.id != member.id:
                                 continue
                             try:
@@ -1250,7 +1241,6 @@ if reached_level:
                         if getattr(channel, "name", None) and channel.name not in failed_channels:
                             failed_channels.append(channel.name)
 
-                # Try to kick the member. The bot's role must be above the member's highest role.
                 kick_succeeded = False
                 kick_error = None
                 try:
@@ -1283,11 +1273,10 @@ if reached_level:
                     log_description,
                     discord.Color.red(),
                 )
-
-                # Do not let a honeypot message accidentally execute a prefix command.
+                # Do not allow a honeypot message to execute a prefix command.
                 return
 
-    # Automatically translate human messages when this channel has been configured.
+    # Automatically translate human messages in configured text channels.
     if message.guild and not message.author.bot and isinstance(message.channel, discord.TextChannel):
         channel_languages = guild_config(message.guild.id).get("channel_translations", {}).get(str(message.channel.id), [])
         source_text = (message.content or "").strip()
