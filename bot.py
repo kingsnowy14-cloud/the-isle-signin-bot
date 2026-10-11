@@ -608,6 +608,54 @@ async def ticketbearbeiten(
 
 
 
+@bot.tree.command(name="help", description="Show the commands you are allowed to use")
+async def help_command(interaction: discord.Interaction):
+    """List commands visible to this member based on the bot's permission rules."""
+    if interaction.guild is None:
+        await interaction.response.send_message(
+            "Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True
+        )
+        return
+
+    member = interaction.user
+    permissions = getattr(member, "guild_permissions", None)
+    can_manage_server = bool(permissions and (permissions.manage_guild or permissions.administrator))
+    is_admin = bool(permissions and permissions.administrator)
+
+    # These commands have explicit permission checks in their definitions.
+    manage_server_commands = {
+        "kanal-set", "ticket-log-set", "ticket-support-set", "ticket-category-set",
+        "ticketcreat", "ticketbearbeiten", "security-set-log", "security-set-honeypot",
+        "security-set-raid", "security-set-antinuke", "security-toggle",
+    }
+    administrator_commands = {"security-set-trusted-role"}
+
+    visible = []
+    for command in bot.tree.get_commands():
+        if command.name == "help":
+            continue
+        if command.name in administrator_commands and not is_admin:
+            continue
+        if command.name in manage_server_commands and not can_manage_server:
+            continue
+        visible.append((f"/{command.name}", command.description or "Keine Beschreibung"))
+
+    # Prefix commands are not part of the slash-command tree, so list them separately.
+    visible.append(("!stats [@Mitglied]", "Zeigt Nachrichten und Sprachkanal-Zeit von dir oder einem Mitglied."))
+    if can_manage_server:
+        visible.append(("!anmeldepannel", "Erstellt das Server-Anmeldepanel (Alternative: !anmeldepanel)."))
+
+    embed = discord.Embed(
+        title="📖 Hilfe – verfügbare Befehle",
+        description="Hier siehst du die Befehle, die du mit deinen aktuellen Server-Berechtigungen nutzen kannst.",
+        color=discord.Color.blurple(),
+    )
+    for command_name, description in visible:
+        embed.add_field(name=command_name, value=description, inline=False)
+    embed.set_footer(text=f"{len(visible)} verfügbare Befehle")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 # ----------------------------- PREFIX COMMANDS -----------------------------
 
 @bot.command(name="stats")
