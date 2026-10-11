@@ -1190,6 +1190,66 @@ async def backup_command(interaction: discord.Interaction):
 
 # ----------------------------- GIVEAWAY -----------------------------
 
+async def _giveaway_participants(message: discord.Message):
+    """Return unique non-bot participants who reacted with 🎉."""
+    entrants = {}
+    for reaction in message.reactions:
+        if str(reaction.emoji) == "🎉":
+            async for user in reaction.users():
+                if not user.bot:
+                    entrants[user.id] = user
+    return list(entrants.values())
+
+
+def _giveaway_embed(record, entrants=None):
+    description = record.get("description", "")
+    lines = []
+    if description:
+        lines.append(description[:1500])
+        lines.append("")
+    lines.extend([
+        f"**Preis:** {record.get('prize', 'Giveaway')}",
+        f"**Gewinner:** {record.get('winners', 1)}",
+        f"**Endet:** <t:{int(record.get('ends_at', time.time()))}:R>",
+    ])
+    if record.get("show_participants", False):
+        entrants = entrants or []
+        names = [f"• {discord.utils.escape_markdown(getattr(u, 'display_name', str(u)))}" for u in entrants[:20]]
+        if len(entrants) > 20:
+            names.append(f"… und {len(entrants) - 20} weitere")
+        participant_text = "\n".join(names) if names else "Noch keine Teilnehmer."
+        lines.extend(["", f"**Teilnehmer ({len(entrants)}):**", participant_text])
+    lines.extend(["", "Reagiere mit 🎉, um teilzunehmen!"])
+    return create_embed(title="🎉 GIVEAWAY", description="\n".join(lines)[:4000], color=discord.Color.gold())
+
+
+async def _refresh_giveaway_participants(payload):
+    if str(payload.emoji) != "🎉" or payload.guild_id is None or payload.user_id == bot.user.id:
+        return
+    record = data.setdefault("giveaways", {}).get(str(payload.message_id))
+    if not record or record.get("ended") or not record.get("show_participants", False):
+        return
+    channel = bot.get_channel(payload.channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return
+    try:
+        message = await channel.fetch_message(payload.message_id)
+        entrants = await _giveaway_participants(message)
+        await message.edit(embed=_giveaway_embed(record, entrants))
+    except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+        pass
+
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    await _refresh_giveaway_participants(payload)
+
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    await _refresh_giveaway_participants(payload)
+
+
 async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winners_count: int, prize: str):
     try:
         await asyncio.sleep(1)
@@ -1206,17 +1266,15 @@ async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winn
             message = await channel.fetch_message(message_id)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return
-        entrants = []
-        for reaction in message.reactions:
-            if str(reaction.emoji) == "🎉":
-                async for user in reaction.users():
-                    if not user.bot:
-                        entrants.append(user)
-        entrants = list({u.id: u for u in entrants}.values())
+        entrants = await _giveaway_participants(message)
         winners = random.sample(entrants, min(winners_count, len(entrants))) if entrants else []
         record["ended"] = True
         record["winners"] = [u.id for u in winners]
         save_json(DATA_FILE, data)
+        try:
+            await message.edit(embed=_giveaway_embed(record, entrants))
+        except discord.HTTPException:
+            pass
         if winners:
             await channel.send(f"🎉 Giveaway beendet! Preis: **{prize}** — Gewinner: {', '.join(u.mention for u in winners)}")
         else:
@@ -1227,16 +1285,41 @@ async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winn
         print(f"Giveaway task error: {type(exc).__name__}: {exc}")
 
 
-@bot.tree.command(name="giveaway-start", description="Starte ein Giveaway mit Reaktion 🎉")
+@bot.tree.command(name="giveaway-start", description="Starte ein Giveaway mit Laufzeit in Tagen")
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(preis="Zu gewinnender Preis", minuten="Laufzeit in Minuten (1–10080)", gewinner="Anzahl der Gewinner (1–10)")
-async def giveaway_start(interaction: discord.Interaction, preis: str, minuten: app_commands.Range[int, 1, 10080], gewinner: app_commands.Range[int, 1, 10] = 1):
+@app_commands.describe(
+    preis="Zu gewinnender Preis",
+    tage="Laufzeit in Tagen (1–365)",
+    beschreibung="Optionale Beschreibung des Giveaways",
+    gewinner="Anzahl der Gewinner (1–10)",
+    teilnehmer_anzeigen="Teilnehmerliste in der Giveaway-Nachricht anzeigen",
+)
+async def giveaway_start(
+    interaction: discord.Interaction,
+    preis: str,
+    tage: app_commands.Range[int, 1, 365],
+    beschreibung: str = "",
+    gewinner: app_commands.Range[int, 1, 10] = 1,
+    teilnehmer_anzeigen: bool = False,
+):
+    if interaction.guild_id is None or interaction.channel is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
     await interaction.response.send_message("Giveaway wird erstellt …", ephemeral=True)
-    ends_at = time.time() + minuten * 60
-    embed = create_embed(title="🎉 GIVEAWAY", description=f"**Preis:** {preis[:200]}\n**Gewinner:** {gewinner}\n**Endet:** <t:{int(ends_at)}:R>\n\nReagiere mit 🎉, um teilzunehmen!", color=discord.Color.gold())
-    message = await interaction.channel.send(embed=embed)
+    ends_at = time.time() + tage * 86400
+    record = {
+        "guild_id": interaction.guild_id,
+        "channel_id": interaction.channel_id,
+        "ends_at": ends_at,
+        "winners": gewinner,
+        "prize": preis[:200],
+        "description": beschreibung[:1500],
+        "show_participants": teilnehmer_anzeigen,
+        "ended": False,
+    }
+    message = await interaction.channel.send(embed=_giveaway_embed(record, []))
     await message.add_reaction("🎉")
-    data.setdefault("giveaways", {})[str(message.id)] = {"guild_id": interaction.guild_id, "channel_id": interaction.channel_id, "ends_at": ends_at, "winners": gewinner, "prize": preis[:200], "ended": False}
+    data.setdefault("giveaways", {})[str(message.id)] = record
     save_json(DATA_FILE, data)
     asyncio.create_task(_finish_giveaway(interaction.guild_id, interaction.channel_id, message.id, gewinner, preis[:200]))
     await interaction.followup.send(f"Giveaway gestartet: {message.jump_url}", ephemeral=True)
