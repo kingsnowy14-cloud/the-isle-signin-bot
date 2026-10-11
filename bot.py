@@ -281,7 +281,7 @@ async def channeltranslate_stop(interaction: discord.Interaction):
 async def help_command(interaction: discord.Interaction):
     embed = create_embed(
         title="📖 Hilfe",
-        description="Verfügbare Befehle:\n\n`/translate` – Übersetze Text\n`/channeltranslate` – Automatische Übersetzung für einen Kanal\n`/channeltranslate-stop` – Deaktiviert automatische Übersetzung\n`!stats` – optionaler Statistikbefehl (falls du ihn später ergänzen willst)",
+        description="Verfügbare Befehle:\n\n`/translate` – Übersetze Text\n`/channeltranslate` – Automatische Übersetzung für einen Kanal\n`/channeltranslate-stop` – Deaktiviert automatische Übersetzung",
         color=discord.Color.blurple()
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -303,4 +303,39 @@ async def on_message(message: discord.Message):
         if target_languages:
             text = (message.content or "").strip()
             if text and not text.startswith(("!", "/")):
-                for
+                for target_language in target_languages[:5]:
+                    try:
+                        translated = await translate_text(text, target_language)
+                        if translated and translated.strip():
+                            translated_message = (
+                                f"🌐 **Übersetzung ({target_language}) von {message.author.display_name}:**\n"
+                                f"{translated[:1900]}"
+                            )
+                            await message.channel.send(
+                                translated_message,
+                                reference=message,
+                                mention_author=False,
+                                allowed_mentions=discord.AllowedMentions.none(),
+                            )
+                    except Exception as exc:
+                        print(f"Auto-Translation failed for {target_language}: {type(exc).__name__}: {exc}")
+
+    await bot.process_commands(message)
+
+# -----------------------------
+# READY Event
+# -----------------------------
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} slash commands.")
+    except Exception as exc:
+        print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
+
+# -----------------------------
+# Start
+# -----------------------------
+if __name__ == "__main__":
+    bot.run(TOKEN)
