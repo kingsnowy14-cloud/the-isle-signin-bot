@@ -1500,20 +1500,35 @@ async def on_member_join(member: discord.Member):
         # Bot additions are also monitored by the anti-nuke system below.
         return
     cfg = guild_config(member.guild.id)
-    # Welcome message is independent from whether anti-raid is enabled.
+    # Welcome messages are independent from whether anti-raid is enabled.
     welcome_channel_id = cfg.get("welcome_channel")
     if welcome_channel_id:
-        welcome_channel = member.guild.get_channel(welcome_channel_id)
+        welcome_channel = member.guild.get_channel(int(welcome_channel_id))
+        # The channel may not be in cache; fetch it as a fallback.
+        if welcome_channel is None:
+            try:
+                welcome_channel = await bot.fetch_channel(int(welcome_channel_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[WELCOME] Could not find/access channel {welcome_channel_id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
+                welcome_channel = None
         if isinstance(welcome_channel, discord.TextChannel):
-            template = cfg.get("welcome_message", "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.")
+            template = cfg.get("welcome_message") or "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**."
             welcome_text = (template.replace("{mention}", member.mention)
                             .replace("{user}", discord.utils.escape_markdown(member.display_name))
                             .replace("{server}", discord.utils.escape_markdown(member.guild.name))
                             .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
             try:
-                await welcome_channel.send(welcome_text[:1900], allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
-            except (discord.Forbidden, discord.HTTPException):
-                pass
+                await welcome_channel.send(
+                    welcome_text[:1900],
+                    allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                )
+                print(f"[WELCOME] Sent welcome for {member} ({member.id}) in #{welcome_channel.name} ({member.guild.id}).")
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[WELCOME] Sending failed in guild {member.guild.id}, channel {welcome_channel_id}: {type(exc).__name__}: {exc}")
+        elif welcome_channel is not None:
+            print(f"[WELCOME] Configured channel {welcome_channel_id} is not a text channel (guild {member.guild.id}).")
+    else:
+        print(f"[WELCOME] No welcome channel configured for guild {member.guild.id}. Run /welcome-set in Discord.")
     if not cfg.get("anti_raid_enabled", True):
         return
 
