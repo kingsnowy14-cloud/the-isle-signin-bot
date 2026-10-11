@@ -34,6 +34,37 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
+async def dashboard_command_enabled(guild_id, key):
+    """Check whether a command is disabled for this server in the web dashboard."""
+    if guild_id is None:
+        return True
+    cfg = config.get(str(guild_id), {})
+    return key not in set(cfg.get("disabled_commands", []))
+
+
+@bot.check
+async def dashboard_prefix_command_check(ctx):
+    return await dashboard_command_enabled(ctx.guild.id if ctx.guild else None, f"prefix:!{ctx.command.name}")
+
+
+async def dashboard_slash_command_check(interaction):
+    command = interaction.command
+    if command is None or interaction.guild_id is None:
+        return True
+    key = f"slash:/{command.qualified_name}"
+    if not await dashboard_command_enabled(interaction.guild_id, key):
+        message = "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+        return False
+    return True
+
+
+bot.tree.interaction_check = dashboard_slash_command_check
+
+
 def create_embed(*args, **kwargs):
     """Create an embed with the standard bot attribution footer."""
     embed = discord.Embed(*args, **kwargs)
@@ -2372,6 +2403,15 @@ async def on_ready():
     if not _social_alert_task_started:
         _social_alert_task_started = True
         asyncio.create_task(social_alert_loop())
+    if os.getenv("DASHBOARD_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"} and not getattr(bot, "_dashboard_started", False):
+        try:
+            from dashboard import start_dashboard
+            start_dashboard(bot, config, save_json, guild_config)
+            print(f"Dashboard startup requested (PORT={os.getenv('PORT', '8080')}).", flush=True)
+        except Exception as exc:
+            print(f"Could not start dashboard: {type(exc).__name__}: {exc}", flush=True)
+    elif os.getenv("DASHBOARD_ENABLED", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+        print("Dashboard disabled: set DASHBOARD_ENABLED=true in Railway Variables.", flush=True)
 
 
 @bot.tree.error
@@ -2392,8 +2432,4 @@ async def on_app_command_error(interaction: discord.Interaction, error):
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
-    # Optional web dashboard; enable with DASHBOARD_ENABLED=true.
-    if os.getenv("DASHBOARD_ENABLED", "false").lower() == "true":
-        from dashboard import start_dashboard
-        start_dashboard()
     bot.run(TOKEN)
