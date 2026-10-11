@@ -44,6 +44,28 @@ def save_json(path, data):
 
 config = load_json(CONFIG_FILE, {})
 data = load_json(DATA_FILE, {"languages": {}, "registrations": {}})
+# Stats are stored per server and per user in data.json.
+data.setdefault("stats", {})
+# Active voice sessions are kept in memory so bot downtime is not counted.
+_active_voice_sessions = {}
+
+
+def get_user_stats(guild_id, user_id):
+    """Return persistent stats for one member, creating defaults when needed."""
+    server_stats = data.setdefault("stats", {}).setdefault(str(guild_id), {})
+    return server_stats.setdefault(str(user_id), {"messages": 0, "voice_seconds": 0})
+
+
+def format_duration(seconds):
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+    days, hours = divmod(hours, 24)
+    if days:
+        return f"{days} Tage, {hours} Std. und {minutes} Min."
+    if hours:
+        return f"{hours} Std. und {minutes} Min."
+    return f"{minutes} Min."
 
 
 def guild_config(guild_id):
@@ -584,7 +606,133 @@ async def ticketbearbeiten(
     )
 
 
+
+
+# ----------------------------- MUSIC COMMANDS -----------------------------
+# Dependencies: yt-dlp, PyNaCl; FFmpeg must be installed on the host.
+import yt_dlp
+
+YTDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": True,
+    "no_warnings": True,
+    "default_search": "auto",
+}
+FFMPEG_OPTIONS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn",
+}
+
+
+@bot.command(name="music")
+async def music(ctx: commands.Context, *, link: str = None):
+    """Play audio from a URL in the voice channel you're currently in: !music <link>."""
+    if ctx.guild is None:
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.")
+        return
+    if not link:
+        await ctx.reply("Verwendung: `!music <Link>`")
+        return
+    if not isinstance(ctx.author, discord.Member) or not ctx.author.voice or not ctx.author.voice.channel:
+        await ctx.reply("Du musst zuerst in einem Sprachkanal sein.")
+        return
+
+    voice_channel = ctx.author.voice.channel
+    voice = ctx.guild.voice_client
+
+    try:
+        if voice is None:
+            voice = await voice_channel.connect()
+        elif voice.channel != voice_channel:
+            await voice.move_to(voice_channel)
+
+        # yt-dlp extraction can block, so run it outside the event loop.
+        def extract_audio():
+            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                return ydl.extract_info(link, download=False)
+
+        info = await asyncio.to_thread(extract_audio)
+        if "entries" in info:
+            info = next((entry for entry in info["entries"] if entry), None)
+        if not info or not info.get("url"):
+            await ctx.reply("Ich konnte aus diesem Link keine Audioquelle laden.")
+            return
+
+        audio_source = discord.FFmpegPCMAudio(info["url"], **FFMPEG_OPTIONS)
+        if voice.is_playing() or voice.is_paused():
+            voice.stop()
+
+        def after_playback(error):
+            if error:
+                print(f"Music playback error: {error}")
+
+        voice.play(audio_source, after=after_playback)
+        title = discord.utils.escape_markdown(info.get("title", "Unbekannter Titel"))
+        await ctx.reply(f"🎵 Spiele jetzt **{title[:200]}** in **{voice_channel.name}**.")
+    except commands.CommandError:
+        raise
+    except Exception as exc:
+        await ctx.reply(
+            "Musik konnte nicht gestartet werden. Prüfe, ob **FFmpeg**, **yt-dlp** "
+            "und **PyNaCl** installiert sind und der Bot Sprachkanal-Rechte hat. "
+            f"Fehler: `{type(exc).__name__}`"
+        )
+
+
+@bot.command(name="stop")
+async def stop_music(ctx: commands.Context):
+    """Stop music and disconnect the bot from voice."""
+    if ctx.guild is None or ctx.guild.voice_client is None:
+        await ctx.reply("Ich bin in keinem Sprachkanal.")
+        return
+    voice = ctx.guild.voice_client
+    if voice.is_playing() or voice.is_paused():
+        voice.stop()
+    await voice.disconnect()
+    await ctx.reply("⏹️ Musik gestoppt und Sprachkanal verlassen.")
+
+
+
 # ----------------------------- PREFIX COMMANDS -----------------------------
+
+@bot.command(name="stats")
+async def stats_command(ctx, member: discord.Member = None):
+    """Show message and voice-channel statistics for yourself or another member."""
+    if ctx.guild is None:
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.", mention_author=False)
+        return
+
+    target = member or ctx.author
+    stats = get_user_stats(ctx.guild.id, target.id)
+    voice_seconds = int(stats.get("voice_seconds", 0))
+
+    # Include the current voice session if the member is connected right now.
+    started_at = _active_voice_sessions.get((ctx.guild.id, target.id))
+    if started_at is not None:
+        voice_seconds += max(
+            0, int((datetime.now(timezone.utc) - started_at).total_seconds())
+        )
+
+    embed = discord.Embed(
+        title=f"📊 Stats von {target.display_name}",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.add_field(
+        name="💬 Nachrichten",
+        value=f"{int(stats.get('messages', 0)):,}".replace(",", "."),
+        inline=True,
+    )
+    embed.add_field(
+        name="🔊 Zeit im Sprachkanal",
+        value=format_duration(voice_seconds),
+        inline=True,
+    )
+    embed.set_footer(text="Die Statistiken werden ab Aktivierung dieses Systems gezählt.")
+    await ctx.reply(embed=embed, mention_author=False)
+
 
 @bot.command(name="anmeldepannel", aliases=["anmeldepanel"])
 @commands.has_guild_permissions(manage_guild=True)
@@ -732,6 +880,12 @@ async def record_nuke_action(guild: discord.Guild, action_name: str, action: dis
 async def on_message(message: discord.Message):
     if message.guild and not message.author.bot:
         guild = message.guild
+
+        # Count each human-authored server message and persist it.
+        stats = get_user_stats(guild.id, message.author.id)
+        stats["messages"] = int(stats.get("messages", 0)) + 1
+        save_json(DATA_FILE, data)
+
         cfg = guild_config(guild.id)
         honeypot_id = cfg.get("honeypot_channel")
 
@@ -832,6 +986,34 @@ async def on_message(message: discord.Message):
                 return
 
     await bot.process_commands(message)
+
+
+@bot.event
+async def on_voice_state_update(
+    member: discord.Member,
+    before: discord.VoiceState,
+    after: discord.VoiceState,
+):
+    """Track time spent connected to any voice channel (not just speaking)."""
+    if member.bot:
+        return
+
+    key = (member.guild.id, member.id)
+    now = datetime.now(timezone.utc)
+
+    # Leaving voice: add the completed session to the persistent total.
+    if before.channel is not None and after.channel is None:
+        started_at = _active_voice_sessions.pop(key, None)
+        if started_at is not None:
+            elapsed = max(0, int((now - started_at).total_seconds()))
+            stats = get_user_stats(member.guild.id, member.id)
+            stats["voice_seconds"] = int(stats.get("voice_seconds", 0)) + elapsed
+            save_json(DATA_FILE, data)
+
+    # Joining voice starts a new session. Moving between voice channels keeps
+    # the same session running and does not double-count time.
+    elif before.channel is None and after.channel is not None:
+        _active_voice_sessions[key] = now
 
 
 @bot.event
@@ -1024,6 +1206,15 @@ async def security_set_trusted_role(interaction: discord.Interaction, rolle: dis
 
 @bot.event
 async def on_ready():
+    # Start tracking members already in voice after a bot start/reconnect.
+    # Only seed sessions that are not already tracked to avoid resetting time
+    # when Discord reconnects the bot.
+    now = datetime.now(timezone.utc)
+    for guild in bot.guilds:
+        for member in guild.members:
+            if not member.bot and member.voice and member.voice.channel:
+                _active_voice_sessions.setdefault((guild.id, member.id), now)
+
     # Register persistent views so old buttons keep working after restart.
     bot.add_view(RegistrationView())
     bot.add_view(LanguageView())
