@@ -1481,4 +1481,8 @@ async def on_app_command_error(interaction: discord.Interaction, error):
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
+    # Optional web dashboard; enable with DASHBOARD_ENABLED=true.
+    if os.getenv("DASHBOARD_ENABLED", "false").lower() == "true":
+        from dashboard import start_dashboard
+        start_dashboard()
     bot.run(TOKEN)
