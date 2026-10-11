@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
-# Translation support: Argos Translate + language detection (see requirements.txt).
+# Translation support: install deep-translator (see requirements below).
 # Set your bot token as the DISCORD_TOKEN environment variable.
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -24,7 +24,7 @@ DATA_FILE = "data.json"
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
-intents.message_content = True  # Also enable Message Content Intent in the Discord Developer Portal.
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -473,99 +473,28 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
 
 # ----------------------------- TRANSLATION HELPERS -----------------------------
 
-_ARGOS_LANGUAGE_ALIASES = {
-    "german": "de", "deutsch": "de", "english": "en", "englisch": "en",
-    "czech": "cs", "čeština": "cs", "cestina": "cs", "spanish": "es", "español": "es",
-    "french": "fr", "français": "fr", "italian": "it", "portuguese": "pt",
-    "dutch": "nl", "polish": "pl", "japanese": "ja", "korean": "ko",
-    "chinese": "zh", "russian": "ru", "ukrainian": "uk", "turkish": "tr",
-    "arabic": "ar", "hindi": "hi", "swedish": "sv", "danish": "da",
-    "norwegian": "nb", "finnish": "fi", "greek": "el", "romanian": "ro",
-    "hungarian": "hu", "indonesian": "id", "vietnamese": "vi", "thai": "th",
-}
-_ARGOS_TRANSLATION_LOCK = asyncio.Lock()
-
-
 def normalize_translation_language(language: str) -> str:
-    """Normalize a language name/code to an Argos language code."""
+    """Resolve a language name or language code to a GoogleTranslator target code."""
+    from deep_translator import GoogleTranslator
+
     requested = (language or "").strip().lower()
-    if not requested:
-        raise ValueError("Bitte gib eine Zielsprache an.")
-    code = _ARGOS_LANGUAGE_ALIASES.get(requested, requested.replace("_", "-").split("-")[0])
-    if not code.isalpha() or len(code) not in (2, 3):
-        raise ValueError(f"Unbekannte Sprache: {language}")
-    return code
-
-
-def _argos_translate_blocking(text: str, target_code: str) -> str:
-    """Install only the Argos language pairs needed, then translate locally."""
-    import argostranslate.package
-    import argostranslate.translate
-    from langdetect import detect, LangDetectException
-
-    try:
-        source_code = detect(text)
-    except LangDetectException:
-        raise ValueError("Die Ausgangssprache konnte nicht erkannt werden. Bitte mehr Text eingeben.")
-
-    if source_code == target_code:
-        return text
-
-    installed = argostranslate.translate.get_installed_languages()
-    installed_codes = {language.code for language in installed}
-    available = None
-
-    def has_pair(source: str, target: str) -> bool:
-        current = argostranslate.translate.get_installed_languages()
-        source_lang = next((lang for lang in current if lang.code == source), None)
-        target_lang = next((lang for lang in current if lang.code == target), None)
-        return bool(source_lang and target_lang and any(t.code == target for t in source_lang.get_translation(target_lang)))
-
-    def install_pair(source: str, target: str) -> bool:
-        nonlocal available
-        if has_pair(source, target):
-            return True
-        if available is None:
-            argostranslate.package.update_package_index()
-            available = argostranslate.package.get_available_packages()
-        package = next((item for item in available if item.from_code == source and item.to_code == target), None)
-        if package is None:
-            return False
-        path = package.download()
-        argostranslate.package.install_from_path(path)
-        return has_pair(source, target)
-
-    if not install_pair(source_code, target_code):
-        # Use English as a pivot when there is no direct model for this pair.
-        if source_code != "en" and not install_pair(source_code, "en"):
-            raise ValueError(f"Argos Translate hat kein Modell von '{source_code}' nach Englisch.")
-        if target_code != "en" and not install_pair("en", target_code):
-            raise ValueError(f"Argos Translate hat kein Übersetzungsmodell für '{target_code}'.")
-
-    installed = argostranslate.translate.get_installed_languages()
-    source_lang = next((lang for lang in installed if lang.code == source_code), None)
-    target_lang = next((lang for lang in installed if lang.code == target_code), None)
-    if source_lang and target_lang:
-        translations = source_lang.get_translation(target_lang)
-        if translations:
-            return translations[0].translate(text)
-
-    # Translate through English if the direct pair is unavailable.
-    english = next((lang for lang in installed if lang.code == "en"), None)
-    if not source_lang or not english or not target_lang:
-        raise ValueError("Die benötigten Argos-Sprachmodelle konnten nicht geladen werden.")
-    first = source_lang.get_translation(english)
-    second = english.get_translation(target_lang)
-    if not first or not second:
-        raise ValueError("Für diese Sprachkombination sind keine Argos-Modelle verfügbar.")
-    return second[0].translate(first[0].translate(text))
+    supported = GoogleTranslator(source="auto", target="en").get_supported_languages(as_dict=True)
+    # deep-translator returns {language name: language code}.
+    if requested in supported:
+        return supported[requested]
+    for name, code in supported.items():
+        if requested == code.lower():
+            return code
+    raise ValueError(f"Unbekannte Sprache: {language}")
 
 
 async def translate_text(text: str, target_language: str) -> str:
-    """Translate using Argos Translate; required models are downloaded on first use."""
+    """Run the blocking translation request outside the asyncio event loop."""
+    from deep_translator import GoogleTranslator
     target_code = normalize_translation_language(target_language)
-    async with _ARGOS_TRANSLATION_LOCK:
-        return await asyncio.to_thread(_argos_translate_blocking, text, target_code)
+    return await asyncio.to_thread(
+        lambda: GoogleTranslator(source="auto", target=target_code).translate(text)
+    )
 
 
 # ----------------------------- SLASH COMMANDS -----------------------------
@@ -720,7 +649,7 @@ async def translate_command(interaction: discord.Interaction, text: str, sprache
         result = await translate_text(text, sprache)
     except ImportError:
         await interaction.followup.send(
-            "Die Übersetzungsbibliothek fehlt. Installiere `argostranslate` und `langdetect` (siehe requirements.txt).", ephemeral=True
+            "Die Übersetzungsbibliothek fehlt. Installiere `deep-translator` (siehe requirements.txt).", ephemeral=True
         )
         return
     except Exception as exc:
@@ -729,14 +658,9 @@ async def translate_command(interaction: discord.Interaction, text: str, sprache
             ephemeral=True,
         )
         return
-    if len(result) > 4000:
-        result = result[:3997] + "…"
-    embed = create_embed(
-        title=f"🌐 Übersetzung · {discord.utils.escape_markdown(sprache)[:200]}",
-        description=result,
-        color=discord.Color.blurple(),
-    )
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    if len(result) > 1900:
+        result = result[:1900] + "…"
+    await interaction.followup.send(f"**Übersetzung ({discord.utils.escape_markdown(sprache)}):**\n{result}", ephemeral=True)
 
 
 @bot.tree.command(name="channeltranslate", description="Automatically translate this channel into up to five languages")
@@ -767,7 +691,7 @@ async def channeltranslate(
             if code not in resolved:
                 resolved.append(code)
     except ImportError:
-        await interaction.response.send_message("Die Übersetzungsbibliothek fehlt. Installiere `argostranslate` und `langdetect`.", ephemeral=True)
+        await interaction.response.send_message("Die Übersetzungsbibliothek fehlt. Installiere `deep-translator`.", ephemeral=True)
         return
     except Exception:
         await interaction.response.send_message(
@@ -1153,18 +1077,16 @@ async def on_message(message: discord.Message):
                 try:
                     translated = await translate_text(source_text, target_language)
                     if translated and translated.strip():
-                        # Post the translation as a separate channel message/reply.
-                        # Never edit or delete the original message.
-                        translated_message = (
-                            f"🌐 **Übersetzung ({target_language}) von {message.author.display_name}:**\n"
-                            f"{translated[:1900]}"
+                        embed = create_embed(
+                            description=translated[:4000],
+                            color=discord.Color.blurple(),
+                            timestamp=message.created_at,
                         )
-                        await message.channel.send(
-                            translated_message,
-                            reference=message,
-                            mention_author=False,
-                            allowed_mentions=discord.AllowedMentions.none(),
+                        embed.set_author(
+                            name=f"{message.author.display_name} · Übersetzung: {target_language}",
+                            icon_url=message.author.display_avatar.url,
                         )
+                        await message.channel.send(embed=embed, reference=message, mention_author=False)
                 except Exception as exc:
                     print(f"Auto-translation failed for {target_language}: {type(exc).__name__}: {exc}")
 
