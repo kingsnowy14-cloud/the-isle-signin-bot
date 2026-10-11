@@ -731,34 +731,106 @@ async def record_nuke_action(guild: discord.Guild, action_name: str, action: dis
 @bot.event
 async def on_message(message: discord.Message):
     if message.guild and not message.author.bot:
-        cfg = guild_config(message.guild.id)
+        guild = message.guild
+        cfg = guild_config(guild.id)
         honeypot_id = cfg.get("honeypot_channel")
+
         if honeypot_id and message.channel.id == honeypot_id:
-            # Exempt the owner and administrators to reduce accidental staff lockouts.
             member = message.author if isinstance(message.author, discord.Member) else None
-            if member and member.id != message.guild.owner_id and not member.guild_permissions.administrator:
+
+            if member is not None and member.id != guild.owner_id:
+                reason = (
+                    f"Honeypot-Regelverstoß: Nachricht im Honeypot-Kanal "
+                    f"#{getattr(message.channel, 'name', 'unbekannt')}"
+                )
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+                deleted_count = 0
+                failed_channels = []
+                original_message = message.content or "[Keine Textnachricht / möglicherweise nur ein Anhang]"
+                original_message = discord.utils.escape_markdown(original_message[:700])
+
+                # Warn the member privately before removing them from the server.
                 try:
-                    await message.delete()
+                    dm_embed = discord.Embed(
+                        title="🚫 Du wurdest vom Server entfernt",
+                        description=(
+                            f"Du wurdest von **{guild.name}** gekickt, weil du im "
+                            f"versteckten Honeypot-Kanal {message.channel.mention} geschrieben hast.\n\n"
+                            "**Grund:** Dieser Kanal dient der Erkennung von Mitgliedern, "
+                            "die verborgene Moderations-/Sicherheitskanäle aufrufen oder verwenden.\n\n"
+                            "Zusätzlich werden deine Nachrichten aus den letzten 24 Stunden "
+                            "auf diesem Server entfernt."
+                        ),
+                        color=discord.Color.red(),
+                    )
+                    await member.send(embed=dm_embed)
                 except (discord.Forbidden, discord.HTTPException):
                     pass
+
+                # Remove all messages by this member from the previous 24 hours,
+                # across server text channels and active threads.
+                channels = list(guild.text_channels)
                 try:
-                    await member.timeout(datetime.now(timezone.utc) + timedelta(hours=1),
-                                         reason="Honeypot channel message")
-                    punishment = "für 1 Stunde timeoutet"
-                except (discord.Forbidden, discord.HTTPException):
-                    punishment = "konnte nicht timeoutet werden (Berechtigungen/Rollenposition prüfen)"
+                    channels.extend(thread for thread in guild.threads if thread not in channels)
+                except (AttributeError, discord.HTTPException):
+                    pass
+
+                for channel in channels:
+                    if not hasattr(channel, "history"):
+                        continue
+                    try:
+                        async for old_message in channel.history(
+                            limit=None, after=cutoff, oldest_first=False
+                        ):
+                            if old_message.author.id != member.id:
+                                continue
+                            try:
+                                await old_message.delete()
+                                deleted_count += 1
+                            except (discord.Forbidden, discord.HTTPException):
+                                if channel.name not in failed_channels:
+                                    failed_channels.append(channel.name)
+                    except (discord.Forbidden, discord.HTTPException, discord.InvalidData):
+                        if getattr(channel, "name", None) and channel.name not in failed_channels:
+                            failed_channels.append(channel.name)
+
+                # Try to kick the member. The bot's role must be above the member's highest role.
+                kick_succeeded = False
+                kick_error = None
+                try:
+                    await member.kick(reason=reason)
+                    kick_succeeded = True
+                except discord.Forbidden:
+                    kick_error = "Fehlende Berechtigung oder Bot-Rolle steht nicht hoch genug."
+                except discord.HTTPException as exc:
+                    kick_error = f"Discord-Fehler: {type(exc).__name__}"
+
+                log_description = (
+                    f"**Mitglied:** {member.mention} (`{member.id}`)\n"
+                    f"**Kanal:** {message.channel.mention} (`{message.channel.id}`)\n"
+                    f"**Grund:** Nachricht im Honeypot-Kanal\n"
+                    f"**Nachricht:** {original_message}\n"
+                    f"**Nachrichten aus den letzten 24 Stunden gelöscht:** {deleted_count}\n"
+                    f"**Kick:** {'Erfolgreich' if kick_succeeded else 'FEHLGESCHLAGEN'}"
+                )
+                if failed_channels:
+                    log_description += (
+                        "\n**Kanäle mit fehlgeschlagenen Löschungen/fehlendem Zugriff:** "
+                        + ", ".join(f"`{discord.utils.escape_markdown(name)}`" for name in failed_channels[:20])
+                    )
+                if kick_error:
+                    log_description += f"\n**Fehler:** {kick_error}"
+
                 await security_log(
-                    message.guild, "🍯 Honeypot ausgelöst",
-                    f"{member.mention} (`{member.id}`) hat im Honeypot-Kanal geschrieben und {punishment}.",
+                    guild,
+                    "🍯 Honeypot ausgelöst — Mitglied gekickt",
+                    log_description,
                     discord.Color.red(),
                 )
-                try:
-                    await member.send(
-                        f"Du hast in einem Honeypot-Kanal auf **{message.guild.name}** geschrieben. "
-                        "Deine Nachricht wurde entfernt und ein Moderator wurde informiert."
-                    )
-                except discord.HTTPException:
-                    pass
+
+                # Do not let a honeypot message accidentally execute a prefix command.
+                return
+
     await bot.process_commands(message)
 
 
@@ -890,7 +962,7 @@ async def security_set_honeypot(interaction: discord.Interaction, kanal: discord
     cfg["honeypot_channel"] = kanal.id
     save_json(CONFIG_FILE, config)
     await interaction.response.send_message(
-        f"Honeypot channel set to {kanal.mention}. Members who write there will be timeouted for one hour.",
+        f"Honeypot channel set to {kanal.mention}. Members who write there will be kicked, their messages from the last 24 hours will be deleted where the bot has access, and the incident will be logged.",
         ephemeral=True,
     )
 
