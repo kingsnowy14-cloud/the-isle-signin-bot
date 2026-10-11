@@ -2,6 +2,7 @@ import os
 import json
 import html
 import io
+import zipfile
 import time
 import asyncio
 from collections import defaultdict, deque
@@ -456,7 +457,12 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
 <p>Closed by: {html.escape(str(closed_by))}</p>
 <p>Reason: {html.escape(meta.get('reason', ''))}</p>
 <hr>{''.join(messages)}</body></html>"""
-    file = discord.File(io.BytesIO(transcript.encode("utf-8")), filename=f"{channel.name}-transcript.html")
+    # HTML in a ZIP prevents Discord from showing the raw HTML source as a preview.
+    archive_buffer = io.BytesIO()
+    with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(f"{channel.name}-transcript.html", transcript.encode("utf-8"))
+    archive_buffer.seek(0)
+    file = discord.File(archive_buffer, filename=f"{channel.name}-transcript.zip")
     log_channel_id = cfg.get("ticket_log_channel")
     log_channel = guild.get_channel(log_channel_id) if log_channel_id else None
     if isinstance(log_channel, discord.TextChannel):
