@@ -24,7 +24,7 @@ DATA_FILE = "data.json"
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
-intents.message_content = True
+intents.message_content = True  # Also enable Message Content Intent in the Discord Developer Portal.
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -658,9 +658,14 @@ async def translate_command(interaction: discord.Interaction, text: str, sprache
             ephemeral=True,
         )
         return
-    if len(result) > 1900:
-        result = result[:1900] + "…"
-    await interaction.followup.send(f"**Übersetzung ({discord.utils.escape_markdown(sprache)}):**\n{result}", ephemeral=True)
+    if len(result) > 4000:
+        result = result[:3997] + "…"
+    embed = create_embed(
+        title=f"🌐 Übersetzung · {discord.utils.escape_markdown(sprache)[:200]}",
+        description=result,
+        color=discord.Color.blurple(),
+    )
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="channeltranslate", description="Automatically translate this channel into up to five languages")
