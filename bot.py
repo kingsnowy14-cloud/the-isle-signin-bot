@@ -99,6 +99,7 @@ def guild_config(guild_id):
     cfg.setdefault("trusted_security_role", None)
     cfg.setdefault("welcome_channel", None)
     cfg.setdefault("welcome_message", "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.")
+    cfg.setdefault("welcome_bots_enabled", False)
     cfg.setdefault("social_links", {})
     return cfg
 
@@ -1155,6 +1156,19 @@ async def welcome_message(interaction: discord.Interaction, text: str):
     await interaction.response.send_message("Begrüßungstext gespeichert. Platzhalter: `{mention}`, `{user}`, `{server}`, `{count}`.", ephemeral=True)
 
 
+@bot.tree.command(name="welcome-bots", description="Schalte Begrüßungsnachrichten für Bots ein oder aus")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(aktiv="Ja = Bots begrüßen, Nein = Bots nicht begrüßen")
+async def welcome_bots(interaction: discord.Interaction, aktiv: bool):
+    cfg = guild_config(interaction.guild_id)
+    cfg["welcome_bots_enabled"] = aktiv
+    save_json(CONFIG_FILE, config)
+    status = "aktiviert" if aktiv else "deaktiviert"
+    await interaction.response.send_message(
+        f"Begrüßungsnachrichten für Bots sind jetzt **{status}**.", ephemeral=True
+    )
+
+
 # ----------------------------- BACKUP -----------------------------
 
 @bot.tree.command(name="backup", description="Erstelle ein ZIP-Backup der Bot-Konfigurations- und Datendateien")
@@ -1496,13 +1510,11 @@ async def on_voice_state_update(
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    if member.bot:
-        # Bot additions are also monitored by the anti-nuke system below.
-        return
     cfg = guild_config(member.guild.id)
-    # Welcome messages are independent from whether anti-raid is enabled.
+    # Welcome messages for bots can be toggled per server with /welcome-bots.
+    should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
     welcome_channel_id = cfg.get("welcome_channel")
-    if welcome_channel_id:
+    if should_welcome and welcome_channel_id:
         welcome_channel = member.guild.get_channel(int(welcome_channel_id))
         # The channel may not be in cache; fetch it as a fallback.
         if welcome_channel is None:
@@ -1527,9 +1539,10 @@ async def on_member_join(member: discord.Member):
                 print(f"[WELCOME] Sending failed in guild {member.guild.id}, channel {welcome_channel_id}: {type(exc).__name__}: {exc}")
         elif welcome_channel is not None:
             print(f"[WELCOME] Configured channel {welcome_channel_id} is not a text channel (guild {member.guild.id}).")
-    else:
+    elif should_welcome:
         print(f"[WELCOME] No welcome channel configured for guild {member.guild.id}. Run /welcome-set in Discord.")
-    if not cfg.get("anti_raid_enabled", True):
+    # Preserve the existing anti-raid behavior: bot joins do not count as member raids.
+    if member.bot or not cfg.get("anti_raid_enabled", True):
         return
 
     now = time.monotonic()
