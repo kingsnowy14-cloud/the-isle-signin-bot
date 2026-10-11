@@ -65,6 +65,7 @@ data.setdefault("mod_cases", {})
 data.setdefault("suggestions", {})
 data.setdefault("events", {})
 data.setdefault("social_alert_seen", {})
+data.setdefault("polls", {})
 # Active voice sessions are kept in memory so bot downtime is not counted.
 _active_voice_sessions = {}
 
@@ -1305,14 +1306,49 @@ async def _refresh_giveaway_participants(payload):
         pass
 
 
+async def _refresh_poll(payload: discord.RawReactionActionEvent):
+    if payload.guild_id is None or (bot.user and payload.user_id == bot.user.id):
+        return
+    record = data.setdefault("polls", {}).get(str(payload.message_id))
+    if not record:
+        return
+    channel = bot.get_channel(payload.channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return
+    try:
+        message = await channel.fetch_message(payload.message_id)
+        counts = []
+        for emoji in record.get("emojis", []):
+            reaction = discord.utils.get(message.reactions, emoji=emoji)
+            counts.append(max(0, (reaction.count - 1) if reaction else 0))
+        total = sum(counts)
+        bars = []
+        for index, option in enumerate(record.get("options", [])):
+            count = counts[index] if index < len(counts) else 0
+            percent = (count / total * 100) if total else 0
+            filled = round(percent / 10)
+            bar = "█" * filled + "░" * (10 - filled)
+            bars.append(f"{record['emojis'][index]} **{option}**\n`{bar}` **{percent:.1f}%** · {count} vote(s)")
+        embed = create_embed(
+            title=f"📊 {record.get('question', 'Abstimmung')}",
+            description="\n\n".join(bars) + f"\n\n**Stimmen insgesamt:** {total}",
+            color=discord.Color.blurple(),
+        )
+        await message.edit(embed=embed)
+    except (discord.Forbidden, discord.NotFound, discord.HTTPException, IndexError):
+        pass
+
+
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     await _refresh_giveaway_participants(payload)
+    await _refresh_poll(payload)
 
 
 @bot.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     await _refresh_giveaway_participants(payload)
+    await _refresh_poll(payload)
 
 
 async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winners_count: int, prize: str):
@@ -1621,13 +1657,28 @@ async def poll_command(interaction: discord.Interaction, frage: str, option1: st
     if len(options) < 2 or len(options) > 4:
         await interaction.response.send_message("Bitte zwei bis vier Optionen angeben.", ephemeral=True)
         return
-    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
-    embed = create_embed(title=f"📊 {frage[:250]}", description="\n".join(f"{emojis[i]} {o[:250]}" for i, o in enumerate(options)), color=discord.Color.blurple())
+    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"][:len(options)]
+    chart_lines = [f"{emojis[i]} **{o[:250]}**\n`{'░' * 10}` **0.0%** · 0 Stimmen" for i, o in enumerate(options)]
+    embed = create_embed(
+        title=f"📊 {frage[:250]}",
+        description="\n\n".join(chart_lines) + "\n\n**Stimmen insgesamt:** 0",
+        color=discord.Color.blurple(),
+    )
     await interaction.response.send_message("Abstimmung erstellt.", ephemeral=True)
     msg = await interaction.channel.send(embed=embed)
-    for emoji in emojis[:len(options)]:
-        try: await msg.add_reaction(emoji)
-        except discord.HTTPException: pass
+    data.setdefault("polls", {})[str(msg.id)] = {
+        "question": frage[:250],
+        "options": [o[:250] for o in options],
+        "emojis": emojis,
+        "guild_id": interaction.guild_id,
+        "channel_id": interaction.channel_id,
+    }
+    save_json(DATA_FILE, data)
+    for emoji in emojis:
+        try:
+            await msg.add_reaction(emoji)
+        except discord.HTTPException:
+            pass
 
 
 @bot.tree.command(name="suggest", description="Reiche einen Community-Vorschlag ein")
