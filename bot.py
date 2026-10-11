@@ -831,7 +831,7 @@ async def ticketbearbeiten(
 
 @bot.tree.command(name="help", description="Zeigt alle aktuell registrierten Befehle")
 async def help_command(interaction: discord.Interaction):
-    """Zeigt automatisch alle registrierten Slash- und Prefix-Befehle."""
+    """Zeigt registrierte Slash- und Prefix-Befehle in navigierbaren Seiten."""
     slash_commands = []
     prefix_commands = []
 
@@ -844,69 +844,76 @@ async def help_command(interaction: discord.Interaction):
                 collect_slash(command.commands, full_name)
             else:
                 description = getattr(command, "description", None) or "Keine Beschreibung vorhanden."
-                slash_commands.append((f"/{full_name}", description))
+                slash_commands.append((f"/{full_name}", description, "Slash"))
 
-    # Read the live command registries on every invocation.
     collect_slash(bot.tree.get_commands())
 
-    # Prefix commands (!...) and their aliases are collected automatically too.
     for command in bot.commands:
         if command.hidden or command.name == "help":
             continue
-        names = [command.name, *command.aliases]
         description = (command.help or command.brief or "Keine Beschreibung vorhanden.").strip()
-        for command_name in names:
-            prefix_commands.append((f"!{command_name}", description))
+        for command_name in [command.name, *command.aliases]:
+            prefix_commands.append((f"!{command_name}", description, "Prefix"))
 
-    slash_commands.sort(key=lambda item: item[0].casefold())
-    prefix_commands.sort(key=lambda item: item[0].casefold())
+    entries = sorted(slash_commands + prefix_commands, key=lambda item: item[0].casefold())
+    if not entries:
+        await interaction.response.send_message("Es sind derzeit keine Befehle registriert.", ephemeral=True)
+        return
 
-    embed = create_embed(
-        title="📖 Hilfe – aktuelle Befehle",
-        description=(
-            "Diese Übersicht wird bei jedem Aufruf direkt aus den registrierten Befehlen erstellt.\n"
-            "**Slash-Befehle** beginnen mit `/`, **Prefix-Befehle** beginnen mit `!`."
-        ),
-        color=discord.Color.blurple(),
-    )
-
-    def make_chunks(items):
-        chunks = []
-        current = ""
-        for name, description in items:
-            line = f"**{name}**\n{description}"
-            if len(line) > 950:
-                line = line[:947] + "..."
-            if current and len(current) + len(line) + 2 > 950:
-                chunks.append(current)
-                current = line
-            else:
-                current = f"{current}\n\n{line}" if current else line
-        if current:
-            chunks.append(current)
-        return chunks
-
-    fields = []
-    slash_chunks = make_chunks(slash_commands)
-    prefix_chunks = make_chunks(prefix_commands)
-    for index, chunk in enumerate(slash_chunks):
-        fields.append((f"🔹 Slash-Befehle {index + 1}", chunk))
-    for index, chunk in enumerate(prefix_chunks):
-        fields.append((f"🟢 Prefix-Befehle (!) {index + 1}", chunk))
-
-    # Discord permits up to 25 fields per embed; send additional pages as follow-ups.
-    pages = [fields[i:i + 25] for i in range(0, max(len(fields), 1), 25)]
-    for page_index, page_fields in enumerate(pages):
-        page_embed = embed.copy()
-        for field_name, field_value in page_fields:
-            page_embed.add_field(name=field_name, value=field_value, inline=False)
-        page_embed.set_footer(
-            text=f"{len(slash_commands)} Slash-Befehle • {len(prefix_commands)} Prefix-Befehle • Seite {page_index + 1}/{len(pages)}"
+    # Keep pages comfortably below Discord's embed field limits.
+    page_size = 10
+    page_entries = [entries[i:i + page_size] for i in range(0, len(entries), page_size)]
+    pages = []
+    for page_number, chunk in enumerate(page_entries, start=1):
+        embed = create_embed(
+            title="📖 Hilfe – aktuelle Befehle",
+            description=(
+                "Alle aktuell registrierten Befehle. Nutze die Buttons zum Blättern.\n"
+                "**Slash-Befehle** beginnen mit `/`, **Prefix-Befehle** beginnen mit `!`."
+            ),
+            color=discord.Color.blurple(),
         )
-        if page_index == 0:
-            await interaction.response.send_message(embed=page_embed, ephemeral=True)
-        else:
-            await interaction.followup.send(embed=page_embed, ephemeral=True)
+        for name, description, kind in chunk:
+            description = description[:1000]
+            embed.add_field(name=f"{name} · {kind}", value=description, inline=False)
+        embed.set_footer(
+            text=f"{len(slash_commands)} Slash • {len(prefix_commands)} Prefix • Seite {page_number}/{len(page_entries)}"
+        )
+        pages.append(embed)
+
+    class HelpPaginationView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=180)
+            self.page = 0
+            self.owner_id = interaction.user.id
+            self._update_buttons()
+
+        def _update_buttons(self):
+            self.previous_button.disabled = self.page <= 0
+            self.next_button.disabled = self.page >= len(pages) - 1
+
+        async def interaction_check(self, button_interaction: discord.Interaction) -> bool:
+            if button_interaction.user.id != self.owner_id:
+                await button_interaction.response.send_message(
+                    "Diese Hilfe-Navigation gehört einer anderen Person.", ephemeral=True
+                )
+                return False
+            return True
+
+        @discord.ui.button(label="◀ Zurück", style=discord.ButtonStyle.secondary)
+        async def previous_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+            self.page = max(0, self.page - 1)
+            self._update_buttons()
+            await button_interaction.response.edit_message(embed=pages[self.page], view=self)
+
+        @discord.ui.button(label="Weiter ▶", style=discord.ButtonStyle.primary)
+        async def next_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
+            self.page = min(len(pages) - 1, self.page + 1)
+            self._update_buttons()
+            await button_interaction.response.edit_message(embed=pages[self.page], view=self)
+
+    view = HelpPaginationView()
+    await interaction.response.send_message(embed=pages[0], view=view, ephemeral=True)
 
 
 # ----------------------------- PREFIX COMMANDS -----------------------------
