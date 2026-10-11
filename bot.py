@@ -822,92 +822,82 @@ async def ticketbearbeiten(
 
 @bot.tree.command(name="help", description="Zeigt alle aktuell registrierten Befehle")
 async def help_command(interaction: discord.Interaction):
-    if interaction.guild is None:
-        await interaction.response.send_message(
-            "Dieser Befehl funktioniert nur auf einem Server.",
-            ephemeral=True,
-        )
-        return
+    """Zeigt automatisch alle registrierten Slash- und Prefix-Befehle."""
+    slash_commands = []
+    prefix_commands = []
 
-    permissions = getattr(interaction.user, "guild_permissions", None)
-    can_manage_server = bool(
-        permissions and (permissions.manage_guild or permissions.administrator)
-    )
-    is_admin = bool(permissions and permissions.administrator)
-
-    # Commands whose definitions require Manage Server permission.
-    manage_server_commands = {
-        "kanal-set", "ticket-log-set", "ticket-support-set", "ticket-category-set",
-        "ticketcreat", "ticketbearbeiten", "security-set-log", "security-set-honeypot",
-        "security-set-raid",
-        "security-set-antinuke", "security-toggle",
-    }
-    administrator_commands = {"security-set-trusted-role"}
-    visible = []
-
-    def collect(commands_list, parent=""):
+    def collect_slash(commands_list, parent=""):
         for command in commands_list:
-            name = f"{parent} {command.name}".strip()
-            if name == "help":
+            full_name = f"{parent} {command.name}".strip()
+            if full_name == "help":
                 continue
-
             if isinstance(command, app_commands.Group):
-                collect(command.commands, name)
-                continue
+                collect_slash(command.commands, full_name)
+            else:
+                description = getattr(command, "description", None) or "Keine Beschreibung vorhanden."
+                slash_commands.append((f"/{full_name}", description))
 
-            root_name = name.split()[0]
-            if root_name in administrator_commands and not is_admin:
-                continue
-            if root_name in manage_server_commands and not can_manage_server:
-                continue
+    # Read the live command registries on every invocation.
+    collect_slash(bot.tree.get_commands())
 
-            description = getattr(command, "description", None) or "Keine Beschreibung vorhanden."
-            visible.append((f"/{name}", description))
+    # Prefix commands (!...) and their aliases are collected automatically too.
+    for command in bot.commands:
+        if command.hidden or command.name == "help":
+            continue
+        names = [command.name, *command.aliases]
+        description = (command.help or command.brief or "Keine Beschreibung vorhanden.").strip()
+        for command_name in names:
+            prefix_commands.append((f"!{command_name}", description))
 
-    # Read the current command tree every time /help is used.
-    collect(bot.tree.get_commands())
-
-    # Prefix commands are not part of Discord's slash-command tree.
-    visible.append(("!stats [@Mitglied]", "Zeigt Nachrichten und Sprachkanal-Zeit von dir oder einem Mitglied."))
-    if can_manage_server:
-        visible.append(("!anmeldepannel", "Erstellt das Server-Anmeldepanel. Alias: !anmeldepanel."))
-
-    visible.sort(key=lambda item: item[0].casefold())
+    slash_commands.sort(key=lambda item: item[0].casefold())
+    prefix_commands.sort(key=lambda item: item[0].casefold())
 
     embed = create_embed(
         title="📖 Hilfe – aktuelle Befehle",
         description=(
-            "Diese Übersicht wird bei jedem Aufruf aus den aktuell registrierten "
-            "Slash-Befehlen erstellt. Prefix-Befehle werden separat aufgeführt."
+            "Diese Übersicht wird bei jedem Aufruf direkt aus den registrierten Befehlen erstellt.\n"
+            "**Slash-Befehle** beginnen mit `/`, **Prefix-Befehle** beginnen mit `!`."
         ),
         color=discord.Color.blurple(),
     )
 
-    # Discord allows at most 25 fields per embed and 1024 chars per field.
-    chunks = []
-    current = ""
-    for name, description in visible:
-        line = f"**{name}**\n{description}"
-        if len(line) > 1000:
-            line = line[:997] + "..."
-        if current and len(current) + len(line) + 2 > 1000:
+    def make_chunks(items):
+        chunks = []
+        current = ""
+        for name, description in items:
+            line = f"**{name}**\n{description}"
+            if len(line) > 950:
+                line = line[:947] + "..."
+            if current and len(current) + len(line) + 2 > 950:
+                chunks.append(current)
+                current = line
+            else:
+                current = f"{current}\n\n{line}" if current else line
+        if current:
             chunks.append(current)
-            current = line
-        else:
-            current = f"{current}\n\n{line}" if current else line
-    if current:
-        chunks.append(current)
+        return chunks
 
-    for index, chunk in enumerate(chunks[:25], start=1):
-        embed.add_field(name=f"📋 Befehle {index}", value=chunk, inline=False)
-    if len(chunks) > 25:
-        embed.add_field(
-            name="Weitere Befehle",
-            value="Es gibt mehr Befehle, als in ein einzelnes Discord-Embed passen.",
-            inline=False,
+    fields = []
+    slash_chunks = make_chunks(slash_commands)
+    prefix_chunks = make_chunks(prefix_commands)
+    for index, chunk in enumerate(slash_chunks):
+        fields.append((f"🔹 Slash-Befehle {index + 1}", chunk))
+    for index, chunk in enumerate(prefix_chunks):
+        fields.append((f"🟢 Prefix-Befehle (!) {index + 1}", chunk))
+
+    # Discord permits up to 25 fields per embed; send additional pages as follow-ups.
+    pages = [fields[i:i + 25] for i in range(0, max(len(fields), 1), 25)]
+    for page_index, page_fields in enumerate(pages):
+        page_embed = embed.copy()
+        for field_name, field_value in page_fields:
+            page_embed.add_field(name=field_name, value=field_value, inline=False)
+        page_embed.set_footer(
+            text=f"{len(slash_commands)} Slash-Befehle • {len(prefix_commands)} Prefix-Befehle • Seite {page_index + 1}/{len(pages)}"
         )
-    embed.set_footer(text=f"{len(visible)} Befehle • Created by KingSnowy")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+        if page_index == 0:
+            await interaction.response.send_message(embed=page_embed, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=page_embed, ephemeral=True)
 
 
 # ----------------------------- PREFIX COMMANDS -----------------------------
