@@ -13,7 +13,6 @@ from datetime import datetime, timezone, timedelta
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
-# Translation support: install deep-translator (see requirements below).
 # Set your bot token as the DISCORD_TOKEN environment variable.
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -477,30 +476,6 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
     await channel.delete(reason=f"Ticket closed by {closed_by}")
 
 
-# ----------------------------- TRANSLATION HELPERS -----------------------------
-
-def normalize_translation_language(language: str) -> str:
-    """Resolve a language name or language code to a GoogleTranslator target code."""
-    from deep_translator import GoogleTranslator
-
-    requested = (language or "").strip().lower()
-    supported = GoogleTranslator(source="auto", target="en").get_supported_languages(as_dict=True)
-    # deep-translator returns {language name: language code}.
-    if requested in supported:
-        return supported[requested]
-    for name, code in supported.items():
-        if requested == code.lower():
-            return code
-    raise ValueError(f"Unbekannte Sprache: {language}")
-
-
-async def translate_text(text: str, target_language: str) -> str:
-    """Run the blocking translation request outside the asyncio event loop."""
-    from deep_translator import GoogleTranslator
-    target_code = normalize_translation_language(target_language)
-    return await asyncio.to_thread(
-        lambda: GoogleTranslator(source="auto", target=target_code).translate(text)
-    )
 
 # ----------------------------- LEVEL SYSTEM -----------------------------
 
@@ -844,91 +819,6 @@ async def ticketbearbeiten(
 
 
 
-@bot.tree.command(name="translate", description="Translate text into any supported language")
-@app_commands.describe(text="Text to translate", sprache="Language name or code, e.g. German, de, Japanese, ja")
-async def translate_command(interaction: discord.Interaction, text: str, sprache: str):
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    try:
-        result = await translate_text(text, sprache)
-    except ImportError:
-        await interaction.followup.send(
-            "Die Übersetzungsbibliothek fehlt. Installiere `deep-translator` (siehe requirements.txt).", ephemeral=True
-        )
-        return
-    except Exception as exc:
-        await interaction.followup.send(
-            f"Übersetzung fehlgeschlagen. Prüfe den Sprachnamen/-code (z. B. `de`, `en`, `ja`). Fehler: `{type(exc).__name__}`",
-            ephemeral=True,
-        )
-        return
-    if len(result) > 1900:
-        result = result[:1900] + "…"
-    await interaction.followup.send(f"**Übersetzung ({discord.utils.escape_markdown(sprache)}):**\n{result}", ephemeral=True)
-
-
-@bot.tree.command(name="channeltranslate", description="Automatically translate this channel into up to five languages")
-@app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(
-    sprache1="First target language (required), e.g. de or German",
-    sprache2="Optional second target language",
-    sprache3="Optional third target language",
-    sprache4="Optional fourth target language",
-    sprache5="Optional fifth target language",
-)
-async def channeltranslate(
-    interaction: discord.Interaction,
-    sprache1: str,
-    sprache2: str = None,
-    sprache3: str = None,
-    sprache4: str = None,
-    sprache5: str = None,
-):
-    if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
-        await interaction.response.send_message("Nutze diesen Befehl in einem normalen Textkanal eines Servers.", ephemeral=True)
-        return
-    raw_languages = [x.strip() for x in [sprache1, sprache2, sprache3, sprache4, sprache5] if x and x.strip()]
-    resolved = []
-    try:
-        for language in raw_languages:
-            code = normalize_translation_language(language)
-            if code not in resolved:
-                resolved.append(code)
-    except ImportError:
-        await interaction.response.send_message("Die Übersetzungsbibliothek fehlt. Installiere `deep-translator`.", ephemeral=True)
-        return
-    except Exception:
-        await interaction.response.send_message(
-            f"Unbekannte Sprache: `{discord.utils.escape_markdown(language)}`. Nutze z. B. `de`, `en`, `fr`, `es`, `ja` oder den englischen Sprachnamen.",
-            ephemeral=True,
-        )
-        return
-    if not resolved:
-        await interaction.response.send_message("Bitte gib mindestens eine Zielsprache an.", ephemeral=True)
-        return
-    cfg = guild_config(interaction.guild.id)
-    cfg.setdefault("channel_translations", {})[str(interaction.channel.id)] = resolved
-    save_json(CONFIG_FILE, config)
-    names = ", ".join(resolved)
-    await interaction.response.send_message(
-        f"Automatische Übersetzung für {interaction.channel.mention} aktiviert. Zielsprachen: **{names}**.\n"
-        "Neue Nachrichten werden als Übersetzungen in diesem Kanal gepostet. Mit `/channeltranslate-stop` kannst du es ausschalten.",
-        ephemeral=True,
-    )
-
-
-@bot.tree.command(name="channeltranslate-stop", description="Disable automatic translation in this channel")
-@app_commands.checks.has_permissions(manage_guild=True)
-async def channeltranslate_stop(interaction: discord.Interaction):
-    if interaction.guild is None or interaction.channel is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur in einem Serverkanal.", ephemeral=True)
-        return
-    cfg = guild_config(interaction.guild.id)
-    removed = cfg.setdefault("channel_translations", {}).pop(str(interaction.channel.id), None)
-    save_json(CONFIG_FILE, config)
-    if removed:
-        await interaction.response.send_message("Automatische Übersetzung in diesem Kanal wurde ausgeschaltet.", ephemeral=True)
-    else:
-        await interaction.response.send_message("Für diesen Kanal war keine automatische Übersetzung aktiviert.", ephemeral=True)
 
 @bot.tree.command(name="help", description="Zeigt alle aktuell registrierten Befehle")
 async def help_command(interaction: discord.Interaction):
@@ -949,7 +839,7 @@ async def help_command(interaction: discord.Interaction):
     manage_server_commands = {
         "kanal-set", "ticket-log-set", "ticket-support-set", "ticket-category-set",
         "ticketcreat", "ticketbearbeiten", "security-set-log", "security-set-honeypot",
-        "channeltranslate", "channeltranslate-stop", "security-set-raid",
+        "security-set-raid",
         "security-set-antinuke", "security-toggle",
     }
     administrator_commands = {"security-set-trusted-role"}
@@ -1315,28 +1205,6 @@ async def on_message(message: discord.Message):
                 )
                 # Do not allow a honeypot message to execute a prefix command.
                 return
-
-    # Automatically translate human messages in configured text channels.
-    if message.guild and not message.author.bot and isinstance(message.channel, discord.TextChannel):
-        channel_languages = guild_config(message.guild.id).get("channel_translations", {}).get(str(message.channel.id), [])
-        source_text = (message.content or "").strip()
-        if channel_languages and source_text and not source_text.startswith(("!", "/")):
-            for target_language in channel_languages[:5]:
-                try:
-                    translated = await translate_text(source_text, target_language)
-                    if translated and translated.strip():
-                        embed = create_embed(
-                            description=translated[:4000],
-                            color=discord.Color.blurple(),
-                            timestamp=message.created_at,
-                        )
-                        embed.set_author(
-                            name=f"{message.author.display_name} · Übersetzung: {target_language}",
-                            icon_url=message.author.display_avatar.url,
-                        )
-                        await message.channel.send(embed=embed, reference=message, mention_author=False)
-                except Exception as exc:
-                    print(f"Auto-translation failed for {target_language}: {type(exc).__name__}: {exc}")
 
     await bot.process_commands(message)
 
