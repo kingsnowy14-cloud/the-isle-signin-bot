@@ -7,6 +7,8 @@ import time
 import asyncio
 import random
 import shutil
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from collections import defaultdict, deque
 import discord
@@ -58,6 +60,11 @@ data = load_json(DATA_FILE, {"languages": {}, "registrations": {}})
 data.setdefault("stats", {})
 data.setdefault("moderation_warnings", {})
 data.setdefault("giveaways", {})
+data.setdefault("daily_claims", {})
+data.setdefault("mod_cases", {})
+data.setdefault("suggestions", {})
+data.setdefault("events", {})
+data.setdefault("social_alert_seen", {})
 # Active voice sessions are kept in memory so bot downtime is not counted.
 _active_voice_sessions = {}
 
@@ -101,6 +108,15 @@ def guild_config(guild_id):
     cfg.setdefault("welcome_message", "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.")
     cfg.setdefault("welcome_bots_enabled", False)
     cfg.setdefault("social_links", {})
+    cfg.setdefault("automod_enabled", False)
+    cfg.setdefault("verify_channel", None)
+    cfg.setdefault("verified_role", None)
+    cfg.setdefault("unverified_role", None)
+    cfg.setdefault("level_roles", {})
+    cfg.setdefault("tempvoice_trigger", None)
+    cfg.setdefault("tempvoice_category", None)
+    cfg.setdefault("social_alerts", {})
+    cfg.setdefault("ticket_auto_close_hours", 0)
     return cfg
 
 
@@ -600,6 +616,14 @@ async def award_message_xp(message):
             color=discord.Color.gold(),
         )
         await message.channel.send(embed=embed)
+        cfg = guild_config(message.guild.id)
+        role_id = cfg.get("level_roles", {}).get(str(new_level))
+        role = message.guild.get_role(int(role_id)) if role_id else None
+        if role and isinstance(message.author, discord.Member):
+            try:
+                await message.author.add_roles(role, reason=f"Level {new_level} erreicht")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
 
 
 @bot.command(name="level", aliases=["lvl"])
@@ -682,6 +706,35 @@ async def leaderboard_command(ctx):
         color=discord.Color.gold(),
     )
     await ctx.reply(embed=embed, mention_author=False)
+
+
+class VerifyView(discord.ui.View):
+    """Persistent verification button; removes the unverified role and grants verified role."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Regeln akzeptieren / Verifizieren", style=discord.ButtonStyle.success, emoji="✅", custom_id="verify:accept")
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        verified_id = cfg.get("verified_role")
+        unverified_id = cfg.get("unverified_role")
+        verified_role = interaction.guild.get_role(int(verified_id)) if verified_id else None
+        unverified_role = interaction.guild.get_role(int(unverified_id)) if unverified_id else None
+        if not verified_role:
+            await interaction.response.send_message("Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.", ephemeral=True)
+            return
+        try:
+            if unverified_role and unverified_role in interaction.user.roles:
+                await interaction.user.remove_roles(unverified_role, reason="Mitglied hat Verifizierung abgeschlossen")
+            if verified_role not in interaction.user.roles:
+                await interaction.user.add_roles(verified_role, reason="Mitglied hat Verifizierung abgeschlossen")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            await interaction.response.send_message(f"Rolle konnte nicht geändert werden: {type(exc).__name__}. Bitte Bot-Rollenposition prüfen.", ephemeral=True)
+            return
+        await interaction.response.send_message("✅ Du bist jetzt verifiziert. Willkommen!", ephemeral=True)
 
 
 # ----------------------------- SLASH COMMANDS -----------------------------
@@ -1032,6 +1085,7 @@ async def moderation_warn(interaction: discord.Interaction, mitglied: discord.Me
     records = _moderation_log(interaction.guild_id).setdefault(str(mitglied.id), [])
     records.append({"moderator_id": interaction.user.id, "reason": grund[:1000], "timestamp": datetime.now(timezone.utc).isoformat()})
     save_json(DATA_FILE, data)
+    case_id = _new_mod_case(interaction.guild_id, mitglied.id, interaction.user.id, "WARN", grund)
     try:
         await mitglied.send(f"Du wurdest auf **{interaction.guild.name}** verwarnt. Grund: {grund[:1000]}")
     except (discord.Forbidden, discord.HTTPException):
@@ -1069,7 +1123,8 @@ async def moderation_timeout(interaction: discord.Interaction, mitglied: discord
         await mitglied.timeout(timedelta(minutes=minuten), reason=f"{interaction.user}: {grund[:400]}")
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.response.send_message(f"Timeout fehlgeschlagen: {type(exc).__name__}. Prüfe Bot-Rechte und Rollenposition.", ephemeral=True); return
-    await interaction.response.send_message(f"🔇 {mitglied.mention} erhielt einen Timeout für **{minuten} Minuten**. Grund: {grund[:500]}")
+    case_id = _new_mod_case(interaction.guild_id, mitglied.id, interaction.user.id, f"TIMEOUT {minuten}m", grund)
+    await interaction.response.send_message(f"🔇 {mitglied.mention} erhielt einen Timeout für **{minuten} Minuten**. Fall `#{case_id}`. Grund: {grund[:500]}")
     await security_log(interaction.guild, "🔇 Timeout", f"Mitglied: {mitglied.mention}\nModerator: {interaction.user.mention}\nDauer: {minuten} Minuten\nGrund: {grund[:800]}", discord.Color.orange())
 
 
@@ -1083,7 +1138,8 @@ async def moderation_untimeout(interaction: discord.Interaction, mitglied: disco
         await mitglied.timeout(None, reason=f"{interaction.user}: {grund[:400]}")
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.response.send_message(f"Timeout konnte nicht entfernt werden: {type(exc).__name__}.", ephemeral=True); return
-    await interaction.response.send_message(f"🔊 Timeout von {mitglied.mention} wurde entfernt.")
+    case_id = _new_mod_case(interaction.guild_id, mitglied.id, interaction.user.id, "UNTIMEOUT", grund)
+    await interaction.response.send_message(f"🔊 Timeout von {mitglied.mention} wurde entfernt. Fall `#{case_id}`.")
 
 
 @bot.tree.command(name="kick", description="Entferne ein Mitglied vom Server")
@@ -1096,7 +1152,8 @@ async def moderation_kick(interaction: discord.Interaction, mitglied: discord.Me
         await mitglied.kick(reason=f"{interaction.user}: {grund[:400]}")
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.response.send_message(f"Kick fehlgeschlagen: {type(exc).__name__}.", ephemeral=True); return
-    await interaction.response.send_message(f"👢 {mitglied} wurde entfernt. Grund: {grund[:500]}")
+    case_id = _new_mod_case(interaction.guild_id, mitglied.id, interaction.user.id, "KICK", grund)
+    await interaction.response.send_message(f"👢 {mitglied} wurde entfernt. Fall `#{case_id}`. Grund: {grund[:500]}")
     await security_log(interaction.guild, "👢 Mitglied gekickt", f"Mitglied: {mitglied} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.orange())
 
 
@@ -1111,7 +1168,8 @@ async def moderation_ban(interaction: discord.Interaction, mitglied: discord.Mem
         await interaction.guild.ban(mitglied, reason=f"{interaction.user}: {grund[:400]}", delete_message_seconds=nachrichten_tage * 86400)
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.response.send_message(f"Ban fehlgeschlagen: {type(exc).__name__}.", ephemeral=True); return
-    await interaction.response.send_message(f"🔨 {mitglied} wurde gebannt. Grund: {grund[:500]}")
+    case_id = _new_mod_case(interaction.guild_id, mitglied.id, interaction.user.id, "BAN", grund)
+    await interaction.response.send_message(f"🔨 {mitglied} wurde gebannt. Fall `#{case_id}`. Grund: {grund[:500]}")
     await security_log(interaction.guild, "🔨 Mitglied gebannt", f"Mitglied: {mitglied} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.red())
 
 
@@ -1357,6 +1415,350 @@ async def social_show(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
+# ----------------------------- EXPANDED COMMUNITY FEATURES -----------------------------
+
+_automod_messages = defaultdict(deque)
+_social_alert_task_started = False
+
+
+def _new_mod_case(guild_id: int, user_id: int, moderator_id: int, action: str, reason: str):
+    cases = data.setdefault("mod_cases", {}).setdefault(str(guild_id), [])
+    case_id = (cases[-1]["id"] + 1) if cases else 1
+    cases.append({"id": case_id, "user_id": user_id, "moderator_id": moderator_id,
+                  "action": action, "reason": reason[:800], "timestamp": datetime.now(timezone.utc).isoformat()})
+    save_json(DATA_FILE, data)
+    return case_id
+
+
+@bot.tree.command(name="modlogs", description="Zeige Moderationsfälle eines Mitglieds")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def modlogs_command(interaction: discord.Interaction, mitglied: discord.Member):
+    cases = [c for c in data.setdefault("mod_cases", {}).get(str(interaction.guild_id), []) if int(c.get("user_id", 0)) == mitglied.id]
+    warnings = _moderation_log(interaction.guild_id).get(str(mitglied.id), [])
+    lines = [f"`#{c['id']}` **{c['action']}** — {c['reason'][:180]} · {c['timestamp'][:10]}" for c in cases[-12:]]
+    lines.extend([f"**Warnung** — {w.get('reason','Kein Grund')[:180]} · {w.get('timestamp','')[:10]}" for w in warnings[-5:]])
+    if not lines:
+        await interaction.response.send_message("Keine gespeicherten Moderationsfälle gefunden.", ephemeral=True)
+        return
+    await interaction.response.send_message(embed=create_embed(title=f"Moderationsakte: {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.orange()), ephemeral=True)
+
+
+@bot.tree.command(name="case", description="Zeige einen Moderationsfall anhand seiner Nummer")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def case_command(interaction: discord.Interaction, nummer: app_commands.Range[int, 1, 1000000]):
+    cases = data.setdefault("mod_cases", {}).get(str(interaction.guild_id), [])
+    case = next((c for c in cases if int(c.get("id", 0)) == nummer), None)
+    if not case:
+        await interaction.response.send_message("Dieser Fall wurde nicht gefunden. Fälle werden ab jetzt gespeichert.", ephemeral=True)
+        return
+    embed = create_embed(title=f"Moderationsfall #{case['id']}", description=f"**Aktion:** {case['action']}\n**Mitglied:** <@{case['user_id']}>\n**Moderator:** <@{case['moderator_id']}>\n**Grund:** {case['reason']}\n**Zeit:** {case['timestamp']}", color=discord.Color.orange())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="unban", description="Entbanne ein Mitglied anhand seiner Discord-ID")
+@app_commands.checks.has_permissions(ban_members=True)
+async def unban_command(interaction: discord.Interaction, user_id: str, grund: str = "Kein Grund angegeben"):
+    if not user_id.isdigit():
+        await interaction.response.send_message("Bitte eine numerische Discord-ID eingeben.", ephemeral=True)
+        return
+    try:
+        user = await bot.fetch_user(int(user_id))
+        await interaction.guild.unban(user, reason=f"{interaction.user}: {grund[:400]}")
+    except discord.NotFound:
+        await interaction.response.send_message("Dieses Mitglied ist nicht gebannt.", ephemeral=True)
+        return
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Entbannen fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
+        return
+    case_id = _new_mod_case(interaction.guild_id, user.id, interaction.user.id, "UNBAN", grund)
+    await interaction.response.send_message(f"🔓 {user} wurde entbannt. Fall `#{case_id}`.", ephemeral=True)
+
+
+@bot.tree.command(name="lockdown", description="Sperre den aktuellen Textkanal für normale Mitglieder")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def lockdown_command(interaction: discord.Interaction):
+    channel = interaction.channel
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("Nur in normalen Textkanälen möglich.", ephemeral=True)
+        return
+    overwrite = channel.overwrites_for(interaction.guild.default_role)
+    cfg = guild_config(interaction.guild_id)
+    saved = cfg.setdefault("lockdown_overwrites", {})
+    saved[str(channel.id)] = overwrite.send_messages
+    overwrite.send_messages = False
+    try:
+        await channel.set_permissions(interaction.guild.default_role, overwrite=overwrite, reason=f"Lockdown von {interaction.user}")
+        save_json(CONFIG_FILE, config)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Lockdown fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
+        return
+    await interaction.response.send_message(f"🔒 {channel.mention} wurde gesperrt. Mit `/unlockdown` kannst du es wieder öffnen.")
+
+
+@bot.tree.command(name="unlockdown", description="Hebt den Lockdown im aktuellen Textkanal auf")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def unlockdown_command(interaction: discord.Interaction):
+    channel = interaction.channel
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("Nur in normalen Textkanälen möglich.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild_id)
+    saved = cfg.setdefault("lockdown_overwrites", {})
+    if str(channel.id) not in saved:
+        await interaction.response.send_message("Für diesen Kanal ist kein gespeicherter Lockdown vorhanden.", ephemeral=True)
+        return
+    previous = saved.pop(str(channel.id))
+    overwrite = channel.overwrites_for(interaction.guild.default_role)
+    overwrite.send_messages = previous
+    try:
+        await channel.set_permissions(interaction.guild.default_role, overwrite=overwrite, reason=f"Lockdown aufgehoben von {interaction.user}")
+        save_json(CONFIG_FILE, config)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Freigabe fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
+        return
+    await interaction.response.send_message(f"🔓 {channel.mention} wurde wieder freigegeben.")
+
+
+@bot.tree.command(name="automod-set", description="Schalte einfachen Anti-Spam-Schutz ein oder aus")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def automod_set(interaction: discord.Interaction, aktiviert: bool):
+    guild_config(interaction.guild_id)["automod_enabled"] = aktiviert
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"AutoMod ist jetzt **{'aktiviert' if aktiviert else 'deaktiviert'}**. Aktiv: 6 Nachrichten innerhalb von 8 Sekunden lösen Löschen und einen 2-Minuten-Timeout aus.", ephemeral=True)
+
+
+@bot.tree.command(name="security-status", description="Zeige den Sicherheitsstatus des Servers")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def security_status(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    embed = create_embed(title="🛡️ Security Center", color=discord.Color.green())
+    embed.add_field(name="Anti-Raid", value="Aktiv" if cfg.get("anti_raid_enabled", True) else "Aus", inline=True)
+    embed.add_field(name="Anti-Nuke", value="Aktiv" if cfg.get("anti_nuke_enabled", True) else "Aus", inline=True)
+    embed.add_field(name="AutoMod", value="Aktiv" if cfg.get("automod_enabled", False) else "Aus", inline=True)
+    embed.add_field(name="Security-Log", value=f"<#{cfg['security_log_channel']}>" if cfg.get("security_log_channel") else "Nicht gesetzt", inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="daily", description="Hole dir einmal alle 24 Stunden XP")
+async def daily_command(interaction: discord.Interaction):
+    if not interaction.guild_id:
+        await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+        return
+    key = f"{interaction.guild_id}:{interaction.user.id}"
+    now = time.time()
+    last = float(data.setdefault("daily_claims", {}).get(key, 0))
+    if now - last < 86400:
+        hours = int((86400 - (now - last)) // 3600)
+        minutes = int(((86400 - (now - last)) % 3600) // 60)
+        await interaction.response.send_message(f"Deine tägliche Belohnung ist bereits abgeholt. Komm in **{hours} Std. {minutes} Min.** wieder.", ephemeral=True)
+        return
+    stats = get_level_xp(interaction.guild_id, interaction.user.id)
+    reward = random.randint(40, 80)
+    stats["xp"] = int(stats.get("xp", 0)) + reward
+    stats["level"] = calculate_level(stats["xp"])
+    data["daily_claims"][key] = now
+    save_json(DATA_FILE, data)
+    await interaction.response.send_message(f"🎁 Du hast **{reward} XP** erhalten! Gesamt: **{stats['xp']} XP**.")
+
+
+@bot.tree.command(name="rank", description="Zeige XP, Level und Fortschritt eines Mitglieds")
+async def rank_command(interaction: discord.Interaction, mitglied: discord.Member = None):
+    target = mitglied or interaction.user
+    stats = get_level_xp(interaction.guild_id, target.id)
+    xp = int(stats.get("xp", 0)); level = calculate_level(xp)
+    start = total_xp_for_level(level); next_level = total_xp_for_level(level + 1)
+    required = max(1, next_level - start); progress = max(0, xp - start)
+    embed = create_embed(title=f"🏆 Rangkarte: {target.display_name}", color=discord.Color.gold())
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.add_field(name="Level", value=str(level), inline=True)
+    embed.add_field(name="XP", value=f"{xp:,}".replace(",", "."), inline=True)
+    embed.add_field(name="Fortschritt", value=f"{min(100, int(progress / required * 100))}% · {progress}/{required} XP", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="level-role-set", description="Vergib eine Rolle automatisch ab einem Level")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def level_role_set(interaction: discord.Interaction, level: app_commands.Range[int, 1, 1000], rolle: discord.Role):
+    if rolle.is_default() or rolle >= interaction.guild.me.top_role:
+        await interaction.response.send_message("Die Bot-Rolle muss über der Zielrolle stehen.", ephemeral=True)
+        return
+    guild_config(interaction.guild_id).setdefault("level_roles", {})[str(level)] = rolle.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"Ab Level **{level}** wird {rolle.mention} vergeben, sobald das Mitglied dieses Level erreicht.", ephemeral=True)
+
+
+@bot.tree.command(name="tempvoice-setup", description="Richte den Beitrittskanal für temporäre Voice-Räume ein")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.VoiceChannel, kategorie: discord.CategoryChannel = None):
+    cfg = guild_config(interaction.guild_id)
+    cfg["tempvoice_trigger"] = trigger.id
+    cfg["tempvoice_category"] = kategorie.id if kategorie else (trigger.category_id or None)
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"Temp-Voice aktiviert. Wenn jemand {trigger.mention} betritt, wird ein eigener Raum erstellt.", ephemeral=True)
+
+
+@bot.tree.command(name="verify-setup", description="Erstellt ein Verifizierungs-Panel und legt Rollen fest")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def verify_setup(interaction: discord.Interaction, kanal: discord.TextChannel, verifiziert: discord.Role, unverified: discord.Role = None):
+    if verifiziert.is_default() or verifiziert >= interaction.guild.me.top_role or (unverified and unverified >= interaction.guild.me.top_role):
+        await interaction.response.send_message("Die Bot-Rolle muss über den Verifizierungsrollen stehen.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild_id)
+    cfg["verify_channel"] = kanal.id
+    cfg["verified_role"] = verifiziert.id
+    cfg["unverified_role"] = unverified.id if unverified else None
+    save_json(CONFIG_FILE, config)
+    embed = create_embed(title="✅ Server-Verifizierung", description="Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren.", color=discord.Color.green())
+    await kanal.send(embed=embed, view=VerifyView())
+    await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
+
+
+@bot.tree.command(name="poll", description="Erstelle eine Abstimmung mit zwei bis vier Optionen")
+@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.describe(frage="Frage der Abstimmung", option1="Erste Option", option2="Zweite Option", option3="Option 3 (optional)", option4="Option 4 (optional)")
+async def poll_command(interaction: discord.Interaction, frage: str, option1: str, option2: str, option3: str = None, option4: str = None):
+    options = [o for o in (option1, option2, option3, option4) if o]
+    if len(options) < 2 or len(options) > 4:
+        await interaction.response.send_message("Bitte zwei bis vier Optionen angeben.", ephemeral=True)
+        return
+    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+    embed = create_embed(title=f"📊 {frage[:250]}", description="\n".join(f"{emojis[i]} {o[:250]}" for i, o in enumerate(options)), color=discord.Color.blurple())
+    await interaction.response.send_message("Abstimmung erstellt.", ephemeral=True)
+    msg = await interaction.channel.send(embed=embed)
+    for emoji in emojis[:len(options)]:
+        try: await msg.add_reaction(emoji)
+        except discord.HTTPException: pass
+
+
+@bot.tree.command(name="suggest", description="Reiche einen Community-Vorschlag ein")
+@app_commands.describe(vorschlag="Dein Vorschlag für den Server")
+async def suggest_command(interaction: discord.Interaction, vorschlag: str):
+    if not interaction.guild_id:
+        await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
+    cfg = guild_config(interaction.guild_id)
+    channel_id = cfg.get("suggestion_channel")
+    channel = interaction.guild.get_channel(int(channel_id)) if channel_id else None
+    data.setdefault("suggestions", {}).setdefault(str(interaction.guild_id), []).append({"user_id": interaction.user.id, "text": vorschlag[:1500], "timestamp": datetime.now(timezone.utc).isoformat()})
+    save_json(DATA_FILE, data)
+    if isinstance(channel, discord.TextChannel):
+        embed = create_embed(title="💡 Neuer Vorschlag", description=vorschlag[:3500], color=discord.Color.blurple())
+        embed.set_author(name=str(interaction.user), icon_url=interaction.user.display_avatar.url)
+        msg = await channel.send(embed=embed)
+        await msg.add_reaction("👍"); await msg.add_reaction("👎")
+        await interaction.response.send_message(f"Vorschlag eingereicht: {msg.jump_url}", ephemeral=True)
+    else:
+        await interaction.response.send_message("Vorschlag gespeichert. Ein Admin kann mit `/suggestion-channel-set` einen öffentlichen Kanal festlegen.", ephemeral=True)
+
+
+@bot.tree.command(name="suggestion-channel-set", description="Lege den Kanal für Community-Vorschläge fest")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def suggestion_channel_set(interaction: discord.Interaction, kanal: discord.TextChannel):
+    guild_config(interaction.guild_id)["suggestion_channel"] = kanal.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"Vorschläge werden in {kanal.mention} veröffentlicht.", ephemeral=True)
+
+
+@bot.tree.command(name="event-create", description="Veröffentliche eine Community-Veranstaltung")
+@app_commands.checks.has_permissions(manage_events=True)
+async def event_create(interaction: discord.Interaction, titel: str, datum: str, beschreibung: str):
+    embed = create_embed(title=f"📅 {titel[:250]}", description=f"**Wann:** {datum[:200]}\n\n{beschreibung[:3000]}\n\nReagiere mit 📅, wenn du teilnehmen möchtest.", color=discord.Color.blurple())
+    await interaction.response.send_message("Event veröffentlicht.", ephemeral=True)
+    msg = await interaction.channel.send(embed=embed)
+    await msg.add_reaction("📅")
+    data.setdefault("events", {}).setdefault(str(interaction.guild_id), []).append({"message_id": msg.id, "title": titel[:250], "date": datum[:200], "created_by": interaction.user.id})
+    save_json(DATA_FILE, data)
+
+
+@bot.tree.command(name="ticket-stats", description="Zeige Support-Ticket-Statistiken")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def ticket_stats(interaction: discord.Interaction):
+    tickets = data.setdefault("tickets", {})
+    guild_tickets = []
+    for channel_id, meta in tickets.items():
+        channel = interaction.guild.get_channel(int(channel_id))
+        if channel is not None:
+            guild_tickets.append(meta)
+    open_count = len(guild_tickets)
+    claimed = sum(1 for t in guild_tickets if t.get("claimed_by"))
+    embed = create_embed(title="🎫 Support-Statistik", color=discord.Color.blurple())
+    embed.add_field(name="Offene/gespeicherte Tickets", value=str(open_count), inline=True)
+    embed.add_field(name="Übernommen", value=str(claimed), inline=True)
+    embed.add_field(name="Ticket-System", value="Aktiv", inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="social-alert-set", description="Konfiguriere YouTube- oder Twitch-Live-Benachrichtigungen")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(plattform=[app_commands.Choice(name="YouTube RSS", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
+@app_commands.describe(plattform="Plattform", kanal="Ankündigungskanal", quelle="YouTube-RSS-URL oder Twitch-Benutzername")
+async def social_alert_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], kanal: discord.TextChannel, quelle: str):
+    if plattform.value == "youtube" and not ("youtube.com/feeds/videos.xml" in quelle or "youtube.com/channel/" in quelle):
+        await interaction.response.send_message("Für YouTube bitte eine RSS-Feed-URL (youtube.com/feeds/videos.xml?channel_id=...) verwenden.", ephemeral=True); return
+    if plattform.value == "twitch" and not re.fullmatch(r"[A-Za-z0-9_]{1,25}", quelle):
+        await interaction.response.send_message("Für Twitch bitte nur den Kanalnamen angeben.", ephemeral=True); return
+    cfg = guild_config(interaction.guild_id)
+    cfg.setdefault("social_alerts", {})[plattform.value] = {"channel_id": kanal.id, "source": quelle, "enabled": True}
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"{plattform.name}-Benachrichtigungen sind eingerichtet. Der Bot prüft neue Inhalte automatisch, wenn er online ist.", ephemeral=True)
+
+
+async def social_alert_loop():
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                for guild in list(bot.guilds):
+                    cfg = guild_config(guild.id)
+                    for platform, alert in cfg.get("social_alerts", {}).items():
+                        if not alert.get("enabled"):
+                            continue
+                        channel = guild.get_channel(int(alert.get("channel_id", 0)))
+                        if not isinstance(channel, discord.TextChannel):
+                            continue
+                        key = f"{guild.id}:{platform}:{alert.get('source')}"
+                        try:
+                            if platform == "youtube":
+                                url = alert.get("source", "")
+                                if "youtube.com/channel/" in url and "feeds/videos.xml" not in url:
+                                    channel_id = url.split("youtube.com/channel/", 1)[1].split("/", 1)[0].split("?", 1)[0]
+                                    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+                                async with session.get(url) as resp:
+                                    if resp.status != 200: continue
+                                    root = ET.fromstring(await resp.text())
+                                ns = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
+                                entry = root.find("atom:entry", ns)
+                                if entry is None: continue
+                                video_id = entry.findtext("yt:videoId", default="", namespaces=ns)
+                                title = entry.findtext("atom:title", default="Neues YouTube-Video", namespaces=ns)
+                                link_el = entry.find("atom:link", ns)
+                                link = link_el.attrib.get("href", "") if link_el is not None else f"https://www.youtube.com/watch?v={video_id}"
+                                seen = data.setdefault("social_alert_seen", {}).get(key)
+                                if video_id and video_id != seen:
+                                    if seen:
+                                        await channel.send(f"📺 Neues Video auf YouTube: **{title[:200]}**\n{link}")
+                                    data["social_alert_seen"][key] = video_id; save_json(DATA_FILE, data)
+                            elif platform == "twitch":
+                                client_id = os.getenv("TWITCH_CLIENT_ID"); token = os.getenv("TWITCH_ACCESS_TOKEN")
+                                if not client_id or not token: continue
+                                name = alert.get("source", "")
+                                headers = {"Client-ID": client_id, "Authorization": f"Bearer {token}"}
+                                async with session.get("https://api.twitch.tv/helix/streams", params={"user_login": name}, headers=headers) as resp:
+                                    if resp.status != 200: continue
+                                    body = await resp.json()
+                                stream = body.get("data", [])
+                                live_id = stream[0].get("id") if stream else None
+                                seen = data.setdefault("social_alert_seen", {}).get(key)
+                                if live_id and live_id != seen:
+                                    await channel.send(f"🔴 **{stream[0].get('user_name', name)} ist jetzt live!**\nhttps://twitch.tv/{name}")
+                                data["social_alert_seen"][key] = live_id; save_json(DATA_FILE, data)
+                        except (aiohttp.ClientError, asyncio.TimeoutError, ET.ParseError, ValueError) as exc:
+                            print(f"[SOCIAL ALERT] {platform} check failed: {type(exc).__name__}")
+        except Exception as exc:
+            print(f"[SOCIAL ALERT] Loop error: {type(exc).__name__}: {exc}")
+        await asyncio.sleep(120)
+
+
 # ----------------------------- SECURITY: HONEYPOT / ANTI-NUKE / ANTI-RAID -----------------------------
 
 # Rolling counters live in memory; they reset when the bot restarts.
@@ -1458,6 +1860,23 @@ async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
     if message.guild and not message.author.bot:
         guild = message.guild
+        cfg = guild_config(guild.id)
+        if cfg.get("automod_enabled", False):
+            now_mono = time.monotonic()
+            key = (guild.id, message.author.id)
+            recent = _automod_messages[key]
+            recent.append(now_mono)
+            while recent and now_mono - recent[0] > 8:
+                recent.popleft()
+            if len(recent) >= 6 and not message.author.guild_permissions.manage_messages:
+                try:
+                    await message.delete()
+                    await message.author.timeout(timedelta(minutes=2), reason="AutoMod: Nachrichten-Spam")
+                    recent.clear()
+                    await security_log(guild, "🛡️ AutoMod: Spam erkannt", f"Mitglied: {message.author.mention} (`{message.author.id}`)\nKanal: {message.channel.mention}\nAktion: Nachrichten gelöscht und 2 Minuten Timeout.", discord.Color.orange())
+                    return
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
 
         # Count messages and award XP with a cooldown.
         stats = get_user_stats(guild.id, message.author.id)
@@ -1475,6 +1894,13 @@ async def on_message(message: discord.Message):
                 color=discord.Color.gold(),
             )
             await message.channel.send(embed=embed)
+            level_role_id = guild_config(guild.id).get("level_roles", {}).get(str(reached_level))
+            level_role = guild.get_role(int(level_role_id)) if level_role_id else None
+            if level_role and isinstance(message.author, discord.Member):
+                try:
+                    await message.author.add_roles(level_role, reason=f"Level {reached_level} erreicht")
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
 
         # Honeypot: log the violation, remove recent messages, then kick.
         cfg = guild_config(guild.id)
@@ -1576,7 +2002,29 @@ async def on_voice_state_update(
     before: discord.VoiceState,
     after: discord.VoiceState,
 ):
-    """Track time spent connected to any voice channel (not just speaking)."""
+    """Track voice time and manage configured temporary voice channels."""
+    cfg = guild_config(member.guild.id)
+    trigger_id = cfg.get("tempvoice_trigger")
+    if after.channel and trigger_id and after.channel.id == int(trigger_id):
+        category_id = cfg.get("tempvoice_category")
+        category = member.guild.get_channel(int(category_id)) if category_id else after.channel.category
+        try:
+            temp_channel = await member.guild.create_voice_channel(
+                name=f"{member.display_name[:80]}'s Raum", category=category,
+                reason="Temporärer Voice-Kanal erstellt")
+            data.setdefault("temp_voice_channels", {})[str(temp_channel.id)] = member.guild.id
+            save_json(DATA_FILE, data)
+            await member.move_to(temp_channel, reason="In eigenen temporären Voice-Kanal verschieben")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[TEMPVOICE] Could not create/move channel: {type(exc).__name__}: {exc}")
+    if before.channel and before.channel.id != (int(trigger_id) if trigger_id else -1):
+        if str(before.channel.id) in data.setdefault("temp_voice_channels", {}) and len(before.channel.members) == 0:
+            try:
+                await before.channel.delete(reason="Temporärer Voice-Kanal ist leer")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+            data["temp_voice_channels"].pop(str(before.channel.id), None)
+            save_json(DATA_FILE, data)
     if member.bot:
         return
 
@@ -1601,6 +2049,13 @@ async def on_voice_state_update(
 @bot.event
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
+    unverified_id = cfg.get("unverified_role")
+    unverified_role = member.guild.get_role(int(unverified_id)) if unverified_id else None
+    if unverified_role and not member.bot:
+        try:
+            await member.add_roles(unverified_role, reason="Neue Mitglieder müssen sich verifizieren")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[VERIFY] Could not assign unverified role: {type(exc).__name__}: {exc}")
     # Welcome messages for bots can be toggled per server with /welcome-bots.
     should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
     welcome_channel_id = cfg.get("welcome_channel")
@@ -1840,6 +2295,7 @@ async def on_ready():
     bot.add_view(RegistrationView())
     bot.add_view(LanguageView())
     bot.add_view(TicketControlView())
+    bot.add_view(VerifyView())
 
     # Restore persistent ticket panel views saved in config.
     for guild_id, cfg in config.items():
@@ -1861,6 +2317,10 @@ async def on_ready():
     except Exception as exc:
         print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    global _social_alert_task_started
+    if not _social_alert_task_started:
+        _social_alert_task_started = True
+        asyncio.create_task(social_alert_loop())
 
 
 @bot.tree.error
