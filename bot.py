@@ -930,13 +930,108 @@ async def channeltranslate_stop(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("Für diesen Kanal war keine automatische Übersetzung aktiviert.", ephemeral=True)
 
-
-@bot.tree.command(name="help", description="Show the commands you are allowed to use")
+@bot.tree.command(name="help", description="Zeigt alle aktuell registrierten Befehle")
 async def help_command(interaction: discord.Interaction):
-    """List commands visible to this member based on the bot's permission rules."""
     if interaction.guild is None:
         await interaction.response.send_message(
-            "Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True
+            "Dieser Befehl funktioniert nur auf einem Server.",
+            ephemeral=True
+        )
+        return
+
+    permissions = interaction.user.guild_permissions
+    is_admin = permissions.administrator
+    can_manage = permissions.manage_guild or is_admin
+
+    visible = []
+
+    def collect(commands_list, parent=""):
+        for command in commands_list:
+            name = f"{parent} {command.name}".strip()
+
+            if name == "help":
+                continue
+
+            # Befehlsgruppen und ihre Unterbefehle berücksichtigen.
+            if isinstance(command, app_commands.Group):
+                collect(command.commands, name)
+                continue
+
+            # Nur Befehle anzeigen, deren Voraussetzungen erfüllt sind.
+            if not is_admin and name.startswith("security-set-trusted-role"):
+                continue
+
+            description = (
+                getattr(command, "description", None)
+                or "Keine Beschreibung vorhanden."
+            )
+
+            visible.append((f"/{name}", description))
+
+    collect(bot.tree.get_commands())
+
+    if not visible:
+        visible.append(("/help", "Zeigt diese Befehlsübersicht."))
+
+    visible.sort(key=lambda item: item[0].casefold())
+
+    embed = create_embed(
+        title="📖 Hilfe – aktuelle Befehle",
+        description=(
+            "Hier findest du die aktuell im Bot registrierten "
+            "Slash-Befehle. Die Liste wird bei jedem Aufruf "
+            "neu erstellt."
+        ),
+        color=discord.Color.blurple()
+    )
+
+    # Befehle in Felder aufteilen, damit Discords Embed-Limits
+    # auch bei einer großen Anzahl von Befehlen eingehalten werden.
+    lines = [
+        f"**{name}**\n{description}"
+        for name, description in visible
+    ]
+
+    chunks = []
+    current = ""
+
+    for line in lines:
+        if len(line) > 950:
+            line = line[:947] + "..."
+
+        if current and len(current) + len(line) + 2 > 950:
+            chunks.append(current)
+            current = line
+        else:
+            current = f"{current}\n\n{line}" if current else line
+
+    if current:
+        chunks.append(current)
+
+    # Maximal 25 Felder pro Discord-Embed.
+    for index, chunk in enumerate(chunks[:25], start=1):
+        embed.add_field(
+            name=f"📋 Befehle {index}",
+            value=chunk,
+            inline=False
+        )
+
+    if len(chunks) > 25:
+        embed.add_field(
+            name="Weitere Befehle",
+            value="Die Liste überschreitet das Discord-Embed-Limit.",
+            inline=False
+        )
+
+    embed.set_footer(
+        text=f"{len(visible)} registrierte Befehle"
+    )
+
+    await interaction.response.send_message(
+        embed=embed,
+        ephemeral=True
+    )
+
         )
         return
 
