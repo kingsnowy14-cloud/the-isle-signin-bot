@@ -935,143 +935,88 @@ async def help_command(interaction: discord.Interaction):
     if interaction.guild is None:
         await interaction.response.send_message(
             "Dieser Befehl funktioniert nur auf einem Server.",
-            ephemeral=True
+            ephemeral=True,
         )
         return
 
-    permissions = interaction.user.guild_permissions
-    is_admin = permissions.administrator
-    can_manage = permissions.manage_guild or is_admin
+    permissions = getattr(interaction.user, "guild_permissions", None)
+    can_manage_server = bool(
+        permissions and (permissions.manage_guild or permissions.administrator)
+    )
+    is_admin = bool(permissions and permissions.administrator)
 
+    # Commands whose definitions require Manage Server permission.
+    manage_server_commands = {
+        "kanal-set", "ticket-log-set", "ticket-support-set", "ticket-category-set",
+        "ticketcreat", "ticketbearbeiten", "security-set-log", "security-set-honeypot",
+        "channeltranslate", "channeltranslate-stop", "security-set-raid",
+        "security-set-antinuke", "security-toggle",
+    }
+    administrator_commands = {"security-set-trusted-role"}
     visible = []
 
     def collect(commands_list, parent=""):
         for command in commands_list:
             name = f"{parent} {command.name}".strip()
-
             if name == "help":
                 continue
 
-            # Befehlsgruppen und ihre Unterbefehle berücksichtigen.
             if isinstance(command, app_commands.Group):
                 collect(command.commands, name)
                 continue
 
-            # Nur Befehle anzeigen, deren Voraussetzungen erfüllt sind.
-            if not is_admin and name.startswith("security-set-trusted-role"):
+            root_name = name.split()[0]
+            if root_name in administrator_commands and not is_admin:
+                continue
+            if root_name in manage_server_commands and not can_manage_server:
                 continue
 
-            description = (
-                getattr(command, "description", None)
-                or "Keine Beschreibung vorhanden."
-            )
-
+            description = getattr(command, "description", None) or "Keine Beschreibung vorhanden."
             visible.append((f"/{name}", description))
 
+    # Read the current command tree every time /help is used.
     collect(bot.tree.get_commands())
 
-    if not visible:
-        visible.append(("/help", "Zeigt diese Befehlsübersicht."))
+    # Prefix commands are not part of Discord's slash-command tree.
+    visible.append(("!stats [@Mitglied]", "Zeigt Nachrichten und Sprachkanal-Zeit von dir oder einem Mitglied."))
+    if can_manage_server:
+        visible.append(("!anmeldepannel", "Erstellt das Server-Anmeldepanel. Alias: !anmeldepanel."))
 
     visible.sort(key=lambda item: item[0].casefold())
 
     embed = create_embed(
         title="📖 Hilfe – aktuelle Befehle",
         description=(
-            "Hier findest du die aktuell im Bot registrierten "
-            "Slash-Befehle. Die Liste wird bei jedem Aufruf "
-            "neu erstellt."
+            "Diese Übersicht wird bei jedem Aufruf aus den aktuell registrierten "
+            "Slash-Befehlen erstellt. Prefix-Befehle werden separat aufgeführt."
         ),
-        color=discord.Color.blurple()
+        color=discord.Color.blurple(),
     )
 
-    # Befehle in Felder aufteilen, damit Discords Embed-Limits
-    # auch bei einer großen Anzahl von Befehlen eingehalten werden.
-    lines = [
-        f"**{name}**\n{description}"
-        for name, description in visible
-    ]
-
+    # Discord allows at most 25 fields per embed and 1024 chars per field.
     chunks = []
     current = ""
-
-    for line in lines:
-        if len(line) > 950:
-            line = line[:947] + "..."
-
-        if current and len(current) + len(line) + 2 > 950:
+    for name, description in visible:
+        line = f"**{name}**\n{description}"
+        if len(line) > 1000:
+            line = line[:997] + "..."
+        if current and len(current) + len(line) + 2 > 1000:
             chunks.append(current)
             current = line
         else:
             current = f"{current}\n\n{line}" if current else line
-
     if current:
         chunks.append(current)
 
-    # Maximal 25 Felder pro Discord-Embed.
     for index, chunk in enumerate(chunks[:25], start=1):
-        embed.add_field(
-            name=f"📋 Befehle {index}",
-            value=chunk,
-            inline=False
-        )
-
+        embed.add_field(name=f"📋 Befehle {index}", value=chunk, inline=False)
     if len(chunks) > 25:
         embed.add_field(
             name="Weitere Befehle",
-            value="Die Liste überschreitet das Discord-Embed-Limit.",
-            inline=False
+            value="Es gibt mehr Befehle, als in ein einzelnes Discord-Embed passen.",
+            inline=False,
         )
-
-    embed.set_footer(
-        text=f"{len(visible)} registrierte Befehle"
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
-
-        )
-        return
-
-    member = interaction.user
-    permissions = getattr(member, "guild_permissions", None)
-    can_manage_server = bool(permissions and (permissions.manage_guild or permissions.administrator))
-    is_admin = bool(permissions and permissions.administrator)
-
-    # These commands have explicit permission checks in their definitions.
-    manage_server_commands = {
-        "kanal-set", "ticket-log-set", "ticket-support-set", "ticket-category-set",
-        "ticketcreat", "ticketbearbeiten", "security-set-log", "security-set-honeypot",
-        "channeltranslate", "channeltranslate-stop",
-        "security-set-raid", "security-set-antinuke", "security-toggle",
-    }
-    administrator_commands = {"security-set-trusted-role"}
-
-    visible = []
-    for command in bot.tree.get_commands():
-        if command.name == "help":
-            continue
-        if command.name in administrator_commands and not is_admin:
-            continue
-        if command.name in manage_server_commands and not can_manage_server:
-            continue
-        visible.append((f"/{command.name}", command.description or "Keine Beschreibung"))
-
-    # Prefix commands are not part of the slash-command tree, so list them separately.
-    visible.append(("!stats [@Mitglied]", "Zeigt Nachrichten und Sprachkanal-Zeit von dir oder einem Mitglied."))
-    if can_manage_server:
-        visible.append(("!anmeldepannel", "Erstellt das Server-Anmeldepanel (Alternative: !anmeldepanel)."))
-
-    embed = create_embed(
-        title="📖 Hilfe – verfügbare Befehle",
-        description="Hier siehst du die Befehle, die du mit deinen aktuellen Server-Berechtigungen nutzen kannst.",
-        color=discord.Color.blurple(),
-    )
-    for command_name, description in visible:
-        embed.add_field(name=command_name, value=description, inline=False)
-    embed.set_footer(text=f"{len(visible)} verfügbare Befehle • Created by KingSnowy")
+    embed.set_footer(text=f"{len(visible)} Befehle • Created by KingSnowy")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
