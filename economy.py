@@ -173,7 +173,11 @@ class Economy(commands.Cog):
 
     @shop.command(name="hinzufuegen", description="Fügt einen Artikel hinzu (Admins)")
     @_admin()
-    async def shop_add(self, interaction: discord.Interaction, name: app_commands.Range[str, 1, 50], preis: app_commands.Range[int, 1, 100000000], beschreibung: str = ""):
+    async def shop_add(self, interaction: discord.Interaction, name: str, preis: app_commands.Range[int, 1, 100000000], beschreibung: str = ""):
+        name = name.strip()[:50]
+        if not name:
+            await interaction.response.send_message("Bitte gib einen Artikelnamen ein.", ephemeral=True)
+            return
         _guild(interaction.guild_id)["shop"][name.lower()] = {"price": preis, "description": beschreibung[:150]}
         _save()
         await interaction.response.send_message(f"Artikel {name} für {_money(preis)} hinzugefügt.", ephemeral=True)
