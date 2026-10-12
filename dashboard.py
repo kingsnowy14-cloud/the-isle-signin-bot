@@ -10,6 +10,90 @@ import html
 from aiohttp import web
 
 
+
+def register_module_endpoint(app: web.Application, bot):
+    """Expose public module metadata without secrets or server configuration."""
+    from datetime import datetime, timezone
+    import re
+
+    module_info = {
+        "moderation": ("Moderation", "Moderationsbefehle und Serververwaltung."),
+        "tickets": ("Tickets", "Ticket-System und Support-Einstellungen."),
+        "anti-raid": ("Anti-Raid", "Schutz vor Join-Raids und verdächtigen Beitritten."),
+        "anti-nuke": ("Anti-Nuke", "Schutz vor schädlichen Serveränderungen."),
+        "core-commands": ("Core-Befehle", "Allgemeine IronWolf-Befehle."),
+    }
+
+    def classify(name, description):
+        text = re.sub(r"[^a-z0-9]+", "-", f"{name} {description}".casefold())
+        if any(k in text for k in ("anti-nuke", "antinuke", "trusted-role", "security-set-antinuke")):
+            return "anti-nuke"
+        if any(k in text for k in ("anti-raid", "raid", "honeypot", "security-toggle")):
+            return "anti-raid"
+        if any(k in text for k in ("ticket", "support", "claim", "close-ticket")):
+            return "tickets"
+        if any(k in text for k in ("ban", "kick", "timeout", "mute", "unmute", "warn", "purge", "clear", "moderation", "slowmode")):
+            return "moderation"
+        return "core-commands"
+
+    async def modules(request: web.Request):
+        grouped = {key: [] for key in module_info}
+        seen = set()
+
+        # Slash commands and subcommands
+        for command in bot.tree.get_commands():
+            candidates = command.walk_commands() if hasattr(command, "walk_commands") else [command]
+            for item in candidates:
+                name = getattr(item, "qualified_name", getattr(item, "name", "Befehl"))
+                desc = (getattr(item, "description", "") or getattr(item, "brief", "") or "").strip()
+                key = ("slash", name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                grouped[classify(name, desc)].append({
+                    "name": name,
+                    "description": (desc.splitlines() or ["Keine Beschreibung vorhanden."])[0][:180],
+                    "type": "slash",
+                })
+
+        # Prefix commands
+        for command in bot.walk_commands():
+            if getattr(command, "hidden", False):
+                continue
+            name = getattr(command, "qualified_name", getattr(command, "name", "Befehl"))
+            desc = (getattr(command, "help", None) or getattr(command, "brief", None) or "").strip()
+            key = ("prefix", name)
+            if key in seen:
+                continue
+            seen.add(key)
+            grouped[classify(name, desc)].append({
+                "name": "!" + name,
+                "description": (desc.splitlines() or ["Keine Beschreibung vorhanden."])[0][:180],
+                "type": "prefix",
+            })
+
+        modules_out = []
+        for module_id, (name, description) in module_info.items():
+            commands = grouped[module_id]
+            modules_out.append({
+                "id": module_id,
+                "name": name,
+                "description": description,
+                "enabled": True,
+                "detected": bool(commands),
+                "commandCount": len(commands),
+                "commands": commands,
+            })
+
+        return web.json_response({
+            "name": "IronWolf",
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "modules": modules_out,
+            "totalCommands": sum(len(items) for items in grouped.values()),
+        }, headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"})
+
+    app.router.add_get("/api/modules", modules)
+
 def start_dashboard(bot, config, save_json, guild_config):
     password = os.getenv("DASHBOARD_PASSWORD", "")
     if not password:
@@ -22,6 +106,7 @@ def start_dashboard(bot, config, save_json, guild_config):
     cookie_value = hashlib.sha256((password + "|KingSnowyDashboard-v1").encode()).hexdigest()
     app = web.Application(client_max_size=1024 * 1024)
     register_module_endpoint(app, bot)
+
     def authed(request):
         return hmac.compare_digest(request.cookies.get("ks_dashboard", ""), cookie_value)
 
@@ -173,161 +258,3 @@ document.getElementById('all-off').addEventListener('click',()=>{{if(!confirm('W
             print(f'Could not start dashboard web server: {type(exc).__name__}: {exc}', flush=True)
 
     asyncio.get_running_loop().create_task(runner_start_guarded())
-
-"""Beispiel für discord.py + aiohttp.
-
-In die vorhandene aiohttp-Dashboard-App integrieren und die Route /api/modules
-öffentlich lesbar machen (keine Bot-Token, Userdaten oder Serverkonfiguration zurückgeben).
-Die Website pollt diesen Endpoint jede Minute.
-"""
-from datetime import datetime, timezone
-from aiohttp import web
-
-
-
-from datetime import datetime, timezone
-from aiohttp import web
-import re
-
-
-def register_module_endpoint(app: web.Application, bot):
-
-    MODULES = {
-        "moderation": {
-            "name": "Moderation",
-            "description": "Moderationsbefehle und Serververwaltung.",
-            "keywords": (
-                "ban", "kick", "timeout", "mute", "unmute",
-                "warn", "purge", "clear", "moderation",
-                "member", "user", "slowmode"
-            ),
-        },
-        "tickets": {
-            "name": "Tickets",
-            "description": "Ticket-System und Support-Einstellungen.",
-            "keywords": (
-                "ticket", "support", "claim", "close-ticket"
-            ),
-        },
-        "anti-raid": {
-            "name": "Anti-Raid",
-            "description": "Schutz vor Join-Raids und verdächtigen Beitritten.",
-            "keywords": (
-                "raid", "honeypot", "security-toggle"
-            ),
-        },
-        "anti-nuke": {
-            "name": "Anti-Nuke",
-            "description": "Schutz vor schädlichen Serveränderungen.",
-            "keywords": (
-                "antinuke", "anti-nuke", "trusted-role",
-                "security-set-log", "security-set-antinuke"
-            ),
-        },
-        "core-commands": {
-            "name": "Core-Befehle",
-            "description": "Allgemeine IronWolf-Befehle.",
-            "keywords": (),
-        },
-    }
-
-    def classify(command_name, description):
-        text = f"{command_name} {description}".casefold()
-        normalized = re.sub(r"[^a-z0-9]+", "-", text)
-
-        # Sicherheitsbefehle zuerst zuordnen, damit sie nicht
-        # versehentlich als gewöhnliche Moderation erscheinen.
-        if any(k in normalized for k in (
-            "antinuke", "anti-nuke", "trusted-role",
-            "security-set-antinuke"
-        )):
-            return "anti-nuke"
-
-        if any(k in normalized for k in (
-            "raid", "honeypot", "security-toggle"
-        )):
-            return "anti-raid"
-
-        if any(k in normalized for k in (
-            "ticket", "support", "claim", "close-ticket"
-        )):
-            return "tickets"
-
-        if any(k in normalized for k in MODULES["moderation"]["keywords"]):
-            return "moderation"
-
-        return "core-commands"
-
-    async def modules(request: web.Request):
-        grouped = {key: [] for key in MODULES}
-
-        # Slash-Befehle einschließlich Unterbefehlen erkennen.
-        for command in bot.tree.get_commands():
-            commands = (
-                command.walk_commands()
-                if hasattr(command, "walk_commands")
-                else [command]
-            )
-
-            for item in commands:
-                name = getattr(item, "qualified_name", item.name)
-                description = (
-                    getattr(item, "description", "")
-                    or getattr(item, "brief", "")
-                    or ""
-                )
-
-                category = classify(name, description)
-
-                grouped[category].append({
-                    "name": name,
-                    "description": str(description)[:180],
-                    "type": "slash",
-                })
-
-        # Prefix-Befehle wie !stats ebenfalls erfassen.
-        for command in bot.walk_commands():
-            if getattr(command, "hidden", False):
-                continue
-
-            name = getattr(command, "qualified_name", command.name)
-            description = getattr(command, "help", None) or ""
-            category = classify(name, description)
-
-            grouped[category].append({
-                "name": "!" + name,
-                "description": str(description).splitlines()[0][:180],
-                "type": "prefix",
-            })
-
-        entries = []
-
-        for module_id, info in MODULES.items():
-            commands = grouped[module_id]
-
-            entries.append({
-                "id": module_id,
-                "name": info["name"],
-                "description": info["description"],
-                "enabled": True,
-                "detected": bool(commands),
-                "commandCount": len(commands),
-                "commands": commands,
-            })
-
-        return web.json_response(
-            {
-                "name": "IronWolf",
-                "updatedAt": datetime.now(timezone.utc).isoformat(),
-                "modules": entries,
-                "totalCommands": sum(
-                    len(commands) for commands in grouped.values()
-                ),
-            },
-            headers={
-                "Cache-Control": "no-store",
-                "Access-Control-Allow-Origin": "*",
-            },
-        )
-
-    app.router.add_get("/api/modules", modules)
