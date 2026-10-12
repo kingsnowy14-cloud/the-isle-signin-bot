@@ -107,7 +107,7 @@ class IronWolfAI(commands.Cog):
         self,
         interaction: discord.Interaction,
         thema: app_commands.Range[str, 1, 250],
-        details: app_commands.Range[str, 0, 700] = "",
+        details: str = "",
     ):
         prompt = f"Thema: {thema}\nZusatzdetails: {details or 'Keine vorgegeben'}"
         await self.respond(
