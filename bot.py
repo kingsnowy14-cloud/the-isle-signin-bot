@@ -2819,6 +2819,15 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load IronWolf feature suite: {type(exc).__name__}: {exc}")
 
+    # Load the opt-in security suite once before slash-command sync.
+    if not getattr(bot, "_security_suite_loaded", False):
+        try:
+            await bot.load_extension("security_suite")
+            bot._security_suite_loaded = True
+            print("IronWolf security suite loaded.")
+        except Exception as exc:
+            print(f"Could not load IronWolf security suite: {type(exc).__name__}: {exc}")
+
     # Load the economy extension once before slash-command sync.
     if not getattr(bot, "_economy_loaded", False):
         try:
