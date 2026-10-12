@@ -1,13 +1,14 @@
 import json
 import os
 from pathlib import Path
+from storage import data_path
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 
-PANEL_CONFIG_FILE = Path("ausweis_panels.json")
+PANEL_CONFIG_FILE = data_path("ausweis_panels.json")
 
 
 def load_panels() -> list[dict]:
