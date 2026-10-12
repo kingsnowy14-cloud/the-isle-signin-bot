@@ -24,11 +24,12 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
         max_length=60,
     )
 
-    def __init__(self, bot: commands.Bot, guild_id: int, member_id: int):
+    def __init__(self, bot: commands.Bot, guild_id: int, member_id: int, channel_id: int):
         super().__init__()
         self.bot = bot
         self.guild_id = guild_id
         self.member_id = member_id
+        self.channel_id = channel_id
 
     async def on_submit(self, interaction: discord.Interaction):
         if interaction.user.id != self.member_id:
@@ -51,18 +52,10 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
             )
             return
 
-        raw_channel_id = os.getenv("AUSWEIS_CHANNEL_ID", "").strip()
-        if not raw_channel_id.isdigit():
-            await interaction.response.send_message(
-                "Der Ausweis-Kanal ist noch nicht eingerichtet. Bitte einen Admin, "
-                "AUSWEIS_CHANNEL_ID in Railway zu setzen.", ephemeral=True
-            )
-            return
-
-        channel = guild.get_channel(int(raw_channel_id))
+        channel = guild.get_channel(self.channel_id)
         if channel is None:
             try:
-                channel = await guild.fetch_channel(int(raw_channel_id))
+                channel = await guild.fetch_channel(self.channel_id)
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 channel = None
 
@@ -102,11 +95,12 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
 
 
 class OpenAusweisFormView(discord.ui.View):
-    def __init__(self, bot: commands.Bot, guild_id: int, member_id: int):
+    def __init__(self, bot: commands.Bot, guild_id: int, member_id: int, channel_id: int):
         super().__init__(timeout=300)
         self.bot = bot
         self.guild_id = guild_id
         self.member_id = member_id
+        self.channel_id = channel_id
 
     @discord.ui.button(label="Formular öffnen", emoji="📝", style=discord.ButtonStyle.primary)
     async def open_form(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -116,14 +110,15 @@ class OpenAusweisFormView(discord.ui.View):
             )
             return
         await interaction.response.send_modal(
-            AusweisModal(self.bot, self.guild_id, self.member_id)
+            AusweisModal(self.bot, self.guild_id, self.member_id, self.channel_id)
         )
 
 
 class AusweisPanelView(discord.ui.View):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot, channel_id: int):
         super().__init__(timeout=None)
         self.bot = bot
+        self.channel_id = channel_id
 
     @discord.ui.button(
         label="Ausweis beantragen",
@@ -142,7 +137,7 @@ class AusweisPanelView(discord.ui.View):
             await dm.send(
                 f"Hallo! Du beantragst einen Personal-Ausweis für **{interaction.guild.name}**. "
                 "Klicke auf den Button, um das Formular privat auszufüllen.",
-                view=OpenAusweisFormView(self.bot, interaction.guild.id, interaction.user.id),
+                view=OpenAusweisFormView(self.bot, interaction.guild.id, interaction.user.id, self.channel_id),
             )
         except (discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message(
@@ -161,15 +156,17 @@ class Ausweis(commands.Cog):
         self.bot = bot
 
     async def cog_load(self):
-        self.bot.add_view(AusweisPanelView(self.bot))
+        # Each published panel has its own selected destination channel.
+        # Views are registered when the panel is created; Discord messages keep their buttons.
 
     @app_commands.command(
         name="ausweis",
-        description="Erstellt das Panel zur Beantragung von Roleplay-Ausweisen",
+        description="Erstellt ein Ausweis-Panel und wählt den Veröffentlichungskanal aus",
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    async def ausweis(self, interaction: discord.Interaction):
+    @app_commands.describe(kanal="Kanal, in dem fertige Ausweise veröffentlicht werden")
+    async def ausweis(self, interaction: discord.Interaction, kanal: discord.TextChannel):
         embed = discord.Embed(
             title="🪪 Personal-Ausweis beantragen",
             description=(
@@ -179,7 +176,9 @@ class Ausweis(commands.Cog):
             ),
             color=discord.Color.dark_blue(),
         )
-        await interaction.response.send_message(embed=embed, view=AusweisPanelView(self.bot))
+        await interaction.response.send_message(
+            embed=embed, view=AusweisPanelView(self.bot, kanal.id)
+        )
 
 
 async def setup(bot: commands.Bot):
