@@ -2271,8 +2271,39 @@ async def build_bot_welcome_embeds(guild: discord.Guild):
     return embeds
 
 
+async def notify_bot_server_change(guild: discord.Guild, joined: bool):
+    """Send bot join/leave notices to a configured home-server text channel."""
+    channel_id = os.getenv("IRONWOLF_LOG_CHANNEL_ID", "").strip()
+    if not channel_id.isdigit():
+        print("[SERVER-LOG] Set IRONWOLF_LOG_CHANNEL_ID to the destination text channel ID.")
+        return
+    try:
+        channel = bot.get_channel(int(channel_id))
+        if channel is None:
+            channel = await bot.fetch_channel(int(channel_id))
+        if not hasattr(channel, "send"):
+            print(f"[SERVER-LOG] Configured channel {channel_id} cannot receive messages.")
+            return
+        embed = discord.Embed(
+            title="🟢 IronWolf wurde hinzugefügt" if joined else "🔴 IronWolf wurde entfernt",
+            description=(
+                f"**Server:** {discord.utils.escape_markdown(guild.name)}\n"
+                f"**Server-ID:** `{guild.id}`\n"
+                f"**Mitglieder:** {guild.member_count if guild.member_count is not None else 'unbekannt'}"
+            ),
+            color=discord.Color.green() if joined else discord.Color.red(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_footer(text="IronWolf · Server-Protokoll")
+        await channel.send(embed=embed)
+        print(f"[SERVER-LOG] Sent {'join' if joined else 'leave'} notice for guild {guild.id}.")
+    except (discord.HTTPException, discord.Forbidden, ValueError) as exc:
+        print(f"[SERVER-LOG] Could not send server change notice: {type(exc).__name__}: {exc}")
+
+
 @bot.event
 async def on_guild_join(guild: discord.Guild):
+    await notify_bot_server_change(guild, joined=True)
     """Thank the server owner by DM and post the command list in the new server."""
     embeds = await build_bot_welcome_embeds(guild)
 
@@ -2303,6 +2334,12 @@ async def on_guild_join(guild: discord.Guild):
         print(f"[WELCOME] Posted IronWolf welcome and command list in guild {guild.id}.")
     except (discord.Forbidden, discord.HTTPException) as exc:
         print(f"[WELCOME] Could not post welcome in guild {guild.id}: {type(exc).__name__}: {exc}")
+
+
+@bot.event
+async def on_guild_remove(guild: discord.Guild):
+    """Notify the configured home server when IronWolf leaves a guild."""
+    await notify_bot_server_change(guild, joined=False)
 
 
 @bot.event
