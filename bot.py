@@ -2371,6 +2371,15 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load personal ID card extension: {type(exc).__name__}: {exc}")
 
+    # Load the persistent applications panel and review workflow before slash-command sync.
+    if not getattr(bot, "_applications_loaded", False):
+        try:
+            await bot.load_extension("applications")
+            bot._applications_loaded = True
+            print("IronWolf applications extension loaded.")
+        except Exception as exc:
+            print(f"Could not load applications extension: {type(exc).__name__}: {exc}")
+
     # Load the economy extension once before slash-command sync.
     if not getattr(bot, "_economy_loaded", False):
         try:
