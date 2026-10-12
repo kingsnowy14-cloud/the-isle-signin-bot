@@ -34,9 +34,9 @@ def credit(g, u, gross):
 
 class BankView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=300)
+        super().__init__(timeout=None)
 
-    @discord.ui.button(label="Mein Konto ansehen", style=discord.ButtonStyle.primary, emoji="🏦")
+    @discord.ui.button(label="Mein Konto ansehen", style=discord.ButtonStyle.primary, emoji="🏦", custom_id="ironwolf:bank:account")
     async def show_account(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild_id is None:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
@@ -111,19 +111,21 @@ class ShopBuyButton(discord.ui.Button):
 
 
 class ShopView(discord.ui.View):
-    def __init__(self, guild_id: int, items: dict):
-        super().__init__(timeout=300)
-        self.guild_id = guild_id
-        self.items = items
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    @discord.ui.button(label="Artikel kaufen", style=discord.ButtonStyle.success, emoji="🛒")
+    @discord.ui.button(label="Artikel kaufen", style=discord.ButtonStyle.success, emoji="🛒", custom_id="ironwolf:shop:buy")
     async def open_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not self.items:
+        if interaction.guild_id is None:
+            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            return
+        items = dict(guild(interaction.guild_id)["shop"])
+        if not items:
             await interaction.response.send_message("Der Shop ist noch leer.", ephemeral=True)
             return
         await interaction.response.send_message(
             "Wähle einen Artikel aus und drücke danach auf **Jetzt kaufen**:",
-            view=ShopPurchaseView(self.guild_id, self.items),
+            view=ShopPurchaseView(interaction.guild_id, items),
             ephemeral=True
         )
 
@@ -232,7 +234,7 @@ class Economy(commands.Cog):
             for name, item in list(items.items())[:25]:
                 e.add_field(name=name[:256], value=f"Preis: **{money(item['price'])}**\n{item.get('description') or 'Keine Beschreibung'}", inline=True)
         e.set_footer(text="Kaufen: /shop-kaufen")
-        await interaction.response.send_message(embed=e, view=ShopView(interaction.guild_id, dict(items)), ephemeral=False)
+        await interaction.response.send_message(embed=e, view=ShopView(), ephemeral=False)
 
     @app_commands.command(name="shop-hinzufuegen", description="Shopartikel hinzufügen (Admin)")
     @admin()
@@ -264,3 +266,6 @@ class Economy(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
+    # Persistent views: these buttons continue working after bot restarts.
+    bot.add_view(BankView())
+    bot.add_view(ShopView())
