@@ -4,7 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 
 
-class AusweisModal(discord.ui.Modal, title="Personal-Ausweis erstellen"):
+class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
     rp_name = discord.ui.TextInput(
         label="Name im Roleplay",
         placeholder="Vorname Nachname",
@@ -24,11 +24,30 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis erstellen"):
         max_length=60,
     )
 
+    def __init__(self, bot: commands.Bot, guild_id: int, member_id: int):
+        super().__init__()
+        self.bot = bot
+        self.guild_id = guild_id
+        self.member_id = member_id
+
     async def on_submit(self, interaction: discord.Interaction):
-        if interaction.guild is None:
+        if interaction.user.id != self.member_id:
             await interaction.response.send_message(
-                "Der Ausweis kann nur auf einem Server erstellt werden.",
-                ephemeral=True,
+                "Dieses Formular ist für ein anderes Mitglied bestimmt.", ephemeral=True
+            )
+            return
+
+        guild = self.bot.get_guild(self.guild_id)
+        if guild is None:
+            await interaction.response.send_message(
+                "Der ursprüngliche Server ist nicht verfügbar.", ephemeral=True
+            )
+            return
+
+        member = guild.get_member(self.member_id)
+        if member is None:
+            await interaction.response.send_message(
+                "Du bist nicht mehr Mitglied des ursprünglichen Servers.", ephemeral=True
             )
             return
 
@@ -36,15 +55,14 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis erstellen"):
         if not raw_channel_id.isdigit():
             await interaction.response.send_message(
                 "Der Ausweis-Kanal ist noch nicht eingerichtet. Bitte einen Admin, "
-                "die Railway-Variable AUSWEIS_CHANNEL_ID mit der Kanal-ID zu setzen.",
-                ephemeral=True,
+                "AUSWEIS_CHANNEL_ID in Railway zu setzen.", ephemeral=True
             )
             return
 
-        channel = interaction.guild.get_channel(int(raw_channel_id))
+        channel = guild.get_channel(int(raw_channel_id))
         if channel is None:
             try:
-                channel = await interaction.guild.fetch_channel(int(raw_channel_id))
+                channel = await guild.fetch_channel(int(raw_channel_id))
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 channel = None
 
@@ -60,26 +78,81 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis erstellen"):
             description="Offizieller Roleplay-Ausweis",
             color=discord.Color.dark_blue(),
         )
-        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        embed.set_thumbnail(url=member.display_avatar.url)
         embed.add_field(name="Name", value=str(self.rp_name.value).strip(), inline=True)
         embed.add_field(name="Geburtsdatum", value=str(self.birth_date.value).strip(), inline=True)
         embed.add_field(name="Dienstgrad / Beruf", value=str(self.role.value).strip(), inline=False)
-        embed.add_field(name="Discord-Mitglied", value=interaction.user.mention, inline=False)
-        embed.set_footer(text=f"IronWolf RP • Ausweisinhaber-ID: {interaction.user.id}")
+        embed.add_field(name="Discord-Mitglied", value=member.mention, inline=False)
+        embed.set_footer(text=f"IronWolf RP • Ausweisinhaber-ID: {member.id}")
 
         try:
             await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         except (discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message(
-                "Ich konnte den Ausweis nicht senden. Prüfe, ob der Bot im Ausweis-Kanal "
-                "Nachrichten senden und Embeds einbetten darf.",
+                "Ich konnte den Ausweis nicht veröffentlichen. Bitte prüfe die Bot-Rechte "
+                "im Ausweis-Kanal (Nachrichten senden und Links einbetten).",
                 ephemeral=True,
             )
             return
 
         await interaction.response.send_message(
-            f"✅ Dein Personal-Ausweis wurde erstellt und in {channel.mention} veröffentlicht.",
+            f"✅ Dein Ausweis wurde erstellt und in **{guild.name}** veröffentlicht.",
             ephemeral=True,
+        )
+
+
+class OpenAusweisFormView(discord.ui.View):
+    def __init__(self, bot: commands.Bot, guild_id: int, member_id: int):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.guild_id = guild_id
+        self.member_id = member_id
+
+    @discord.ui.button(label="Formular öffnen", emoji="📝", style=discord.ButtonStyle.primary)
+    async def open_form(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.member_id:
+            await interaction.response.send_message(
+                "Dieser Formular-Button gehört zu einer anderen Person.", ephemeral=True
+            )
+            return
+        await interaction.response.send_modal(
+            AusweisModal(self.bot, self.guild_id, self.member_id)
+        )
+
+
+class AusweisPanelView(discord.ui.View):
+    def __init__(self, bot: commands.Bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(
+        label="Ausweis beantragen",
+        emoji="🪪",
+        style=discord.ButtonStyle.primary,
+        custom_id="ironwolf:ausweis:request",
+    )
+    async def request_ausweis(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "Bitte nutze diesen Button auf dem IronWolf-Server.", ephemeral=True
+            )
+            return
+        try:
+            dm = await interaction.user.create_dm()
+            await dm.send(
+                f"Hallo! Du beantragst einen Personal-Ausweis für **{interaction.guild.name}**. "
+                "Klicke auf den Button, um das Formular privat auszufüllen.",
+                view=OpenAusweisFormView(self.bot, interaction.guild.id, interaction.user.id),
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.response.send_message(
+                "Ich kann dir keine DM senden. Aktiviere Direktnachrichten für diesen Server "
+                "und drücke den Button erneut.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "📩 Ich habe dir eine DM mit dem Formular-Button geschickt.", ephemeral=True
         )
 
 
@@ -87,10 +160,26 @@ class Ausweis(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="ausweis", description="Erstelle deinen persönlichen Roleplay-Ausweis")
+    async def cog_load(self):
+        self.bot.add_view(AusweisPanelView(self.bot))
+
+    @app_commands.command(
+        name="ausweis",
+        description="Erstellt das Panel zur Beantragung von Roleplay-Ausweisen",
+    )
     @app_commands.guild_only()
+    @app_commands.checks.has_permissions(administrator=True)
     async def ausweis(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(AusweisModal())
+        embed = discord.Embed(
+            title="🪪 Personal-Ausweis beantragen",
+            description=(
+                "Du möchtest einen offiziellen Roleplay-Ausweis? "
+                "Klicke auf **Ausweis beantragen**. Der Bot sendet dir eine DM; "
+                "dort kannst du das Formular öffnen und ausfüllen."
+            ),
+            color=discord.Color.dark_blue(),
+        )
+        await interaction.response.send_message(embed=embed, view=AusweisPanelView(self.bot))
 
 
 async def setup(bot: commands.Bot):
