@@ -102,7 +102,7 @@ class IronWolfAI(commands.Cog):
 
     @app_commands.command(name="ki-eventidee", description="Erstellt eine passende The-Isle-/RP-Eventidee")
     @app_commands.guild_only()
-    @app_commands.describe thema="Thema, Dinosaurier oder gewünschte Stimmung", details="Optionale Einschränkungen oder Zielgruppe")
+    @app_commands.describe(thema="Thema, Dinosaurier oder gewünschte Stimmung", details="Optionale Einschränkungen oder Zielgruppe")
     async def ki_eventidee(
         self,
         interaction: discord.Interaction,
