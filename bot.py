@@ -2595,7 +2595,7 @@ class Applications(commands.Cog):
             embed.add_field(name=safe_text(answer["question"], 256), value=safe_text(answer["answer"], 1000) or "—", inline=False)
         embed.set_footer(text="Bewerbungs-ID: " + app_id)
         try:
-            review_message = await channel.send(embed=embed, view=ApplicationReviewView(self, app_id), allowed_mentions=discord.AllowedMentions.none())
+            ping_role_id = settings.get("ping_role_id")\n            review_message = await channel.send(content=f"<@&{ping_role_id}>" if ping_role_id else None, embed=embed, view=ApplicationReviewView(self, app_id), allowed_mentions=discord.AllowedMentions(roles=True, users=False, everyone=False))
             row["review_message_id"] = review_message.id
             save_records()
         except (discord.Forbidden, discord.HTTPException):
@@ -2632,6 +2632,7 @@ class Applications(commands.Cog):
         frage4="Vierte Formularfrage (optional)",
         frage5="Fünfte Formularfrage (optional)",
         review_rolle="Optionale Rolle, die Bewerbungen prüfen darf",
+        ping_rolle="Rolle, die bei jeder neuen Bewerbung angepingt wird",
     )
     async def application_panel(
         self, interaction: discord.Interaction, kanal: discord.TextChannel,
@@ -2639,7 +2640,8 @@ class Applications(commands.Cog):
         titel: str = "🐺 IronWolf – Bewerbungen",
         beschreibung: str = "Du möchtest dich bewerben? Klicke auf den Button. Ich stelle dir die Fragen anschließend einzeln per DM.",
         frage1: str = None, frage2: str = None, frage3: str = None,
-        frage4: str = None, frage5: str = None, review_rolle: discord.Role = None
+        frage4: str = None, frage5: str = None, review_rolle: discord.Role = None,
+        ping_rolle: discord.Role = None
     ):
         if not interaction.guild:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
@@ -2653,7 +2655,7 @@ class Applications(commands.Cog):
         gid = interaction.guild.id
         guild_settings(gid).update({
             "panel_channel_id": kanal.id, "review_channel_id": review_kanal.id,
-            "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None,
+            "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None,\n            "ping_role_id": ping_rolle.id if ping_rolle else None,
             "panel_title": titel[:256], "panel_description": beschreibung[:4000], "questions": questions
         })
         save_config()
