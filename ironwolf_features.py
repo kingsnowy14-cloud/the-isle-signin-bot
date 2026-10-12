@@ -107,7 +107,7 @@ class SecurityTools(commands.Cog):
         write(SECURITY, db)
         await interaction.response.send_message(f"🛡️ Logs: {log_kanal.mention} · Anti-Raid: {'AN' if anti_raid else 'AUS'} · Schwelle: {raid_schwelle}/20 Sekunden.", ephemeral=True)
 
-    @app_commands.command(name="security-status", description="Zeigt die Security-Konfiguration")
+    @app_commands.command(name="ironwolf-security-status", description="Zeigt die IronWolf-Security-Konfiguration")
     @app_commands.guild_only()
     @admin()
     async def security_status(self, interaction: discord.Interaction):
