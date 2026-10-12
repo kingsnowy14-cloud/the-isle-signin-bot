@@ -1,10 +1,11 @@
 import json, random, time
 from pathlib import Path
+from storage import data_path
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-FILE = Path("economy.json")
+FILE = data_path("economy.json")
 try:
     DB = json.loads(FILE.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError):
