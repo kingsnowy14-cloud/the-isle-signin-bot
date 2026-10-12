@@ -2215,6 +2215,96 @@ async def on_voice_state_update(
         _active_voice_sessions[key] = now
 
 
+async def build_bot_welcome_embeds(guild: discord.Guild):
+    """Create a welcome message and a live list of registered slash commands."""
+    welcome = discord.Embed(
+        title="🐺 Danke, dass du IronWolf hinzugefügt hast!",
+        description=(
+            f"Ich freue mich, auf **{discord.utils.escape_markdown(guild.name)}** dabei zu sein!\n\n"
+            "Ich biete unter anderem Spieler-Anmeldung/Abmeldung, Tickets, Moderation und Sicherheit, "
+            "Verifizierung, Umfragen, Vorschläge, Events, Statistiken, temporäre Voice-Channels, "
+            "Giveaways, Wirtschaft und weitere Community-Funktionen. Welche Funktionen verfügbar sind, "
+            "hängt teilweise von der Server-Konfiguration ab.\n\n"
+            "Nutze **/** in Discord, um die Slash-Befehle zu sehen. Die vollständige Liste steht unten."
+        ),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    welcome.set_footer(text="IronWolf · Created by KingSnowy")
+
+    lines = []
+    def collect(commands_list, prefix=""):
+        for command in commands_list:
+            qualified = f"{prefix} {command.name}".strip()
+            description = (getattr(command, "description", None) or "Keine Beschreibung").replace("\n", " ").strip()
+            lines.append(f"**/{qualified}** — {description}")
+            if isinstance(command, app_commands.Group):
+                collect(command.commands, qualified)
+
+    collect(bot.tree.get_commands())
+    lines = sorted(set(lines), key=str.casefold)
+    if not lines:
+        lines = ["Die Slash-Befehle werden gerade geladen. Bitte prüfe sie in Discord mit **/**."]
+
+    embeds = [welcome]
+    page, length = [], 0
+    for line in lines:
+        if length + len(line) + 1 > 3500 and page:
+            embed = discord.Embed(
+                title="📖 IronWolf-Befehle",
+                description="\n".join(page),
+                color=discord.Color.blurple(),
+            )
+            embed.set_footer(text=f"Seite {len(embeds)} · Created by KingSnowy")
+            embeds.append(embed)
+            page, length = [], 0
+        page.append(line)
+        length += len(line) + 1
+    if page:
+        embed = discord.Embed(
+            title="📖 IronWolf-Befehle" if len(embeds) == 1 else "📖 IronWolf-Befehle (Fortsetzung)",
+            description="\n".join(page),
+            color=discord.Color.blurple(),
+        )
+        embed.set_footer(text="Slash-Befehle · Created by KingSnowy")
+        embeds.append(embed)
+    return embeds
+
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    """Thank the server owner by DM and post the command list in the new server."""
+    embeds = await build_bot_welcome_embeds(guild)
+
+    try:
+        await guild.owner.send(embeds=embeds[:10])
+        print(f"[WELCOME] Sent IronWolf welcome DM to owner of guild {guild.id}.")
+    except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
+        print(f"[WELCOME] Could not DM owner of guild {guild.id}: {type(exc).__name__}: {exc}")
+
+    target = guild.system_channel
+    if target is None or not target.permissions_for(guild.me).send_messages:
+        target = next(
+            (
+                channel for channel in guild.text_channels
+                if channel.permissions_for(guild.me).send_messages
+                and channel.permissions_for(guild.me).embed_links
+            ),
+            None,
+        )
+    if target is None:
+        print(f"[WELCOME] No channel available to post welcome message in guild {guild.id}.")
+        return
+
+    # Discord allows at most 10 embeds per message; send further pages in batches.
+    try:
+        for start in range(0, len(embeds), 10):
+            await target.send(embeds=embeds[start:start + 10])
+        print(f"[WELCOME] Posted IronWolf welcome and command list in guild {guild.id}.")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[WELCOME] Could not post welcome in guild {guild.id}: {type(exc).__name__}: {exc}")
+
+
 @bot.event
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
