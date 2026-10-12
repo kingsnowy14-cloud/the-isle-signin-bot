@@ -156,8 +156,8 @@ class Ausweis(commands.Cog):
         self.bot = bot
 
     async def cog_load(self):
-        # Each published panel has its own selected destination channel.
-        # Views are registered when the panel is created; Discord messages keep their buttons.
+        # The panel view is attached to each published message.
+        pass
 
     @app_commands.command(
         name="ausweis",
