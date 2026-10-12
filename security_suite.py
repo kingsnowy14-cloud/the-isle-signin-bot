@@ -18,33 +18,44 @@ INVITE_RE = re.compile(r"(?:discord\.gg/|discord(?:app)?\.com/invite/)[A-Za-z0-9
 MAX_BACKUPS = 30
 
 
+STATE_CACHE = None
+
+
 def read_state():
+    global STATE_CACHE
+    if STATE_CACHE is not None:
+        return STATE_CACHE
     try:
         value = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        return value if isinstance(value, dict) else {}
+        STATE_CACHE = value if isinstance(value, dict) else {}
     except (OSError, json.JSONDecodeError):
-        return {}
+        STATE_CACHE = {}
+    return STATE_CACHE
 
 
 def write_state(value):
+    global STATE_CACHE
     temp = STATE_FILE.with_suffix(".tmp")
     temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     temp.replace(STATE_FILE)
+    STATE_CACHE = value
 
 
 def guild_state(guild_id):
     db = read_state()
+    changed = str(guild_id) not in db
     cfg = db.setdefault(str(guild_id), {})
-    cfg.setdefault("log_channel_id", None)
-    cfg.setdefault("verify_channel_id", None)
-    cfg.setdefault("verified_role_id", None)
-    cfg.setdefault("unverified_role_id", None)
-    cfg.setdefault("alt_min_days", 7)
-    cfg.setdefault("alt_alerts_enabled", True)
-    cfg.setdefault("scam_enabled", False)
-    cfg.setdefault("blocked_domains", [])
-    cfg.setdefault("lockdown", None)
-    write_state(db)
+    defaults = {
+        "log_channel_id": None, "verify_channel_id": None, "verified_role_id": None,
+        "unverified_role_id": None, "alt_min_days": 7, "alt_alerts_enabled": True,
+        "scam_enabled": False, "blocked_domains": [], "lockdown": None,
+    }
+    for key, default in defaults.items():
+        if key not in cfg:
+            cfg[key] = default
+            changed = True
+    if changed:
+        write_state(db)
     return cfg
 
 
