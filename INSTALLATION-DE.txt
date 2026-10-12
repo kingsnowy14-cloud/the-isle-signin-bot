@@ -1,0 +1,11 @@
+IRONWOLF – MODUL-ENDPUNKT
+
+1. Backup der aktuellen dashboard.py anlegen.
+2. Diese Datei NICHT direkt als neue Startdatei verwenden. Kopiere sie in den Bot-Projektstamm und benenne sie dashboard.py.
+3. Bestehende dashboard.py ersetzen; bot.py bleibt unverändert.
+4. Railway: DASHBOARD_PASSWORD muss gesetzt sein. Deploy neu starten.
+5. Teste https://DEINE-RAILWAY-DOMAIN/api/modules.
+6. Netlify Variable BOT_API_URL = Railway-Basis-URL ohne Slash am Ende.
+7. Website deployen. Das Frontend aktualisiert die Liste alle 60 Sekunden.
+
+Die Route veröffentlicht nur Modul-/Befehlsnamen und Kurzbeschreibungen. Sie ist öffentlich, read-only und gibt keine Serverkonfiguration oder Tokens zurück.

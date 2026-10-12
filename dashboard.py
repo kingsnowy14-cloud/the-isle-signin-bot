@@ -7,92 +7,10 @@ import asyncio
 import hmac
 import hashlib
 import html
+import re
+from datetime import datetime, timezone
 from aiohttp import web
 
-
-
-def register_module_endpoint(app: web.Application, bot):
-    """Expose public module metadata without secrets or server configuration."""
-    from datetime import datetime, timezone
-    import re
-
-    module_info = {
-        "moderation": ("Moderation", "Moderationsbefehle und Serververwaltung."),
-        "tickets": ("Tickets", "Ticket-System und Support-Einstellungen."),
-        "anti-raid": ("Anti-Raid", "Schutz vor Join-Raids und verdächtigen Beitritten."),
-        "anti-nuke": ("Anti-Nuke", "Schutz vor schädlichen Serveränderungen."),
-        "core-commands": ("Core-Befehle", "Allgemeine IronWolf-Befehle."),
-    }
-
-    def classify(name, description):
-        text = re.sub(r"[^a-z0-9]+", "-", f"{name} {description}".casefold())
-        if any(k in text for k in ("anti-nuke", "antinuke", "trusted-role", "security-set-antinuke")):
-            return "anti-nuke"
-        if any(k in text for k in ("anti-raid", "raid", "honeypot", "security-toggle")):
-            return "anti-raid"
-        if any(k in text for k in ("ticket", "support", "claim", "close-ticket")):
-            return "tickets"
-        if any(k in text for k in ("ban", "kick", "timeout", "mute", "unmute", "warn", "purge", "clear", "moderation", "slowmode")):
-            return "moderation"
-        return "core-commands"
-
-    async def modules(request: web.Request):
-        grouped = {key: [] for key in module_info}
-        seen = set()
-
-        # Slash commands and subcommands
-        for command in bot.tree.get_commands():
-            candidates = command.walk_commands() if hasattr(command, "walk_commands") else [command]
-            for item in candidates:
-                name = getattr(item, "qualified_name", getattr(item, "name", "Befehl"))
-                desc = (getattr(item, "description", "") or getattr(item, "brief", "") or "").strip()
-                key = ("slash", name)
-                if key in seen:
-                    continue
-                seen.add(key)
-                grouped[classify(name, desc)].append({
-                    "name": name,
-                    "description": (desc.splitlines() or ["Keine Beschreibung vorhanden."])[0][:180],
-                    "type": "slash",
-                })
-
-        # Prefix commands
-        for command in bot.walk_commands():
-            if getattr(command, "hidden", False):
-                continue
-            name = getattr(command, "qualified_name", getattr(command, "name", "Befehl"))
-            desc = (getattr(command, "help", None) or getattr(command, "brief", None) or "").strip()
-            key = ("prefix", name)
-            if key in seen:
-                continue
-            seen.add(key)
-            grouped[classify(name, desc)].append({
-                "name": "!" + name,
-                "description": (desc.splitlines() or ["Keine Beschreibung vorhanden."])[0][:180],
-                "type": "prefix",
-            })
-
-        modules_out = []
-        for module_id, (name, description) in module_info.items():
-            commands = grouped[module_id]
-            modules_out.append({
-                "id": module_id,
-                "name": name,
-                "description": description,
-                "enabled": True,
-                "detected": bool(commands),
-                "commandCount": len(commands),
-                "commands": commands,
-            })
-
-        return web.json_response({
-            "name": "IronWolf",
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-            "modules": modules_out,
-            "totalCommands": sum(len(items) for items in grouped.values()),
-        }, headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"})
-
-    app.router.add_get("/api/modules", modules)
 
 def start_dashboard(bot, config, save_json, guild_config):
     password = os.getenv("DASHBOARD_PASSWORD", "")
@@ -105,7 +23,6 @@ def start_dashboard(bot, config, save_json, guild_config):
 
     cookie_value = hashlib.sha256((password + "|KingSnowyDashboard-v1").encode()).hexdigest()
     app = web.Application(client_max_size=1024 * 1024)
-    register_module_endpoint(app, bot)
 
     def authed(request):
         return hmac.compare_digest(request.cookies.get("ks_dashboard", ""), cookie_value)
@@ -235,6 +152,60 @@ document.getElementById('all-off').addEventListener('click',()=>{{if(!confirm('W
         return response
 
     app.middlewares.append(security_headers)
+    # Public, read-only endpoint consumed by the Netlify website. It deliberately
+    # exposes only command/module names and short descriptions, never guild config or secrets.
+    async def public_modules(request):
+        entries = []
+
+        def slug(value):
+            result = re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
+            return result or "module"
+
+        seen = set()
+        # Cogs are the most natural module unit when the bot uses discord.py extensions.
+        for cog_name, cog in getattr(bot, "cogs", {}).items():
+            descs = []
+            try:
+                for command in cog.get_commands():
+                    desc = getattr(command, "brief", None) or getattr(command, "help", None)
+                    if desc:
+                        descs.append(str(desc).splitlines()[0][:180])
+            except Exception:
+                pass
+            entries.append({"id": slug(cog_name), "name": str(cog_name),
+                            "description": descs[0] if descs else "IronWolf-Bot-Modul", "enabled": True})
+            seen.add(slug(cog_name))
+
+        # This bot also defines many commands directly in bot.py. Publish top-level slash
+        # commands as modules so new commands are reflected without editing the website.
+        for command in bot.tree.get_commands():
+            name = str(getattr(command, "name", "Befehl"))
+            key = "slash-" + slug(name)
+            if key in seen:
+                continue
+            desc = getattr(command, "description", "") or "Discord-Slash-Befehl von IronWolf."
+            entries.append({"id": key, "name": "/" + name,
+                            "description": str(desc).splitlines()[0][:180], "enabled": True})
+            seen.add(key)
+
+        for command in bot.commands:
+            if getattr(command, "hidden", False):
+                continue
+            name = str(getattr(command, "name", "Befehl"))
+            key = "prefix-" + slug(name)
+            if key in seen:
+                continue
+            desc = getattr(command, "brief", None) or getattr(command, "help", None) or "Prefix-Befehl von IronWolf."
+            entries.append({"id": key, "name": "!" + name,
+                            "description": str(desc).splitlines()[0][:180], "enabled": True})
+            seen.add(key)
+
+        entries.sort(key=lambda item: item["name"].casefold())
+        return web.json_response({"name": "IronWolf", "updatedAt": datetime.now(timezone.utc).isoformat(),
+                                 "modules": entries}, headers={"Cache-Control": "no-store"})
+
+    app.router.add_get('/api/modules', public_modules)
+
     app.router.add_get('/', index)
     app.router.add_post('/login', login)
     app.router.add_post('/save-config', save_config)
