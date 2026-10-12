@@ -1,5 +1,6 @@
 import os
 import json
+import hashlib
 import html
 import io
 import zipfile
@@ -24,15 +25,15 @@ from datetime import datetime, timezone, timedelta
 TOKEN = os.getenv("DISCORD_TOKEN")
 # Optional: set your Discord server ID in Railway for instant guild slash-command sync.
 GUILD_ID = os.getenv("GUILD_ID")
-CONFIG_FILE = "config.json"
-DATA_FILE = "data.json"
+CONFIG_FILE = data_path("config.json")
+DATA_FILE = data_path("data.json")
 
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, case_insensitive=True)
 
 
 async def dashboard_command_enabled(guild_id, key):
@@ -64,6 +65,91 @@ async def dashboard_slash_command_check(interaction):
 
 
 bot.tree.interaction_check = dashboard_slash_command_check
+
+
+MODULE_STATE_FILE = data_path("module_change_state.json")
+MODULE_LOG_FILE = data_path("module_changes.json")
+REPO_DIR = Path(__file__).resolve().parent
+
+
+def record_module_changes():
+    """Detect changed top-level Python modules on startup and save an audit trail."""
+    try:
+        state = json.loads(MODULE_STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        state = {}
+    try:
+        logs = json.loads(MODULE_LOG_FILE.read_text(encoding="utf-8"))
+        if not isinstance(logs, list):
+            logs = []
+    except (OSError, json.JSONDecodeError):
+        logs = []
+
+    current = {}
+    for module_path in sorted(REPO_DIR.glob("*.py")):
+        try:
+            digest = hashlib.sha256(module_path.read_bytes()).hexdigest()
+        except OSError:
+            continue
+        name = module_path.name
+        current[name] = digest
+        previous = state.get(name)
+        if previous != digest:
+            logs.append({
+                "module": name,
+                "change": "Ersterfassung" if previous is None else "Modul geändert",
+                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "sha256": digest,
+            })
+
+    for name in state:
+        if name not in current:
+            logs.append({
+                "module": name,
+                "change": "Modul entfernt",
+                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "sha256": None,
+            })
+
+    # Keep the audit log bounded while retaining recent history.
+    logs = logs[-500:]
+    MODULE_STATE_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+    MODULE_LOG_FILE.write_text(json.dumps(logs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+@bot.group(name="IronWolf", invoke_without_command=True)
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True)
+async def ironwolf_group(ctx):
+    await ctx.reply("Verwendung: `!IronWolf logs`", mention_author=False)
+
+
+@ironwolf_group.command(name="logs")
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True)
+async def ironwolf_logs(ctx):
+    try:
+        logs = json.loads(MODULE_LOG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logs = []
+    if not logs:
+        await ctx.reply("Noch keine Moduländerungen protokolliert. Beim Bot-Start wird der erste Stand erfasst.", mention_author=False)
+        return
+    lines = []
+    for entry in reversed(logs[-15:]):
+        stamp = entry.get("detected_at", "Zeit unbekannt").replace("T", " ")[:19]
+        lines.append(f"• **{entry.get('module', 'Unbekannt')}** — {entry.get('change', 'Änderung')} — {stamp} UTC")
+    text = "\n".join(lines)
+    if len(text) > 1900:
+        text = text[:1890] + "…"
+    embed = discord.Embed(
+        title="🐺 IronWolf · Moduländerungen",
+        description=text,
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(text="Letzte 15 Einträge · Änderungen werden beim Bot-Start erkannt")
+    await ctx.reply(embed=embed, mention_author=False)
 
 
 def create_embed(*args, **kwargs):
@@ -2652,6 +2738,7 @@ class Applications(commands.Cog):
 
 @bot.event
 async def on_ready():
+    record_module_changes()
     # Start tracking members already in voice after a bot start/reconnect.
     # Only seed sessions that are not already tracked to avoid resetting time
     # when Discord reconnects the bot.
