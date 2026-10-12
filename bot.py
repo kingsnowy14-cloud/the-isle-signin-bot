@@ -2371,6 +2371,15 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load economy extension: {type(exc).__name__}: {exc}")
 
+    # Load the personal ID card command once before slash-command sync.
+    if not getattr(bot, "_ausweis_loaded", False):
+        try:
+            await bot.load_extension("ausweis")
+            bot._ausweis_loaded = True
+            print("Personal ID card extension loaded.")
+        except Exception as exc:
+            print(f"Could not load personal ID card extension: {type(exc).__name__}: {exc}")
+
     # Resume giveaway timers saved in data.json after a reconnect/restart.
     if not getattr(bot, "_giveaways_resumed", False):
         bot._giveaways_resumed = True
