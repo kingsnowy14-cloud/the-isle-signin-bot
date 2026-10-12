@@ -43,7 +43,7 @@ class BankView(discord.ui.View):
             return
         u = user(interaction.guild_id, interaction.user.id)
         await interaction.response.send_message(
-            f"🏦 Bankkonto: **{money(u['bank'])}**\\n💶 Bargeld: **{money(u['cash'])}**",
+            f"🏦 Bankkonto: **{money(u['bank'])}**\n💶 Bargeld: **{money(u['cash'])}**",
             ephemeral=True
         )
 
