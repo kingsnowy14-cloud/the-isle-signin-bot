@@ -91,9 +91,7 @@ class Economy(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
         g, u = guild(interaction.guild_id), user(interaction.guild_id, interaction.user.id)
-        e = discord.Embed(title="🏦 IronWolf Bank", description="Bankübersicht für alle Mitglieder", color=discord.Color.blurple())
-        e.add_field(name="Dein Bankkonto", value=money(u["bank"]), inline=True)
-        e.add_field(name="Bargeld", value=money(u["cash"]), inline=True)
+        e = discord.Embed(title="🏦 IronWolf Bank", description="Öffentliche Bankübersicht. Nutze /konto für deinen privaten Kontostand.", color=discord.Color.blurple())
         e.add_field(name="Zinsen", value=f"{g['bank_interest']:.2f} %", inline=True)
         e.add_field(name="Steuern", value=f"{'AN' if g['tax_enabled'] else 'AUS'} · {g['tax_percent']:.1f} %", inline=True)
         e.add_field(name="Banklimit", value=money(g["bank_limit"]), inline=True)
