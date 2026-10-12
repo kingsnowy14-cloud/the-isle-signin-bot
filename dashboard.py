@@ -21,7 +21,7 @@ def start_dashboard(bot, config, save_json, guild_config):
 
     cookie_value = hashlib.sha256((password + "|KingSnowyDashboard-v1").encode()).hexdigest()
     app = web.Application(client_max_size=1024 * 1024)
-
+    register_module_endpoint(app, bot)
     def authed(request):
         return hmac.compare_digest(request.cookies.get("ks_dashboard", ""), cookie_value)
 
