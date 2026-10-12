@@ -31,6 +31,24 @@ def guild_settings(guild_id):
 def safe_text(value, limit=1000):
     return discord.utils.escape_mentions(str(value or ""))[:limit]
 
+class ApplicationNextPageView(discord.ui.View):
+    def __init__(self, cog, guild_id, questions, page, answers):
+        super().__init__(timeout=300)
+        self.add_item(ApplicationNextPageButton(cog, guild_id, questions, page, answers))
+
+
+class ApplicationNextPageButton(discord.ui.Button):
+    def __init__(self, cog, guild_id, questions, page, answers):
+        super().__init__(label="Nächste 5 Fragen", style=discord.ButtonStyle.primary, emoji="➡️")
+        self.cog, self.guild_id, self.questions = cog, guild_id, questions
+        self.page, self.answers = page, answers
+
+    async def callback(self, interaction):
+        await interaction.response.send_modal(ApplicationModal(
+            self.cog, self.guild_id, self.questions, self.page, self.answers
+        ))
+
+
 class ApplicationModal(discord.ui.Modal):
     """Collects up to five answers per Discord modal, chaining pages for up to 20 questions."""
     def __init__(self, cog, guild_id, questions, page=0, previous_answers=None):
@@ -61,9 +79,11 @@ class ApplicationModal(discord.ui.Modal):
         ]
         next_page = self.page + 1
         if next_page * 5 < len(self.questions):
-            await interaction.response.send_modal(ApplicationModal(
-                self.cog, self.guild_id, self.questions, next_page, answers
-            ))
+            await interaction.response.send_message(
+                "Deine Antworten wurden übernommen. Klicke weiter, um die nächsten Fragen zu beantworten.",
+                ephemeral=True,
+                view=ApplicationNextPageView(self.cog, self.guild_id, self.questions, next_page, answers)
+            )
             return
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
