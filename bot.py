@@ -2781,6 +2781,45 @@ class Applications(commands.Cog):
 # END INLINE APPLICATIONS SYSTEM
 
 @bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Revert IronWolf's server nickname unless that guild ID is explicitly allowlisted."""
+    if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
+        return
+
+    # Comma-separated Discord server IDs in Railway:
+    # IRONWOLF_NICKNAME_ALLOWED_GUILD_IDS=123456789012345678,234567890123456789
+    raw_ids = os.getenv("IRONWOLF_NICKNAME_ALLOWED_GUILD_IDS", "")
+    allowed_guild_ids = set()
+    for item in raw_ids.split(","):
+        item = item.strip()
+        if item.isdigit():
+            allowed_guild_ids.add(int(item))
+
+    if after.guild.id in allowed_guild_ids:
+        return
+
+    me = after.guild.me
+    if me is None or not me.guild_permissions.change_nickname:
+        print(
+            f"[nickname-guard] Cannot restore IronWolf nickname in guild "
+            f"{after.guild.id}: bot lacks Change Nickname permission."
+        )
+        return
+
+    try:
+        await after.edit(
+            nick=before.nick,
+            reason="IronWolf nickname guard: server ID is not allowlisted",
+        )
+        print(f"[nickname-guard] Restored IronWolf nickname in guild {after.guild.id}.")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(
+            f"[nickname-guard] Failed to restore nickname in guild "
+            f"{after.guild.id}: {type(exc).__name__}: {exc}"
+        )
+
+
+@bot.event
 async def on_ready():
     record_module_changes()
     # Start tracking members already in voice after a bot start/reconnect.
