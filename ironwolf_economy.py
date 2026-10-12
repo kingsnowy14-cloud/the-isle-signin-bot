@@ -21,13 +21,14 @@ import random
 import sqlite3
 import time
 from pathlib import Path
+from storage import data_path
 from typing import Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-DB_PATH = Path(__file__).with_name("ironwolf_economy.sqlite3")
+DB_PATH = data_path("ironwolf_economy.sqlite3")
 
 DEFAULTS = {
     "currency_name": "Hamburg-Dollar",
