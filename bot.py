@@ -2360,6 +2360,46 @@ async def on_member_join_bot_security(member: discord.Member):
     return
 
 
+@bot.tree.command(name="security-setup", description="Aktiviert den grundlegenden IronWolf-Sicherheitsschutz")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+@app_commands.describe(
+    log_kanal="Privater Kanal für Sicherheitsmeldungen",
+    raid_schwelle="Beitritte innerhalb von 10 Sekunden (3–30)",
+    anti_spam="Nachrichten-Spam automatisch eindämmen"
+)
+async def security_setup(
+    interaction: discord.Interaction,
+    log_kanal: discord.TextChannel,
+    raid_schwelle: app_commands.Range[int, 3, 30] = 8,
+    anti_spam: bool = True,
+):
+    """One-command setup for the existing anti-raid, anti-nuke and AutoMod protections."""
+    cfg = guild_config(interaction.guild_id)
+    cfg["security_log_channel"] = log_kanal.id
+    cfg["anti_raid_enabled"] = True
+    cfg["raid_threshold"] = int(raid_schwelle)
+    cfg["anti_nuke_enabled"] = True
+    cfg["anti_nuke_threshold"] = max(2, min(10, int(cfg.get("anti_nuke_threshold", 4))))
+    cfg["automod_enabled"] = anti_spam
+    save_json(CONFIG_FILE, config)
+    embed = create_embed(
+        title="🛡️ IronWolf Security eingerichtet",
+        description=(
+            f"**Sicherheitslogs:** {log_kanal.mention}\n"
+            f"**Anti-Raid:** Aktiv · {raid_schwelle} Beitritte/10 Sekunden; "
+            "Raid-Schutz schränkt neue Mitglieder vorübergehend ein.\n"
+            f"**Anti-Nuke:** Aktiv · Schwelle {cfg['anti_nuke_threshold']} verdächtige Aktionen/60 Sekunden.\n"
+            f"**AutoMod Anti-Spam:** {'Aktiv' if anti_spam else 'Deaktiviert'} · "
+            "6 Nachrichten/8 Sekunden lösen eine Löschung und einen 2-Minuten-Timeout aus.\n\n"
+            "Hinweis: Der Bot benötigt passende Moderations- und Audit-Log-Berechtigungen "
+            "sowie eine ausreichend hohe Rollenposition."
+        ),
+        color=discord.Color.green(),
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.tree.command(name="security-set-log", description="Set the security log channel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(kanal="Channel for honeypot, anti-nuke and anti-raid logs")
