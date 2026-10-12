@@ -2780,6 +2780,94 @@ class Applications(commands.Cog):
 
 # END INLINE APPLICATIONS SYSTEM
 
+
+@bot.tree.command(name="ironwolf-profil", description="Ändert IronWolfs Profilbild und/oder Banner")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    server_id="Zur Bestätigung: die ID dieses Discord-Servers",
+    profilbild_url="Direkte HTTPS-Bild-URL für das neue Profilbild",
+    banner_url="Direkte HTTPS-Bild-URL für den neuen Banner",
+)
+async def ironwolf_profile(
+    interaction: discord.Interaction,
+    server_id: str,
+    profilbild_url: str = None,
+    banner_url: str = None,
+):
+    if interaction.guild is None or not server_id.isdigit() or int(server_id) != interaction.guild.id:
+        await interaction.response.send_message(
+            "❌ Die eingegebene Server-ID stimmt nicht mit diesem Server überein. Es wurde nichts geändert.",
+            ephemeral=True,
+        )
+        return
+    if not profilbild_url and not banner_url:
+        await interaction.response.send_message(
+            "Gib mindestens eine Profilbild-URL oder Banner-URL an.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    import base64
+    import requests
+
+    async def image_data(url):
+        if not url.lower().startswith("https://"):
+            raise ValueError("Bitte nur direkte HTTPS-Bild-URLs verwenden.")
+        def download():
+            response = requests.get(url, timeout=15, stream=True, allow_redirects=True)
+            response.raise_for_status()
+            content_type = response.headers.get("Content-Type", "").split(";")[0].lower()
+            if content_type not in {"image/png", "image/jpeg", "image/gif", "image/webp"}:
+                raise ValueError("Die URL muss direkt auf eine PNG-, JPEG-, GIF- oder WebP-Bilddatei zeigen.")
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(65536):
+                total += len(chunk)
+                if total > 8 * 1024 * 1024:
+                    raise ValueError("Das Bild darf höchstens 8 MB groß sein.")
+                chunks.append(chunk)
+            return content_type, b"".join(chunks)
+        mime, raw = await asyncio.to_thread(download)
+        return "data:{};base64,{}".format(mime, base64.b64encode(raw).decode("ascii"))
+
+    payload = {}
+    try:
+        if profilbild_url:
+            payload["avatar"] = await image_data(profilbild_url)
+        if banner_url:
+            payload["banner"] = await image_data(banner_url)
+
+        def update_profile():
+            return requests.patch(
+                "https://discord.com/api/v10/users/@me",
+                headers={"Authorization": "Bot " + TOKEN, "Content-Type": "application/json"},
+                json=payload,
+                timeout=20,
+            )
+        response = await asyncio.to_thread(update_profile)
+        if response.status_code >= 400:
+            detail = " ".join(response.text.split())[:700]
+            await interaction.followup.send(
+                "❌ Discord hat die Profiländerung abgelehnt (HTTP {}). {}\n"
+                "Hinweis: Discord unterstützt nicht bei jedem Bot-Konto das Ändern des Banners über die API.".format(response.status_code, detail),
+                ephemeral=True,
+            )
+            return
+        changed = []
+        if profilbild_url:
+            changed.append("Profilbild")
+        if banner_url:
+            changed.append("Banner")
+        await interaction.followup.send(
+            "✅ Discord hat die Änderung für {} angenommen.".format(" und ".join(changed)),
+            ephemeral=True,
+        )
+    except (ValueError, requests.RequestException) as exc:
+        await interaction.followup.send("❌ Profiländerung fehlgeschlagen: {}".format(str(exc)[:700]), ephemeral=True)
+
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     """Revert IronWolf's server nickname unless that guild ID is explicitly allowlisted."""
