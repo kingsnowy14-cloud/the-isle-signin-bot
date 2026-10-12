@@ -2770,6 +2770,15 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load applications system: {type(exc).__name__}: {exc}")
 
+    # Load the additional IronWolf feature suite once before slash-command sync.
+    if not getattr(bot, "_ironwolf_features_loaded", False):
+        try:
+            await bot.load_extension("ironwolf_features")
+            bot._ironwolf_features_loaded = True
+            print("IronWolf feature suite loaded.")
+        except Exception as exc:
+            print(f"Could not load IronWolf feature suite: {type(exc).__name__}: {exc}")
+
     # Load the economy extension once before slash-command sync.
     if not getattr(bot, "_economy_loaded", False):
         try:
