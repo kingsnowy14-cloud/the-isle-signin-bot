@@ -184,33 +184,150 @@ from datetime import datetime, timezone
 from aiohttp import web
 
 
+
+from datetime import datetime, timezone
+from aiohttp import web
+import re
+
+
 def register_module_endpoint(app: web.Application, bot):
+
+    MODULES = {
+        "moderation": {
+            "name": "Moderation",
+            "description": "Moderationsbefehle und Serververwaltung.",
+            "keywords": (
+                "ban", "kick", "timeout", "mute", "unmute",
+                "warn", "purge", "clear", "moderation",
+                "member", "user", "slowmode"
+            ),
+        },
+        "tickets": {
+            "name": "Tickets",
+            "description": "Ticket-System und Support-Einstellungen.",
+            "keywords": (
+                "ticket", "support", "claim", "close-ticket"
+            ),
+        },
+        "anti-raid": {
+            "name": "Anti-Raid",
+            "description": "Schutz vor Join-Raids und verdächtigen Beitritten.",
+            "keywords": (
+                "raid", "honeypot", "security-toggle"
+            ),
+        },
+        "anti-nuke": {
+            "name": "Anti-Nuke",
+            "description": "Schutz vor schädlichen Serveränderungen.",
+            "keywords": (
+                "antinuke", "anti-nuke", "trusted-role",
+                "security-set-log", "security-set-antinuke"
+            ),
+        },
+        "core-commands": {
+            "name": "Core-Befehle",
+            "description": "Allgemeine IronWolf-Befehle.",
+            "keywords": (),
+        },
+    }
+
+    def classify(command_name, description):
+        text = f"{command_name} {description}".casefold()
+        normalized = re.sub(r"[^a-z0-9]+", "-", text)
+
+        # Sicherheitsbefehle zuerst zuordnen, damit sie nicht
+        # versehentlich als gewöhnliche Moderation erscheinen.
+        if any(k in normalized for k in (
+            "antinuke", "anti-nuke", "trusted-role",
+            "security-set-antinuke"
+        )):
+            return "anti-nuke"
+
+        if any(k in normalized for k in (
+            "raid", "honeypot", "security-toggle"
+        )):
+            return "anti-raid"
+
+        if any(k in normalized for k in (
+            "ticket", "support", "claim", "close-ticket"
+        )):
+            return "tickets"
+
+        if any(k in normalized for k in MODULES["moderation"]["keywords"]):
+            return "moderation"
+
+        return "core-commands"
+
     async def modules(request: web.Request):
+        grouped = {key: [] for key in MODULES}
+
+        # Slash-Befehle einschließlich Unterbefehlen erkennen.
+        for command in bot.tree.get_commands():
+            commands = (
+                command.walk_commands()
+                if hasattr(command, "walk_commands")
+                else [command]
+            )
+
+            for item in commands:
+                name = getattr(item, "qualified_name", item.name)
+                description = (
+                    getattr(item, "description", "")
+                    or getattr(item, "brief", "")
+                    or ""
+                )
+
+                category = classify(name, description)
+
+                grouped[category].append({
+                    "name": name,
+                    "description": str(description)[:180],
+                    "type": "slash",
+                })
+
+        # Prefix-Befehle wie !stats ebenfalls erfassen.
+        for command in bot.walk_commands():
+            if getattr(command, "hidden", False):
+                continue
+
+            name = getattr(command, "qualified_name", command.name)
+            description = getattr(command, "help", None) or ""
+            category = classify(name, description)
+
+            grouped[category].append({
+                "name": "!" + name,
+                "description": str(description).splitlines()[0][:180],
+                "type": "prefix",
+            })
+
         entries = []
-        # Jeder Cog wird als Modul ausgegeben. Neue Cogs erscheinen automatisch.
-        for cog_name, cog in bot.cogs.items():
-            commands = getattr(cog, "get_commands", lambda: [])()
-            descriptions = []
-            for command in commands:
-                description = getattr(command, "brief", None) or getattr(command, "help", None)
-                if description:
-                    descriptions.append(str(description).splitlines()[0][:180])
+
+        for module_id, info in MODULES.items():
+            commands = grouped[module_id]
+
             entries.append({
-                "id": "".join(ch.lower() if ch.isalnum() else "-" for ch in cog_name).strip("-"),
-                "name": cog_name,
-                "description": (descriptions[0] if descriptions else f"{cog_name} — IronWolf-Modul."),
+                "id": module_id,
+                "name": info["name"],
+                "description": info["description"],
                 "enabled": True,
+                "detected": bool(commands),
+                "commandCount": len(commands),
+                "commands": commands,
             })
-        standalone = [cmd for cmd in bot.tree.get_commands() if not getattr(cmd, "binding", None)]
-        if standalone:
-            entries.append({
-                "id": "core-commands", "name": "Core-Befehle",
-                "description": f"{len(standalone)} eigenständige Slash-Befehle.", "enabled": True,
-            })
-        return web.json_response({
-            "name": "IronWolf",
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-            "modules": entries,
-        }, headers={"Cache-Control": "no-store", "Access-Control-Allow-Origin": "*"})
+
+        return web.json_response(
+            {
+                "name": "IronWolf",
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "modules": entries,
+                "totalCommands": sum(
+                    len(commands) for commands in grouped.values()
+                ),
+            },
+            headers={
+                "Cache-Control": "no-store",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
 
     app.router.add_get("/api/modules", modules)
