@@ -174,7 +174,11 @@ class Applications(commands.Cog):
         log_kanal="Kanal für Entscheidungsprotokolle",
         titel="Titel des Panels",
         beschreibung="Beschreibung des Panels",
-        fragen="Bis zu 5 Fragen, jeweils eine pro Zeile",
+        frage1="Erste Formularfrage (max. 45 Zeichen)",
+        frage2="Zweite Formularfrage (optional)",
+        frage3="Dritte Formularfrage (optional)",
+        frage4="Vierte Formularfrage (optional)",
+        frage5="Fünfte Formularfrage (optional)",
         review_rolle="Optionale Rolle, die Bewerbungen prüfen darf",
     )
     async def application_panel(
@@ -182,17 +186,15 @@ class Applications(commands.Cog):
         review_kanal: discord.TextChannel, log_kanal: discord.TextChannel,
         titel: str = "🐺 IronWolf – Fraktionsbewerbungen",
         beschreibung: str = "Du möchtest Teil unseres Teams werden? Klicke auf den Button und fülle das Formular aus.",
-        fragen: str = None, review_rolle: discord.Role = None
+        frage1: str = None, frage2: str = None, frage3: str = None,
+        frage4: str = None, frage5: str = None, review_rolle: discord.Role = None
     ):
         if not interaction.guild:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
             return
-        questions = [line.strip() for line in (fragen or "").splitlines() if line.strip()]
+        questions = [q.strip() for q in (frage1, frage2, frage3, frage4, frage5) if q and q.strip()]
         if not questions:
             questions = ["Wie lautet dein RP-Name?", "Wie lautet dein Roblox-Name?", "Wie alt bist du (OOC)?", "Welche Erfahrung bringst du mit?", "Warum möchtest du beitreten?"]
-        if len(questions) > 5:
-            await interaction.response.send_message("Discord-Formulare unterstützen maximal 5 Fragen. Bitte gib höchstens 5 Zeilen an.", ephemeral=True)
-            return
         if any(len(question) > 45 for question in questions):
             await interaction.response.send_message("Jede Frage darf höchstens 45 Zeichen lang sein. Bitte kürze die Fragen.", ephemeral=True)
             return
