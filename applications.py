@@ -31,16 +31,21 @@ def guild_settings(guild_id):
 def safe_text(value, limit=1000):
     return discord.utils.escape_mentions(str(value or ""))[:limit]
 
-class ApplicationModal(discord.ui.Modal, title="IronWolf – Fraktionsbewerbung"):
-    rp_name = discord.ui.TextInput(label="RP-Name", placeholder="Vorname Nachname", max_length=80)
-    roblox_name = discord.ui.TextInput(label="Roblox-Name", placeholder="Dein Roblox-Benutzername", max_length=80)
-    age = discord.ui.TextInput(label="Alter (OOC)", placeholder="z. B. 16", max_length=3)
-    experience = discord.ui.TextInput(label="RP-/Fraktionserfahrung", placeholder="Welche Erfahrungen bringst du mit?", style=discord.TextStyle.paragraph, max_length=700)
-    motivation = discord.ui.TextInput(label="Warum möchtest du beitreten?", placeholder="Motivation und Stärken", style=discord.TextStyle.paragraph, max_length=1000)
-
-    def __init__(self, cog, guild_id):
-        super().__init__(timeout=300)
+class ApplicationModal(discord.ui.Modal):
+    def __init__(self, cog, guild_id, questions):
+        super().__init__(title="IronWolf – Bewerbung", timeout=300)
         self.cog, self.guild_id = cog, guild_id
+        self.questions = questions[:5]
+        for index, question in enumerate(self.questions):
+            field = discord.ui.TextInput(
+                label=question[:45],
+                custom_id="answer_{}".format(index),
+                placeholder="Deine Antwort hier …",
+                style=discord.TextStyle.paragraph if index >= 2 else discord.TextStyle.short,
+                max_length=1000 if index >= 2 else 200,
+                required=True,
+            )
+            self.add_item(field)
 
     async def on_submit(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
@@ -52,24 +57,24 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Fraktionsbewerbung"
         settings = guild_settings(self.guild_id)
         channel = interaction.guild.get_channel(settings.get("review_channel_id") or 0)
         if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message("Das Bewerbungs-Log ist nicht eingerichtet. Bitte informiere das Team.", ephemeral=True)
+            await interaction.response.send_message("Der Prüfkanal ist nicht eingerichtet. Bitte informiere das Team.", ephemeral=True)
             return
+        answers = [{"question": self.questions[i], "answer": str(field.value).strip()} for i, field in enumerate(self.children)]
         app_id = "{}-{}-{}".format(self.guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
         row = {
             "id": app_id, "guild_id": self.guild_id, "user_id": interaction.user.id,
-            "rp_name": str(self.rp_name.value).strip(), "roblox_name": str(self.roblox_name.value).strip(),
-            "age": str(self.age.value).strip(), "experience": str(self.experience.value).strip(),
-            "motivation": str(self.motivation.value).strip(), "status": "pending",
+            "answers": answers, "status": "pending",
             "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None
         }
         RECORDS["applications"][app_id] = row
         save_records()
-        embed = discord.Embed(title="📨 Neue Fraktionsbewerbung", description="Bewerber: <@{}>\nStatus: ⏳ Offen".format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
-        embed.add_field(name="RP-Name", value=safe_text(row["rp_name"], 200), inline=True)
-        embed.add_field(name="Roblox-Name", value=safe_text(row["roblox_name"], 200), inline=True)
-        embed.add_field(name="Alter (OOC)", value=safe_text(row["age"], 30), inline=True)
-        embed.add_field(name="Erfahrung", value=safe_text(row["experience"]), inline=False)
-        embed.add_field(name="Motivation", value=safe_text(row["motivation"]), inline=False)
+        embed = discord.Embed(
+            title="📨 Neue Bewerbung",
+            description="**Bewerber:** <@{}>\n**Status:** ⏳ Offen".format(interaction.user.id),
+            color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc)
+        )
+        for answer in answers:
+            embed.add_field(name=safe_text(answer["question"], 256), value=safe_text(answer["answer"], 1000) or "—", inline=False)
         embed.set_footer(text="Bewerbungs-ID: " + app_id)
         try:
             message = await channel.send(embed=embed, view=ApplicationReviewView(self.cog, app_id), allowed_mentions=discord.AllowedMentions.none())
@@ -95,7 +100,8 @@ class ApplicationStartButton(discord.ui.Button):
         if not interaction.guild or interaction.guild.id != self.guild_id:
             await interaction.response.send_message("Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
             return
-        await interaction.response.send_modal(ApplicationModal(self.cog, self.guild_id))
+        questions = guild_settings(self.guild_id).get("questions") or ["Wie lautet dein RP-Name?", "Wie lautet dein Roblox-Name?", "Wie alt bist du (OOC)?", "Welche Erfahrung bringst du mit?", "Warum möchtest du beitreten?"]
+        await interaction.response.send_modal(ApplicationModal(self.cog, self.guild_id, questions))
 
 class ApplicationReviewView(discord.ui.View):
     def __init__(self, cog, app_id):
@@ -159,22 +165,52 @@ class Applications(commands.Cog):
             if row.get("status") == "pending":
                 self.bot.add_view(ApplicationReviewView(self, app_id))
 
-    @app_commands.command(name="bewerbung-panel", description="Erstellt ein dauerhaftes Bewerbungs-Panel")
+    @app_commands.command(name="bewerbung-panel", description="Erstellt ein anpassbares Bewerbungs-Panel")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
-    @app_commands.describe(kanal="Kanal für das Bewerbungs-Panel", review_kanal="Kanal für eingehende Bewerbungen", log_kanal="Kanal für Entscheidungsprotokolle", review_rolle="Optionale Rolle für Bewerbungsprüfer")
-    async def application_panel(self, interaction: discord.Interaction, kanal: discord.TextChannel, review_kanal: discord.TextChannel, log_kanal: discord.TextChannel, review_rolle: discord.Role = None):
+    @app_commands.describe(
+        kanal="Kanal für das öffentliche Bewerbungs-Panel",
+        review_kanal="Privater Kanal für eingehende Bewerbungen",
+        log_kanal="Kanal für Entscheidungsprotokolle",
+        titel="Titel des Panels",
+        beschreibung="Beschreibung des Panels",
+        fragen="Bis zu 5 Fragen, jeweils eine pro Zeile",
+        review_rolle="Optionale Rolle, die Bewerbungen prüfen darf",
+    )
+    async def application_panel(
+        self, interaction: discord.Interaction, kanal: discord.TextChannel,
+        review_kanal: discord.TextChannel, log_kanal: discord.TextChannel,
+        titel: str = "🐺 IronWolf – Fraktionsbewerbungen",
+        beschreibung: str = "Du möchtest Teil unseres Teams werden? Klicke auf den Button und fülle das Formular aus.",
+        fragen: str = None, review_rolle: discord.Role = None
+    ):
         if not interaction.guild:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
             return
+        questions = [line.strip() for line in (fragen or "").splitlines() if line.strip()]
+        if not questions:
+            questions = ["Wie lautet dein RP-Name?", "Wie lautet dein Roblox-Name?", "Wie alt bist du (OOC)?", "Welche Erfahrung bringst du mit?", "Warum möchtest du beitreten?"]
+        if len(questions) > 5:
+            await interaction.response.send_message("Discord-Formulare unterstützen maximal 5 Fragen. Bitte gib höchstens 5 Zeilen an.", ephemeral=True)
+            return
+        if any(len(question) > 45 for question in questions):
+            await interaction.response.send_message("Jede Frage darf höchstens 45 Zeichen lang sein. Bitte kürze die Fragen.", ephemeral=True)
+            return
         gid = interaction.guild.id
-        guild_settings(gid).update({"panel_channel_id": kanal.id, "review_channel_id": review_kanal.id, "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None})
+        guild_settings(gid).update({
+            "panel_channel_id": kanal.id, "review_channel_id": review_kanal.id,
+            "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None,
+            "panel_title": titel[:256], "panel_description": beschreibung[:4000], "questions": questions
+        })
         save_config()
-        embed = discord.Embed(title="🐺 IronWolf – Fraktionsbewerbungen", description="Du möchtest Teil unseres Teams werden?\n\nKlicke auf **Jetzt bewerben** und fülle das Formular vollständig aus. Deine Angaben werden vertraulich an das zuständige Team übermittelt. Du kannst immer nur eine offene Bewerbung gleichzeitig haben.", color=discord.Color.dark_blue())
+        embed = discord.Embed(title=titel[:256], description=beschreibung[:4000], color=discord.Color.dark_blue())
         embed.set_footer(text="IronWolf RP • Bewerbungen")
         self.bot.add_view(ApplicationPanelView(self, gid))
         await kanal.send(embed=embed, view=ApplicationPanelView(self, gid))
-        await interaction.response.send_message("✅ Bewerbungs-Panel in {} erstellt. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, review_kanal.mention, log_kanal.mention), ephemeral=True)
+        await interaction.response.send_message(
+            "✅ Angepasstes Bewerbungs-Panel in {} erstellt. {} Fragen gespeichert. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, len(questions), review_kanal.mention, log_kanal.mention),
+            ephemeral=True
+        )
 
 async def setup(bot):
     await bot.add_cog(Applications(bot))
