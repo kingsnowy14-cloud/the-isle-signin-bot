@@ -201,6 +201,7 @@ class SecuritySuite(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
         restored, failed, skipped = 0, [], 0
         everyone = guild.default_role
+        remaining = {}
         for channel_id, old_value in lockdown.get("send_messages", {}).items():
             channel = guild.get_channel(int(channel_id))
             if not isinstance(channel, discord.TextChannel):
@@ -213,15 +214,9 @@ class SecuritySuite(commands.Cog):
                 restored += 1
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(channel.name)
-        if not failed:
-            cfg["lockdown"] = None
-            save_guild_state(guild.id, cfg)
-        else:
-            # Keep the snapshot for retrying failed channels; remove successfully restored channels.
-            for channel in guild.text_channels:
-                if channel.id not in [int(x) for x in failed]:
-                    pass
-            save_guild_state(guild.id, cfg)
+                remaining[str(channel_id)] = old_value
+        cfg["lockdown"] = ({"started_at": lockdown.get("started_at"), "send_messages": remaining} if remaining else None)
+        save_guild_state(guild.id, cfg)
         await send_log(guild, f"🔓 Lockdown aufgehoben von {interaction.user} ({interaction.user.id}). Wiederhergestellt: {restored}; fehlgeschlagen: {len(failed)}.")
         message = f"🔓 Rechte für {restored} Kanäle wiederhergestellt; übersprungen (gelöscht/anderer Typ): {skipped}."
         if failed:
