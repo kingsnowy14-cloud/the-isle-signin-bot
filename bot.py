@@ -10,6 +10,7 @@ import shutil
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from storage import data_path
 from collections import defaultdict, deque
 import discord
 from discord import app_commands
@@ -2362,8 +2363,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-CONFIG_PATH = Path("applications_config.json")
-RECORDS_PATH = Path("applications.json")
+CONFIG_PATH = data_path("applications_config.json")
+RECORDS_PATH = data_path("applications.json")
 
 def read_json(path, default):
     try:
