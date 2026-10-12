@@ -2801,6 +2801,22 @@ async def ironwolf_profile(
             ephemeral=True,
         )
         return
+
+    # Use the same allowlist as the nickname guard. Only listed guilds may
+    # change the bot's global avatar/banner through this command.
+    raw_ids = os.getenv("IRONWOLF_NICKNAME_ALLOWED_GUILD_IDS", "")
+    allowed_guild_ids = {
+        int(item.strip())
+        for item in raw_ids.split(",")
+        if item.strip().isdigit()
+    }
+    if interaction.guild.id not in allowed_guild_ids:
+        await interaction.response.send_message(
+            "⛔ Dieser Server ist nicht für Profilbild- oder Banneränderungen freigegeben. "
+            "Bitte wende dich an den Bot-Betreiber.",
+            ephemeral=True,
+        )
+        return
     if not profilbild_url and not banner_url:
         await interaction.response.send_message(
             "Gib mindestens eine Profilbild-URL oder Banner-URL an.",
