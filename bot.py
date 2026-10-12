@@ -2362,6 +2362,15 @@ async def on_ready():
             if not member.bot and member.voice and member.voice.channel:
                 _active_voice_sessions.setdefault((guild.id, member.id), now)
 
+    # Load the personal ID card command once before slash-command sync.
+    if not getattr(bot, "_ausweis_loaded", False):
+        try:
+            await bot.load_extension("ausweis")
+            bot._ausweis_loaded = True
+            print("Personal ID card extension loaded.")
+        except Exception as exc:
+            print(f"Could not load personal ID card extension: {type(exc).__name__}: {exc}")
+
     # Load the economy extension once before slash-command sync.
     if not getattr(bot, "_economy_loaded", False):
         try:
