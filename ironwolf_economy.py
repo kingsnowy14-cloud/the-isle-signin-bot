@@ -1,4 +1,3 @@
-"""
 IronWolf Economy Module
 Für discord.py 2.x
 
