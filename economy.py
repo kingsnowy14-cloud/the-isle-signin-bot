@@ -31,6 +31,105 @@ def credit(g, u, gross):
     u["bank"] += actual
     return actual, tax, net - actual
 
+
+class BankView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Mein Konto ansehen", style=discord.ButtonStyle.primary, emoji="🏦", custom_id="ironwolf:bank:account")
+    async def show_account(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild_id is None:
+            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            return
+        u = user(interaction.guild_id, interaction.user.id)
+        await interaction.response.send_message(
+            f"🏦 Bankkonto: **{money(u['bank'])}**\n💶 Bargeld: **{money(u['cash'])}**",
+            ephemeral=True
+        )
+
+
+class ShopPurchaseView(discord.ui.View):
+    def __init__(self, guild_id: int, items: dict):
+        super().__init__(timeout=180)
+        self.guild_id = guild_id
+        self.selected_name = None
+        options = [
+            discord.SelectOption(label=name[:100], description=f"{money(item['price'])} · {(item.get('description') or 'Keine Beschreibung')[:70]}", value=name)
+            for name, item in list(items.items())[:25]
+        ]
+        self.add_item(ShopItemSelect(options, self))
+        self.add_item(ShopBuyButton(self))
+
+
+class ShopItemSelect(discord.ui.Select):
+    def __init__(self, options, parent_view):
+        super().__init__(placeholder="Artikel zum Kaufen auswählen …", min_values=1, max_values=1, options=options)
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        self.parent_view.selected_name = self.values[0]
+        item = guild(self.parent_view.guild_id)["shop"].get(self.values[0])
+        if item:
+            await interaction.response.send_message(
+                f"Ausgewählt: **{self.values[0]}** für **{money(item['price'])}**. Drücke anschließend auf „Jetzt kaufen“.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message("Dieser Artikel ist nicht mehr verfügbar.", ephemeral=True)
+
+
+class ShopBuyButton(discord.ui.Button):
+    def __init__(self, parent_view):
+        super().__init__(label="Jetzt kaufen", style=discord.ButtonStyle.success, emoji="🛍️")
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.guild_id != self.parent_view.guild_id:
+            await interaction.response.send_message("Dieser Shop gehört zu einem anderen Server.", ephemeral=True)
+            return
+        name = self.parent_view.selected_name
+        if not name:
+            await interaction.response.send_message("Wähle zuerst oben einen Artikel aus.", ephemeral=True)
+            return
+        g = guild(interaction.guild_id)
+        item = g["shop"].get(name)
+        if not item:
+            await interaction.response.send_message("Artikel nicht gefunden. Öffne /shop erneut.", ephemeral=True)
+            return
+        u = user(interaction.guild_id, interaction.user.id)
+        price = int(item["price"])
+        if u["bank"] < price:
+            await interaction.response.send_message(f"Nicht genug Geld auf deinem Bankkonto. Preis: **{money(price)}**.", ephemeral=True)
+            return
+        u["bank"] -= price
+        u["items"].append(name)
+        save()
+        await interaction.response.send_message(
+            f"🛍️ Du hast **{name}** für **{money(price)}** gekauft. Neuer Kontostand: **{money(u['bank'])}**.",
+            ephemeral=True
+        )
+
+
+class ShopView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Artikel kaufen", style=discord.ButtonStyle.success, emoji="🛒", custom_id="ironwolf:shop:buy")
+    async def open_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild_id is None:
+            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            return
+        items = dict(guild(interaction.guild_id)["shop"])
+        if not items:
+            await interaction.response.send_message("Der Shop ist noch leer.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            "Wähle einen Artikel aus und drücke danach auf **Jetzt kaufen**:",
+            view=ShopPurchaseView(interaction.guild_id, items),
+            ephemeral=True
+        )
+
+
 def admin():
     return app_commands.checks.has_permissions(manage_guild=True)
 
@@ -95,7 +194,7 @@ class Economy(commands.Cog):
         e.add_field(name="Zinsen", value=f"{g['bank_interest']:.2f} %", inline=True)
         e.add_field(name="Steuern", value=f"{'AN' if g['tax_enabled'] else 'AUS'} · {g['tax_percent']:.1f} %", inline=True)
         e.add_field(name="Banklimit", value=money(g["bank_limit"]), inline=True)
-        await interaction.response.send_message(embed=e, ephemeral=False)
+        await interaction.response.send_message(embed=e, view=BankView(), ephemeral=False)
 
     @app_commands.command(name="konto", description="Zeigt deinen Kontostand privat")
     async def account(self, interaction: discord.Interaction):
@@ -135,7 +234,7 @@ class Economy(commands.Cog):
             for name, item in list(items.items())[:25]:
                 e.add_field(name=name[:256], value=f"Preis: **{money(item['price'])}**\n{item.get('description') or 'Keine Beschreibung'}", inline=True)
         e.set_footer(text="Kaufen: /shop-kaufen")
-        await interaction.response.send_message(embed=e, ephemeral=False)
+        await interaction.response.send_message(embed=e, view=ShopView(), ephemeral=False)
 
     @app_commands.command(name="shop-hinzufuegen", description="Shopartikel hinzufügen (Admin)")
     @admin()
@@ -167,3 +266,6 @@ class Economy(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Economy(bot))
+    # Persistent views: these buttons continue working after bot restarts.
+    bot.add_view(BankView())
+    bot.add_view(ShopView())
