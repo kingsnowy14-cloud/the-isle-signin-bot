@@ -32,17 +32,21 @@ def safe_text(value, limit=1000):
     return discord.utils.escape_mentions(str(value or ""))[:limit]
 
 class ApplicationModal(discord.ui.Modal):
-    def __init__(self, cog, guild_id, questions):
-        super().__init__(title="IronWolf – Bewerbung", timeout=300)
+    """Collects up to five answers per Discord modal, chaining pages for up to 20 questions."""
+    def __init__(self, cog, guild_id, questions, page=0, previous_answers=None):
+        super().__init__(title="Bewerbung ({}/{})".format(page + 1, (len(questions) + 4) // 5), timeout=300)
         self.cog, self.guild_id = cog, guild_id
-        self.questions = questions[:5]
-        for index, question in enumerate(self.questions):
+        self.questions = questions
+        self.page = page
+        self.previous_answers = list(previous_answers or [])
+        self.page_questions = questions[page * 5:(page + 1) * 5]
+        for index, question in enumerate(self.page_questions):
             field = discord.ui.TextInput(
                 label=question[:45],
                 custom_id="answer_{}".format(index),
                 placeholder="Deine Antwort hier …",
-                style=discord.TextStyle.paragraph if index >= 2 else discord.TextStyle.short,
-                max_length=1000 if index >= 2 else 200,
+                style=discord.TextStyle.paragraph,
+                max_length=1000,
                 required=True,
             )
             self.add_item(field)
@@ -50,6 +54,16 @@ class ApplicationModal(discord.ui.Modal):
     async def on_submit(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
             await interaction.response.send_message("Dieses Formular gehört zu einem anderen Server.", ephemeral=True)
+            return
+        answers = self.previous_answers + [
+            {"question": self.page_questions[i], "answer": str(field.value).strip()}
+            for i, field in enumerate(self.children)
+        ]
+        next_page = self.page + 1
+        if next_page * 5 < len(self.questions):
+            await interaction.response.send_modal(ApplicationModal(
+                self.cog, self.guild_id, self.questions, next_page, answers
+            ))
             return
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
@@ -59,7 +73,6 @@ class ApplicationModal(discord.ui.Modal):
         if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message("Der Prüfkanal ist nicht eingerichtet. Bitte informiere das Team.", ephemeral=True)
             return
-        answers = [{"question": self.questions[i], "answer": str(field.value).strip()} for i, field in enumerate(self.children)]
         app_id = "{}-{}-{}".format(self.guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
         row = {
             "id": app_id, "guild_id": self.guild_id, "user_id": interaction.user.id,
@@ -213,6 +226,73 @@ class Applications(commands.Cog):
             "✅ Angepasstes Bewerbungs-Panel in {} erstellt. {} Fragen gespeichert. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, len(questions), review_kanal.mention, log_kanal.mention),
             ephemeral=True
         )
+
+
+    @app_commands.command(name="bewerbung-fragen", description="Legt bis zu 20 individuelle Bewerbungsfragen fest")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.describe(
+        frage1="1. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage2="2. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage3="3. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage4="4. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage5="5. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage6="6. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage7="7. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage8="8. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage9="9. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage10="10. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage11="11. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage12="12. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage13="13. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage14="14. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage15="15. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage16="16. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage17="17. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage18="18. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage19="19. Frage (leer lassen, um keine weitere Frage hinzuzufügen)",
+        frage20="20. Frage (leer lassen, um keine weitere Frage hinzuzufügen)"
+    )
+    async def application_questions(
+        self, interaction: discord.Interaction,
+        frage1: str = None,
+        frage2: str = None,
+        frage3: str = None,
+        frage4: str = None,
+        frage5: str = None,
+        frage6: str = None,
+        frage7: str = None,
+        frage8: str = None,
+        frage9: str = None,
+        frage10: str = None,
+        frage11: str = None,
+        frage12: str = None,
+        frage13: str = None,
+        frage14: str = None,
+        frage15: str = None,
+        frage16: str = None,
+        frage17: str = None,
+        frage18: str = None,
+        frage19: str = None,
+        frage20: str = None
+    ):
+        if not interaction.guild:
+            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            return
+        questions = [q.strip() for q in (frage1, frage2, frage3, frage4, frage5, frage6, frage7, frage8, frage9, frage10, frage11, frage12, frage13, frage14, frage15, frage16, frage17, frage18, frage19, frage20) if q and q.strip()]
+        if not questions:
+            await interaction.response.send_message("Gib mindestens eine Frage an.", ephemeral=True)
+            return
+        if any(len(q) > 45 for q in questions):
+            await interaction.response.send_message("Jede Frage darf höchstens 45 Zeichen lang sein.", ephemeral=True)
+            return
+        guild_settings(interaction.guild.id)["questions"] = questions
+        save_config()
+        await interaction.response.send_message(
+            "✅ Gespeichert: {} Bewerbungsfragen. Die Fragen werden beim nächsten Klick auf „Jetzt bewerben“ verwendet. Antworten erfolgen in mehreren Formularschritten mit jeweils bis zu 5 Fragen.".format(len(questions)),
+            ephemeral=True
+        )
+
 
 async def setup(bot):
     await bot.add_cog(Applications(bot))
