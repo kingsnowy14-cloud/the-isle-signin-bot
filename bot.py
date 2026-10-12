@@ -2779,15 +2779,6 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load IronWolf feature suite: {type(exc).__name__}: {exc}")
 
-    # Load the optional API-backed IronWolf AI commands.
-    if not getattr(bot, "_ironwolf_ai_loaded", False):
-        try:
-            await bot.load_extension("ironwolf_ai")
-            bot._ironwolf_ai_loaded = True
-            print("IronWolf AI assistant loaded.")
-        except Exception as exc:
-            print(f"Could not load IronWolf AI assistant: {type(exc).__name__}: {exc}")
-
     # Load the economy extension once before slash-command sync.
     if not getattr(bot, "_economy_loaded", False):
         try:
