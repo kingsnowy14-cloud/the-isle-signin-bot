@@ -3144,6 +3144,11 @@ async def on_ready():
     except Exception as exc:
         print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    # Show the current server count in IronWolf's Discord activity.
+    try:
+        await bot.change_presence(activity=discord.Game(name=f"auf {len(bot.guilds)} Servern"))
+    except discord.HTTPException as exc:
+        print(f"Could not update server-count presence: {type(exc).__name__}: {exc}")
     global _social_alert_task_started
     if not _social_alert_task_started:
         _social_alert_task_started = True
