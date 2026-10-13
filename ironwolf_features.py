@@ -10,6 +10,7 @@ from discord.ext import commands
 AKTEN = data_path("akten.json")
 EVENTS = data_path("ironwolf_events.json")
 SECURITY = data_path("security_state.json")
+SERVER_LOGS = data_path("server_logs.json")
 
 def read(path, default):
     try:
@@ -178,3 +179,100 @@ async def setup(bot):
     await bot.add_cog(SecurityTools(bot))
     await bot.add_cog(EventTools(bot))
     await bot.add_cog(ControlTools(bot))
+    await bot.add_cog(ServerLogs(bot))
+
+
+class ServerLogs(commands.Cog):
+    """Konfigurierbare, dauerhaft gespeicherte Server-Aktivitätslogs."""
+
+    def __init__(self, bot):
+        self.bot = bot
+
+    async def log(self, guild, title, description, color=discord.Color.blurple()):
+        db = read(SERVER_LOGS, {})
+        cfg = db.get(str(guild.id), {})
+        channel = guild.get_channel(cfg.get("channel_id")) if cfg.get("channel_id") else None
+        if not isinstance(channel, discord.TextChannel):
+            return
+        embed = discord.Embed(title=title, description=description[:4000], color=color, timestamp=datetime.now(timezone.utc))
+        try:
+            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    @app_commands.command(name="serverlogs", description="Legt den Kanal für Server-Aktivitätslogs fest")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def serverlogs(self, interaction: discord.Interaction, kanal: discord.TextChannel):
+        db = read(SERVER_LOGS, {})
+        db[str(interaction.guild_id)] = {"channel_id": kanal.id}
+        write(SERVER_LOGS, db)
+        await interaction.response.send_message("Server-Logs werden ab jetzt in " + kanal.mention + " gespeichert. Die Einstellung bleibt nach Neustarts erhalten.", ephemeral=True)
+        await self.log(interaction.guild, "Server-Logs aktiviert", "Konfiguration durch " + str(interaction.user) + ".", discord.Color.green())
+
+    @app_commands.command(name="serverlogs-aus", description="Deaktiviert die Server-Aktivitätslogs")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def serverlogs_aus(self, interaction: discord.Interaction):
+        db = read(SERVER_LOGS, {})
+        db.pop(str(interaction.guild_id), None)
+        write(SERVER_LOGS, db)
+        await interaction.response.send_message("Server-Logs wurden deaktiviert.", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        await self.log(member.guild, "Mitglied beigetreten", str(member) + " · ID " + str(member.id), discord.Color.green())
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        await self.log(member.guild, "Mitglied verlassen", str(member) + " · ID " + str(member.id), discord.Color.red())
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        if message.guild is None or (message.author and message.author.bot):
+            return
+        author = str(message.author) + " · ID " + str(message.author.id) if message.author else "Unbekannt"
+        content = discord.utils.escape_mentions(message.content or "[Text nicht im Cache verfügbar]")
+        await self.log(message.guild, "Nachricht gelöscht", "Kanal: " + str(message.channel.mention) + "\nAutor: " + author + "\nInhalt:\n" + content)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before, after):
+        if after.guild is None or (after.author and after.author.bot) or before.content == after.content:
+            return
+        old = discord.utils.escape_mentions(before.content or "[leer/nicht verfügbar]")
+        new = discord.utils.escape_mentions(after.content or "[leer/nicht verfügbar]")
+        await self.log(after.guild, "Nachricht bearbeitet", "Kanal: " + str(after.channel.mention) + "\nAutor: " + str(after.author) + "\nVorher: " + old + "\nNachher: " + new)
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        if before.nick != after.nick:
+            await self.log(after.guild, "Nickname geändert", "Mitglied: " + str(after) + "\nVorher: " + str(before.nick or "Kein Nickname") + "\nNachher: " + str(after.nick or "Kein Nickname"))
+        added = [role for role in after.roles if role not in before.roles and not role.is_default()]
+        removed = [role for role in before.roles if role not in after.roles and not role.is_default()]
+        if added or removed:
+            changes = ["+ " + role.name for role in added] + ["- " + role.name for role in removed]
+            await self.log(after.guild, "Rollen geändert", "Mitglied: " + str(after) + "\n" + "\n".join(changes))
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel):
+        await self.log(channel.guild, "Kanal erstellt", "#" + channel.name + " · ID " + str(channel.id), discord.Color.green())
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel):
+        await self.log(channel.guild, "Kanal gelöscht", channel.name + " · ID " + str(channel.id), discord.Color.red())
+
+    @commands.Cog.listener()
+    async def on_guild_role_create(self, role):
+        await self.log(role.guild, "Rolle erstellt", role.name + " · ID " + str(role.id), discord.Color.green())
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role):
+        await self.log(role.guild, "Rolle gelöscht", role.name + " · ID " + str(role.id), discord.Color.red())
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild, user):
+        await self.log(guild, "Mitglied gebannt", str(user) + " · ID " + str(user.id), discord.Color.red())
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild, user):
+        await self.log(guild, "Mitglied entbannt", str(user) + " · ID " + str(user.id), discord.Color.green())
