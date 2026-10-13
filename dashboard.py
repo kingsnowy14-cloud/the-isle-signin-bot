@@ -35,7 +35,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=True,
-    MAX_CONTENT_LENGTH=32 * 1024,
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
 
 _bot = None
@@ -976,6 +976,8 @@ def start_dashboard(bot, config, save_json, guild_config):
     app.secret_key = _env("DASHBOARD_SECRET_KEY") or app.secret_key
     if not _env("DASHBOARD_SECRET_KEY"):
         print("[DASHBOARD] WARNING: DASHBOARD_SECRET_KEY is not set; sessions will reset on restart.", flush=True)
+    from premium_server_banner import register_premium_banner_routes
+    register_premium_banner_routes(app, bot, _authorized_guild, _csrf_ok, _csrf_field, _render, guild_config)
     port = int(os.getenv("PORT", "8080"))
     thread = threading.Thread(
         target=lambda: app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True),
