@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import discord
+from discord import app_commands
 import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response
 from storage import data_path
