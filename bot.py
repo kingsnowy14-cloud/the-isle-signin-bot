@@ -15,6 +15,7 @@ from typing import Optional
 from urllib.parse import parse_qs, urlparse
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
+from premium import guild_has_feature
 from collections import defaultdict, deque
 import discord
 from discord import app_commands
@@ -79,6 +80,14 @@ async def dashboard_slash_command_check(interaction):
         return False
     cog = getattr(command, "binding", None)
     module_name = cog.__class__.__name__ if cog is not None else None
+    premium_feature = {"SecurityTools": "security", "EventTools": "automation"}.get(module_name)
+    if premium_feature and not guild_has_feature(guild_config(interaction.guild_id), premium_feature):
+        message = "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+        return False
     if not await dashboard_module_enabled(interaction.guild_id, module_name):
         message = "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert."
         if interaction.response.is_done():
@@ -564,12 +573,21 @@ class TicketCreateModal(discord.ui.Modal):
         data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
         save_json(DATA_FILE, data)
 
+        brand_color = discord.Color.blurple()
+        if guild_has_feature(cfg, "branding"):
+            try:
+                brand_color = discord.Color(int(str(panel.get("brand_color", "5865F2")).lstrip("#"), 16))
+            except (TypeError, ValueError):
+                brand_color = discord.Color.blurple()
         embed = create_embed(
             title=f"🎫 {self.button_label}",
             description=f"Hello {interaction.user.mention}!\n\n**Issue:**\n{self.reason.value}",
-            color=discord.Color.blurple(),
+            color=brand_color,
             timestamp=datetime.now(timezone.utc),
         )
+        logo_url = panel.get("brand_logo_url", "") if guild_has_feature(cfg, "branding") else ""
+        if isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
+            embed.set_thumbnail(url=logo_url)
         embed.add_field(name="Ticket owner", value=interaction.user.mention, inline=True)
         embed.add_field(name="Ticket number", value=str(ticket_number), inline=True)
         await channel.send(
