@@ -11,6 +11,7 @@ import shutil
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Optional
 from storage import data_path
 from collections import defaultdict, deque
 import discord
@@ -931,7 +932,7 @@ async def ticketcreat(
     button4: str = None,
     button5: str = None,
     kategorie: discord.CategoryChannel = None,
-    support_rolle: discord.Role = None,
+    support_rolle: Optional[discord.Role] = None,
 ):
     labels = [x.strip() for x in [button1, button2, button3, button4, button5] if x and x.strip()]
     if not labels:
@@ -2219,7 +2220,7 @@ async def social_alert_disable(interaction: discord.Interaction, plattform: app_
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
 @app_commands.describe(quelle="Optional: Creator-Quelle, wenn mehrere Alerts derselben Plattform existieren")
-async def social_alert_test(interaction: discord.Interaction, plattform: app_commands.Choice[str], quelle: str = None):
+async def social_alert_test(interaction: discord.Interaction, plattform: app_commands.Choice[str], quelle: Optional[str] = None):
     alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
     matches = [(key, alert) for key, alert in alerts.items() if alert.get("platform") == plattform.value and (not quelle or str(alert.get("source", "")).casefold() == quelle.strip().casefold())]
     if not matches:
