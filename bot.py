@@ -2250,10 +2250,10 @@ async def social_alert_loop():
                                             title="📺 Neues YouTube-Video",
                                             description=f"**{item['title'][:250]}**\n[▶ Video ansehen]({item['url']})",
                                             color=discord.Color.red(),
+                                        )
                                         video_id = item.get("id")
                                         if video_id:
                                             embed.set_thumbnail(url=f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
-                                        )
                                         if item["published"]:
                                             try:
                                                 published_dt = datetime.fromisoformat(item["published"].replace("Z", "+00:00"))
