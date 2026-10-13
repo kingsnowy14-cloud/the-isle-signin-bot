@@ -3444,7 +3444,14 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
             f"Neu erstellt: **{created_roles} Rollen**, **{created_categories} Kategorien**, "
             f"**{created_channels} Kanäle**.\\n"
             "Bereits vorhandene Inhalte wurden beibehalten. Prüfe bitte Rollen-Hierarchie "
-            "und Berechtigungen und weise Teamrollen den richtigen Personen zu."
+            "und Berechtigungen und weise Teamrollen den richtigen Personen zu.\\n\\n"
+            "**Sinnvolle nächste Schritte:**\\n"
+            "• `/bewerbung-panel` – Bewerbungen für Teammitglieder einrichten\\n"
+            "• `/security-konfigurieren` – Sicherheits- und Raid-Logkanal festlegen\\n"
+            "• `/serverlogs` – Aktivitätslogs in einem Kanal aktivieren\\n"
+            "• `/event-erstellen` – ein Serverevent veröffentlichen\\n"
+            "• `/abstimmung` – eine Community-Abstimmung starten (falls verfügbar)\\n"
+            "• Danach: Kanalrechte prüfen, Teamrollen vergeben und Regeln/Willkommensnachricht anpassen."
         ))
     except discord.Forbidden:
         await status.edit(content=(
