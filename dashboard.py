@@ -440,6 +440,8 @@ def guild_actions(guild_id):
         reason = request.form.get("reason", "").strip()[:400]
         content = request.form.get("message", "").strip()
         confirm = request.form.get("confirm", "").strip()
+        amount_raw = request.form.get("amount", "10")
+        minutes_raw = request.form.get("minutes", "10")
         try:
             channel = guild.get_channel(int(channel_id)) if channel_id else None
             target = guild.get_member(int(target_id)) if target_id else None
@@ -468,7 +470,7 @@ def guild_actions(guild_id):
                 if confirm != "LOESCHEN":
                     raise ValueError("Zum Bestätigen musst du LOESCHEN in das Bestätigungsfeld schreiben.")
                 try:
-                    amount = int(request.form.get("amount", "10"))
+                    amount = int(amount_raw)
                 except ValueError:
                     raise ValueError("Die Anzahl muss eine Zahl sein.")
                 if not 1 <= amount <= 100:
@@ -489,7 +491,7 @@ def guild_actions(guild_id):
                     if not actor.guild_permissions.moderate_members or not bot_member.guild_permissions.moderate_members:
                         raise PermissionError("Du und der Bot benötigen „Mitglieder moderieren“.")
                     try:
-                        minutes = int(request.form.get("minutes", "10"))
+                        minutes = int(minutes_raw)
                     except ValueError:
                         raise ValueError("Die Dauer muss eine Zahl sein.")
                     if not 1 <= minutes <= 40320:
