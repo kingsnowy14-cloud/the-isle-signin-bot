@@ -994,13 +994,15 @@ class VerifyAdminCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode fest
         required=True,
     )
 
-    def __init__(self, channel, verified_role, unverified_role, button_label, button_emoji):
+    def __init__(self, channel, verified_role, unverified_role, button_label, button_emoji, panel_title="🔐 Server-Verifizierung", panel_description="Lies die Serverregeln und klicke auf den Button. Gib anschließend den Verifizierungscode ein."):
         super().__init__()
         self.channel = channel
         self.verified_role = verified_role
         self.unverified_role = unverified_role
         self.button_label = button_label
         self.button_emoji = button_emoji
+        self.panel_title = panel_title
+        self.panel_description = panel_description
 
     async def on_submit(self, interaction: discord.Interaction):
         if not interaction.guild or not interaction.user.guild_permissions.manage_guild:
@@ -1016,10 +1018,12 @@ class VerifyAdminCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode fest
         cfg["verify_code_hash"] = _verify_code_hash(str(self.code.value).strip(), salt)
         cfg["verify_button_label"] = self.button_label
         cfg["verify_button_emoji"] = self.button_emoji
+        cfg["verify_embed_title"] = self.panel_title[:256]
+        cfg["verify_embed_description"] = self.panel_description[:4000]
         save_json(CONFIG_FILE, config)
         embed = create_embed(
-            title="🔐 Server-Verifizierung",
-            description="Lies die Serverregeln und klicke auf den Button. Gib anschließend den Verifizierungscode ein.",
+            title=self.panel_title[:256],
+            description=self.panel_description[:4000],
             color=discord.Color.green(),
         )
         await self.channel.send(embed=embed, view=VerifyView(self.button_label, self.button_emoji))
@@ -2252,6 +2256,107 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
         )
         return
     await interaction.response.send_message(f"✅ Nachricht wurde als Bot in {kanal.mention} gesendet.", ephemeral=True)
+
+
+@bot.tree.command(name="verify", description="Richtet das Verifizierungs-Panel vollständig ein")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    kanal="Kanal, in dem das Verifizierungs-Panel erscheinen soll",
+    rolle_geben="Rolle, die nach erfolgreicher Verifizierung vergeben wird",
+    rolle_entfernen="Rolle, die nach erfolgreicher Verifizierung entfernt wird (optional)",
+    modus="Ein Klick oder Code-Eingabe",
+    titel="Titel des Verifizierungs-Embeds",
+    beschreibung="Beschreibung des Verifizierungs-Embeds",
+    button_name="Text auf dem Verifizierungsbutton",
+    emoji="Emoji auf dem Verifizierungsbutton",
+)
+@app_commands.choices(modus=[
+    app_commands.Choice(name="Nur Knopf drücken", value="click"),
+    app_commands.Choice(name="Code eingeben", value="code"),
+])
+async def verify_command(
+    interaction: discord.Interaction,
+    kanal: discord.TextChannel,
+    rolle_geben: discord.Role,
+    rolle_entfernen: discord.Role = None,
+    modus: app_commands.Choice[str] = None,
+    titel: str = "🔐 Server-Verifizierung",
+    beschreibung: str = "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren.",
+    button_name: str = "Verifizieren",
+    emoji: str = "✅",
+):
+    if not interaction.guild:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    bot_member = interaction.guild.me
+    if (
+        not bot_member
+        or rolle_geben.is_default()
+        or rolle_geben >= bot_member.top_role
+        or (rolle_entfernen and (rolle_entfernen.is_default() or rolle_entfernen >= bot_member.top_role))
+    ):
+        await interaction.response.send_message(
+            "Die Bot-Rolle muss über beiden ausgewählten Rollen stehen. @everyone kann nicht verwendet werden.",
+            ephemeral=True,
+        )
+        return
+    if rolle_entfernen and rolle_entfernen.id == rolle_geben.id:
+        await interaction.response.send_message(
+            "Die Rolle zum Vergeben und die Rolle zum Entfernen müssen unterschiedlich sein.",
+            ephemeral=True,
+        )
+        return
+    mode_value = modus.value if modus else "click"
+    panel_title = titel.strip()[:256] or "🔐 Server-Verifizierung"
+    panel_description = beschreibung.strip()[:4000] or "Klicke auf den Button, um dich zu verifizieren."
+    panel_button = button_name.strip()[:80] or "Verifizieren"
+    panel_emoji = emoji.strip()[:100] if emoji else "✅"
+
+    if mode_value == "code":
+        await interaction.response.send_modal(
+            VerifyAdminCodeModal(
+                kanal, rolle_geben, rolle_entfernen, panel_button, panel_emoji,
+                panel_title, panel_description,
+            )
+        )
+        return
+
+    cfg = guild_config(interaction.guild_id)
+    cfg["verify_channel"] = kanal.id
+    cfg["verified_role"] = rolle_geben.id
+    cfg["unverified_role"] = rolle_entfernen.id if rolle_entfernen else None
+    cfg["verify_mode"] = "click"
+    cfg.pop("verify_code_salt", None)
+    cfg.pop("verify_code_hash", None)
+    cfg["verify_button_label"] = panel_button
+    cfg["verify_button_emoji"] = panel_emoji
+    cfg["verify_embed_title"] = panel_title
+    cfg["verify_embed_description"] = panel_description
+    save_json(CONFIG_FILE, config)
+    embed = create_embed(
+        title=panel_title,
+        description=panel_description,
+        color=discord.Color.green(),
+    )
+    try:
+        await kanal.send(embed=embed, view=VerifyView(panel_button, panel_emoji))
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "Ich kann in diesem Kanal keine Nachricht senden. Prüfe meine Kanalrechte.",
+            ephemeral=True,
+        )
+        return
+    except (discord.HTTPException, ValueError):
+        await interaction.response.send_message(
+            "Das Verifizierungs-Panel konnte nicht gesendet werden. Prüfe bitte das Emoji und die Texte.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        f"✅ Verifizierungs-Panel wurde in {kanal.mention} erstellt. "
+        f"Rolle vergeben: {rolle_geben.mention}; Rolle entfernen: {rolle_entfernen.mention if rolle_entfernen else 'keine'}.",
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(name="verify-setup", description="Richtet die Verifizierung, Methode und Button ein")
