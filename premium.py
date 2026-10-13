@@ -140,7 +140,10 @@ def guild_has_feature(guild_config, feature):
     """Resolve a feature from a linked account or an active server trial."""
     if not isinstance(guild_config, dict) or feature not in PREMIUM_FEATURES:
         return False
+    owner_id = guild_config.get("premium_owner_id")
+    owner_plan = account_plan(owner_id)
+    if owner_plan != "free":
+        return feature in PLAN_FEATURES[owner_plan]
     if guild_trial_active(guild_config):
         return feature in PLAN_FEATURES["premium_plus"]
-    owner_id = guild_config.get("premium_owner_id")
-    return has_feature(owner_id, feature)
+    return False
