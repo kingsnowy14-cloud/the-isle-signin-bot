@@ -729,8 +729,8 @@ import random
 
 
 def get_user_level(xp: int) -> int:
-    """Calculate the level from total XP."""
-    return int((max(0, xp) / 100) ** 0.5)
+    """Use the same cumulative XP curve as /rank and /level."""
+    return calculate_level(max(0, int(xp)))
 
 
 def xp_for_level(level: int) -> int:
@@ -739,23 +739,24 @@ def xp_for_level(level: int) -> int:
 
 
 def add_message_xp(guild_id: int, user_id: int):
-    """Award 5–15 XP, at most once every 60 seconds."""
+    """Award 5–15 XP at most once every 60 seconds and return only new level-ups."""
     stats = get_user_stats(guild_id, user_id)
     now = time.time()
     last_xp_at = float(stats.get("last_xp_at", 0))
 
+    old_xp = max(0, int(stats.get("xp", 0)))
+    old_level = calculate_level(old_xp)
     if now - last_xp_at < 60:
-        return 0, get_user_level(int(stats.get("xp", 0)))
+        # A cooldown must never be mistaken for a level-up by on_message.
+        return 0, 0
 
-    old_level = get_user_level(int(stats.get("xp", 0)))
     earned_xp = random.randint(5, 15)
-
-    stats["xp"] = int(stats.get("xp", 0)) + earned_xp
+    stats["xp"] = old_xp + earned_xp
+    stats["level"] = calculate_level(stats["xp"])
     stats["last_xp_at"] = now
 
-    new_level = get_user_level(stats["xp"])
+    new_level = stats["level"]
     save_json(DATA_FILE, data)
-
     return earned_xp, new_level if new_level > old_level else 0
 
 XP_COOLDOWN = 60
@@ -1427,8 +1428,10 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
         if member.bot:
             continue
         recorded_activity = _activity_timestamp(get_user_stats(guild.id, member.id))
+        # If we have no tracked activity yet, use the join date instead of
+        # classifying every newly joined member as automatically inactive.
         last_activity = recorded_activity or _member_last_activity(member)
-        if recorded_activity is None or recorded_activity < cutoff:
+        if last_activity is None or last_activity < cutoff:
             inactive.append((last_activity, member))
     inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
     lines = [f"• {member.mention} — {_activity_age_text(last_activity, now)}" for last_activity, member in inactive[:40]]
