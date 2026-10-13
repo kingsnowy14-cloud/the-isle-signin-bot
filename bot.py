@@ -3333,13 +3333,24 @@ async def _ensure_server_role(guild, name, color, permissions=None):
     return role, True
 
 
+def _normalize_channel_overwrites(overwrites):
+    """Return a plain dict accepted by discord.py channel creation methods."""
+    if overwrites is None:
+        return {}
+    if not isinstance(overwrites, dict):
+        raise TypeError(
+            f"Channel overwrites must be a dict, got {type(overwrites).__name__}"
+        )
+    return dict(overwrites)
+
+
 async def _ensure_server_category(guild, name, overwrites=None):
     category = discord.utils.get(guild.categories, name=name)
     if category is not None:
         return category, False
     category = await guild.create_category(
         name,
-        overwrites=overwrites or {},
+        overwrites=_normalize_channel_overwrites(overwrites),
         reason="Server template setup command",
     )
     return category, True
@@ -3353,7 +3364,7 @@ async def _ensure_server_text(guild, category, name, topic=None, overwrites=None
         name,
         category=category,
         topic=topic,
-        overwrites=overwrites or {},
+        overwrites=_normalize_channel_overwrites(overwrites),
         reason="Server template setup command",
     )
     return channel, True
@@ -3366,7 +3377,7 @@ async def _ensure_server_voice(guild, category, name, overwrites=None):
     channel = await guild.create_voice_channel(
         name,
         category=category,
-        overwrites=overwrites or {},
+        overwrites=_normalize_channel_overwrites(overwrites),
         reason="Server template setup command",
     )
     return channel, True
