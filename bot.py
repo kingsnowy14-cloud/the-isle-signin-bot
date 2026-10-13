@@ -3314,6 +3314,259 @@ class ServerLogs(commands.Cog):
     async def on_member_unban(self, guild, user):
         await self.log(guild, "Mitglied entbannt", str(user) + " · ID " + str(user.id), discord.Color.green())
 
+
+
+# ------------------------- SERVER BUILD TEMPLATES -------------------------
+# These commands create missing roles/categories/channels only. Existing server
+# content is never deleted or renamed, so they are safe to run more than once.
+
+async def _ensure_server_role(guild, name, color, permissions=None):
+    role = discord.utils.get(guild.roles, name=name)
+    if role is not None:
+        return role, False
+    role = await guild.create_role(
+        name=name,
+        colour=color,
+        permissions=permissions or discord.Permissions.none(),
+        reason="Server template setup command",
+    )
+    return role, True
+
+
+async def _ensure_server_category(guild, name, overwrites=None):
+    category = discord.utils.get(guild.categories, name=name)
+    if category is not None:
+        return category, False
+    category = await guild.create_category(
+        name,
+        overwrites=overwrites,
+        reason="Server template setup command",
+    )
+    return category, True
+
+
+async def _ensure_server_text(guild, category, name, topic=None, overwrites=None):
+    channel = discord.utils.get(category.text_channels, name=name)
+    if channel is not None:
+        return channel, False
+    channel = await guild.create_text_channel(
+        name,
+        category=category,
+        topic=topic,
+        overwrites=overwrites,
+        reason="Server template setup command",
+    )
+    return channel, True
+
+
+async def _ensure_server_voice(guild, category, name, overwrites=None):
+    channel = discord.utils.get(category.voice_channels, name=name)
+    if channel is not None:
+        return channel, False
+    channel = await guild.create_voice_channel(
+        name,
+        category=category,
+        overwrites=overwrites,
+        reason="Server template setup command",
+    )
+    return channel, True
+
+
+async def _build_server_template(ctx, role_specs, channel_specs, template_title):
+    guild = ctx.guild
+    if guild is None:
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        return
+
+    status = await ctx.reply(
+        f"🏗️ **{template_title}** wird eingerichtet. Vorhandene Kanäle und Rollen bleiben erhalten …",
+        mention_author=False,
+    )
+    created_roles = 0
+    created_categories = 0
+    created_channels = 0
+    role_map = {}
+    try:
+        for name, color, permissions in role_specs:
+            role, created = await _ensure_server_role(guild, name, color, permissions)
+            role_map[name] = role
+            created_roles += int(created)
+
+        everyone = guild.default_role
+        admin_role = role_map.get("Administrator")
+        moderator_role = role_map.get("Moderator")
+        staff_overwrites = {
+            everyone: discord.PermissionOverwrite(view_channel=False),
+        }
+        if admin_role:
+            staff_overwrites[admin_role] = discord.PermissionOverwrite(
+                view_channel=True, send_messages=True, read_message_history=True,
+                manage_channels=True, manage_messages=True
+            )
+        if moderator_role:
+            staff_overwrites[moderator_role] = discord.PermissionOverwrite(
+                view_channel=True, send_messages=True, read_message_history=True,
+                manage_messages=True
+            )
+
+        for category_name, channels in channel_specs:
+            is_staff = category_name in {"🛡️ TEAM", "🛡️ STAFF", "🔒 TEAM-BEREICH"}
+            category, created = await _ensure_server_category(
+                guild, category_name, staff_overwrites if is_staff else None
+            )
+            created_categories += int(created)
+            for channel_type, channel_name, topic in channels:
+                if channel_type == "voice":
+                    _, made = await _ensure_server_voice(
+                        guild, category, channel_name,
+                        staff_overwrites if is_staff else None
+                    )
+                else:
+                    _, made = await _ensure_server_text(
+                        guild, category, channel_name, topic,
+                        staff_overwrites if is_staff else None
+                    )
+                created_channels += int(made)
+
+        await status.edit(content=(
+            f"✅ **{template_title}** fertig!\\n"
+            f"Neu erstellt: **{created_roles} Rollen**, **{created_categories} Kategorien**, "
+            f"**{created_channels} Kanäle**.\\n"
+            "Bereits vorhandene Inhalte wurden beibehalten. Prüfe bitte Rollen-Hierarchie "
+            "und Berechtigungen und weise Teamrollen den richtigen Personen zu."
+        ))
+    except discord.Forbidden:
+        await status.edit(content=(
+            "❌ Discord hat die Einrichtung abgelehnt. Gib dem Bot die Berechtigungen "
+            "**Rollen verwalten** und **Kanäle verwalten** und stelle sicher, dass seine "
+            "höchste Rolle über den Rollen liegt, die er verwalten soll."
+        ))
+    except discord.HTTPException as exc:
+        await status.edit(content=f"⚠️ Discord konnte die Einrichtung nicht vollständig abschließen: {exc}. Bereits erstellte Elemente bleiben bestehen; du kannst den Befehl nach Behebung erneut ausführen.")
+
+
+@bot.command(name="serverbau")
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True)
+async def serverbau(ctx):
+    """Build a general-purpose Discord community server structure."""
+    roles = [
+        ("Administrator", discord.Colour.from_rgb(220, 55, 55), discord.Permissions(administrator=True)),
+        ("Moderator", discord.Colour.from_rgb(230, 125, 45), discord.Permissions(moderate_members=True, manage_messages=True, kick_members=True, ban_members=True)),
+        ("Support", discord.Colour.from_rgb(70, 160, 220), discord.Permissions.none()),
+        ("Mitglied", discord.Colour.from_rgb(80, 190, 120), discord.Permissions.none()),
+        ("Neuling", discord.Colour.from_rgb(160, 160, 160), discord.Permissions.none()),
+        ("Bot", discord.Colour.from_rgb(130, 100, 200), discord.Permissions.none()),
+    ]
+    channels = [
+        ("📌 START HIER", [
+            ("text", "willkommen", "Willkommen auf dem Server! Lies bitte die Regeln."),
+            ("text", "regeln", "Die Serverregeln und Verhaltensrichtlinien."),
+            ("text", "ankündigungen", "Offizielle Neuigkeiten und Ankündigungen."),
+            ("text", "rollen-auswahl", "Informationen zu Rollen und Benachrichtigungen."),
+        ]),
+        ("💬 COMMUNITY", [
+            ("text", "allgemein", "Allgemeiner Chat für alle Mitglieder."),
+            ("text", "vorstellungen", "Stell dich der Community vor."),
+            ("text", "medien", "Teile Bilder, Videos und andere Medien."),
+            ("text", "fragen-und-hilfe", "Fragen stellen und Hilfe bekommen."),
+            ("text", "vorschlaege", "Ideen und Verbesserungsvorschläge."),
+            ("voice", "Allgemeiner Voice", None),
+            ("voice", "Gaming Voice", None),
+        ]),
+        ("🎉 AKTIVITÄTEN", [
+            ("text", "events", "Community-Events und Termine."),
+            ("text", "umfragen", "Abstimmungen und Community-Entscheidungen."),
+            ("voice", "Event Voice", None),
+        ]),
+        ("🛡️ TEAM", [
+            ("text", "team-chat", "Interner Chat für das Serverteam."),
+            ("text", "mod-log", "Moderationsnotizen und interne Meldungen."),
+            ("text", "reports", "Meldungen zur Bearbeitung durch das Team."),
+            ("voice", "Team Voice", None),
+        ]),
+    ]
+    await _build_server_template(ctx, roles, channels, "Normaler Discord-Server")
+
+
+@bot.command(name="serverRPbau")
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True)
+async def server_rp_bau(ctx):
+    """Build a roleplay Discord server structure."""
+    roles = [
+        ("Administrator", discord.Colour.from_rgb(220, 55, 55), discord.Permissions(administrator=True)),
+        ("RP-Leitung", discord.Colour.from_rgb(150, 70, 200), discord.Permissions.none()),
+        ("Moderator", discord.Colour.from_rgb(230, 125, 45), discord.Permissions(moderate_members=True, manage_messages=True, kick_members=True, ban_members=True)),
+        ("Support", discord.Colour.from_rgb(70, 160, 220), discord.Permissions.none()),
+        ("Fraktionsleitung", discord.Colour.from_rgb(190, 155, 70), discord.Permissions.none()),
+        ("RP-Spieler", discord.Colour.from_rgb(80, 190, 120), discord.Permissions.none()),
+        ("Charakter in Prüfung", discord.Colour.from_rgb(160, 160, 160), discord.Permissions.none()),
+        ("Zuschauer", discord.Colour.from_rgb(110, 110, 110), discord.Permissions.none()),
+        ("Bot", discord.Colour.from_rgb(130, 100, 200), discord.Permissions.none()),
+    ]
+    channels = [
+        ("📌 INFORMATIONEN", [
+            ("text", "willkommen", "Willkommen im RP. Lies zuerst die Informationen."),
+            ("text", "regeln", "Allgemeine Discord- und RP-Regeln."),
+            ("text", "rp-regeln", "Regeln für Roleplay, Fairplay und Konfliktszenen."),
+            ("text", "ankündigungen", "Offizielle Ankündigungen der RP-Leitung."),
+            ("text", "server-lore", "Hintergrundgeschichte und Welt des Roleplays."),
+            ("text", "fraktionen", "Vorstellung der verfügbaren Fraktionen."),
+            ("text", "faq-und-hilfe", "Häufige Fragen und Hilfe für neue Spieler."),
+        ]),
+        ("🪪 CHARAKTERE", [
+            ("text", "charakter-erstellung", "Vorlage und Anleitung für neue Charaktere."),
+            ("text", "charakter-einreichung", "Reiche hier deinen Charakter zur Prüfung ein."),
+            ("text", "charakter-freigaben", "Status und Freigaben durch das Team."),
+            ("text", "gesuche", "Suche nach Kontakten, Gruppen und Geschichten."),
+        ]),
+        ("🎭 IN CHARACTER", [
+            ("text", "rp-hauptchat", "In-Character-Kommunikation im Hauptbereich."),
+            ("text", "rp-szenen", "Starte und spiele ausgeschriebene RP-Szenen."),
+            ("text", "rp-ereignisse", "Laufende und angekündigte In-Character-Ereignisse."),
+            ("text", "rp-anzeigen", "In-Character-Anzeigen, Angebote und Gesuche."),
+            ("text", "rp-berichte", "Berichte und Zusammenfassungen aus der Spielwelt."),
+        ]),
+        ("💬 OUT OF CHARACTER", [
+            ("text", "ooc-chat", "Außerhalb des Charakters kommunizieren."),
+            ("text", "community-chat", "Allgemeiner Austausch der Community."),
+            ("text", "screenshots-und-medien", "Screenshots und Medien aus dem RP."),
+            ("text", "feedback-und-ideen", "Feedback und Ideen für das RP."),
+            ("voice", "OOC Voice", None),
+        ]),
+        ("🏴 FRAKTIONEN", [
+            ("text", "fraktions-gesuche", "Suche oder gründe eine Fraktion."),
+            ("text", "fraktions-planung", "Planung für Fraktionsaktivitäten."),
+            ("voice", "Fraktions Voice", None),
+        ]),
+        ("📅 EVENTS", [
+            ("text", "event-kalender", "Kommende RP-Events und Termine."),
+            ("text", "event-anmeldungen", "Anmeldung zu RP-Events."),
+            ("text", "event-besprechung", "Absprachen zu Events."),
+        ]),
+        ("🔒 TEAM-BEREICH", [
+            ("text", "team-chat", "Interne Teamkommunikation."),
+            ("text", "charakter-pruefung", "Interne Prüfung eingereichter Charaktere."),
+            ("text", "spieler-meldungen", "Meldungen und Beschwerden zur Bearbeitung."),
+            ("text", "team-protokoll", "Interne Notizen und Entscheidungen."),
+            ("voice", "Team Besprechung", None),
+        ]),
+    ]
+    await _build_server_template(ctx, roles, channels, "Roleplay-Discord-Server")
+
+
+@serverbau.error
+@server_rp_bau.error
+async def server_template_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("❌ Du brauchst die Berechtigung **Server verwalten**, um diesen Befehl zu benutzen.", mention_author=False)
+    elif isinstance(error, commands.NoPrivateMessage):
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+    else:
+        await ctx.reply(f"❌ Fehler beim Serverbau: {error}", mention_author=False)
+
+
 @bot.event
 async def on_ready():
     record_module_changes()
