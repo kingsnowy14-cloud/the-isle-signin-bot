@@ -2886,7 +2886,19 @@ async def social_alert_loop():
                                 headers = {"Client-ID": client_id, "Authorization": f"Bearer {token}"}
                                 async with session.get("https://api.twitch.tv/helix/streams", params={"user_login": source}, headers=headers) as resp:
                                     if resp.status != 200:
-                                        alert["last_error"] = f"Twitch API antwortete mit HTTP {resp.status}."
+                                        if resp.status in (401, 403):
+                                            alert["last_error"] = (
+                                                f"Twitch-Zugangsdaten ungültig oder abgelaufen (HTTP {resp.status}); "
+                                                "TWITCH_CLIENT_ID und TWITCH_ACCESS_TOKEN prüfen/erneuern."
+                                            )
+                                        elif resp.status == 429:
+                                            retry_after = resp.headers.get("Retry-After") or resp.headers.get("Ratelimit-Reset")
+                                            alert["last_error"] = (
+                                                "Twitch-API-Rate-Limit erreicht"
+                                                + (f"; API-Angabe zur Rücksetzung: {retry_after}" if retry_after else "")
+                                            )
+                                        else:
+                                            alert["last_error"] = f"Twitch API antwortete mit HTTP {resp.status}."
                                         save_json(CONFIG_FILE, config)
                                         continue
                                     body = await resp.json()
