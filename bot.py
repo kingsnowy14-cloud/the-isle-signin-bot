@@ -279,45 +279,97 @@ def format_duration(seconds):
     return f"{minutes} Min."
 
 
-def guild_config(guild_id):
-    cfg = config.setdefault(str(guild_id), {
-        "registration_channel": None,
-        "ticket_category": None,
-        "ticket_log_channel": None,
-        "support_role": None,
-        "ticket_panels": {},
-        "ticket_counter": 0,
-    })
-    # Security settings are added safely to existing config files too.
-    cfg.setdefault("security_log_channel", None)
-    cfg.setdefault("honeypot_channel", None)
-    cfg.setdefault("anti_nuke_enabled", True)
-    cfg.setdefault("anti_nuke_threshold", 4)
-    cfg.setdefault("anti_raid_enabled", True)
-    cfg.setdefault("raid_threshold", 8)
-    cfg.setdefault("trusted_security_role", None)
-    cfg.setdefault("welcome_channel", None)
-    cfg.setdefault("welcome_message", "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.")
-    cfg.setdefault("welcome_bots_enabled", False)
-    cfg.setdefault("social_links", {})
-    cfg.setdefault("automod_enabled", False)
-    cfg.setdefault("verify_channel", None)
-    cfg.setdefault("verified_role", None)
-    cfg.setdefault("unverified_role", None)
-    cfg.setdefault("level_roles", {})
-    cfg.setdefault("tempvoice_trigger", None)
-    cfg.setdefault("tempvoice_category", None)
-    cfg.setdefault("social_alerts", {})
-    cfg.setdefault("ticket_auto_close_hours", 0)
-    cfg.setdefault("automation_announcement", {
+# Defaults are merged recursively into existing per-server settings. Existing values,
+# unknown keys and module-specific configuration are deliberately never overwritten.
+DEFAULT_GUILD_CONFIG = {
+    "registration_channel": None,
+    "ticket_category": None,
+    "ticket_log_channel": None,
+    "support_role": None,
+    "ticket_panels": {},
+    "ticket_counter": 0,
+    "security_log_channel": None,
+    "honeypot_channel": None,
+    "anti_nuke_enabled": True,
+    "anti_nuke_threshold": 4,
+    "anti_raid_enabled": True,
+    "raid_threshold": 8,
+    "trusted_security_role": None,
+    "welcome_channel": None,
+    "welcome_message": "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.",
+    "welcome_bots_enabled": False,
+    "social_links": {},
+    "automod_enabled": False,
+    "verify_channel": None,
+    "verified_role": None,
+    "unverified_role": None,
+    "level_roles": {},
+    "tempvoice_trigger": None,
+    "tempvoice_category": None,
+    "social_alerts": {},
+    "ticket_auto_close_hours": 0,
+    "automation_announcement": {
         "enabled": False,
         "channel_id": None,
         "message": "",
         "interval_minutes": 1440,
         "next_run_at": None,
-    })
+    },
+}
+
+
+def _merge_missing_defaults(existing, defaults):
+    """Add newly introduced defaults without resetting any saved server values."""
+    changed = False
+    for key, default_value in defaults.items():
+        if key not in existing:
+            existing[key] = json.loads(json.dumps(default_value))
+            changed = True
+        elif isinstance(default_value, dict) and isinstance(existing.get(key), dict):
+            if _merge_missing_defaults(existing[key], default_value):
+                changed = True
+    return changed
+
+
+def guild_config(guild_id):
+    """Return a backward-compatible per-server config, migrating new keys in place."""
+    gid = str(guild_id)
+    cfg = config.get(gid)
+    if not isinstance(cfg, dict):
+        cfg = {}
+        config[gid] = cfg
+        changed = True
+    else:
+        changed = False
+    changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
+    if changed:
+        save_json(CONFIG_FILE, config)
+        print(f"[CONFIG] Merged missing defaults for guild {gid}; existing settings were preserved.", flush=True)
     return cfg
 
+
+def migrate_all_guild_configs():
+    """Apply new defaults to every known server while preserving existing settings."""
+    changed = False
+    for guild_id, cfg in list(config.items()):
+        if not str(guild_id).isdigit():
+            continue
+        if not isinstance(cfg, dict):
+            config[guild_id] = {}
+            cfg = config[guild_id]
+            changed = True
+        changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
+    # Ensure newly joined servers get a complete default config too.
+    for guild in getattr(bot, "guilds", []):
+        cfg = config.get(str(guild.id))
+        if not isinstance(cfg, dict):
+            config[str(guild.id)] = {}
+            cfg = config[str(guild.id)]
+            changed = True
+        changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
+    if changed:
+        save_json(CONFIG_FILE, config)
+        print(f"[CONFIG] Safely merged defaults for existing servers; no saved settings were replaced.", flush=True)
 
 
 
@@ -4983,6 +5035,7 @@ async def module_status_command(interaction: discord.Interaction):
 
 @bot.event
 async def on_ready():
+    migrate_all_guild_configs()
     global _automation_worker_task
     record_module_changes()
     if _automation_worker_task is None or _automation_worker_task.done():
