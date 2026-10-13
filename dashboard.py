@@ -5,6 +5,7 @@ New module files are generated as downloadable templates and are never executed
 automatically by the running bot.
 """
 import hmac
+import asyncio
 import html
 import os
 import secrets
@@ -415,12 +416,157 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<h1>🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id}</p><div class="grid"><div>{settings_html}</div><div>{modules_html}{command_html}{module_form}</div></div>'
+    body = f'<h1>🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id}</p><div class="notice"><a class="button" href="/guild/{gid}/actions">⚡ Aktionszentrale öffnen</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{command_html}{module_form}</div></div>'
     return _render(guild.name + " · Control Center", body)
+
+
+@app.route("/guild/<guild_id>/actions", methods=["GET", "POST"])
+def guild_actions(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    result_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        # Check the actual Discord member permissions as well as OAuth guild access.
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst auf diesem Server Administrator- oder Server-verwalten-Rechte.")
+        action = request.form.get("action", "").strip()
+        channel_id = request.form.get("channel_id", "").strip()
+        target_id = request.form.get("target_id", "").strip()
+        reason = request.form.get("reason", "").strip()[:400]
+        content = request.form.get("message", "").strip()
+        confirm = request.form.get("confirm", "").strip()
+        try:
+            channel = guild.get_channel(int(channel_id)) if channel_id else None
+            target = guild.get_member(int(target_id)) if target_id else None
+        except ValueError:
+            abort(400, "Ungültige Kanal- oder Mitglieder-ID.")
+        async def execute_action():
+            bot_member = guild.me
+            if bot_member is None:
+                raise PermissionError("Der Bot ist nicht als Mitglied auf diesem Server verfügbar.")
+            if action == "announce":
+                if not isinstance(channel, discord.TextChannel):
+                    raise ValueError("Bitte wähle einen gültigen Textkanal.")
+                if not channel.permissions_for(bot_member).send_messages:
+                    raise PermissionError("Der Bot darf in diesem Kanal keine Nachrichten senden.")
+                if not content or len(content) > 2000:
+                    raise ValueError("Die Nachricht muss zwischen 1 und 2000 Zeichen lang sein.")
+                if not channel.permissions_for(actor).send_messages:
+                    raise PermissionError("Du darfst in diesem Kanal keine Nachrichten senden.")
+                await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
+                return f"Nachricht wurde in #{channel.name} gesendet."
+            if action == "purge":
+                if not isinstance(channel, discord.TextChannel):
+                    raise ValueError("Bitte wähle einen gültigen Textkanal.")
+                if not actor.guild_permissions.manage_messages or not channel.permissions_for(bot_member).manage_messages:
+                    raise PermissionError("Du und der Bot benötigen „Nachrichten verwalten“.")
+                if confirm != "LOESCHEN":
+                    raise ValueError("Zum Bestätigen musst du LOESCHEN in das Bestätigungsfeld schreiben.")
+                try:
+                    amount = int(request.form.get("amount", "10"))
+                except ValueError:
+                    raise ValueError("Die Anzahl muss eine Zahl sein.")
+                if not 1 <= amount <= 100:
+                    raise ValueError("Du kannst zwischen 1 und 100 Nachrichten auf einmal löschen.")
+                deleted = await channel.purge(limit=amount, reason=reason or f"Dashboard-Aktion durch {actor} ({actor.id})")
+                return f"{len(deleted)} Nachrichten in #{channel.name} gelöscht."
+            if action in {"timeout", "kick", "ban"}:
+                if target is None:
+                    raise ValueError("Mitglied nicht gefunden. Gib eine gültige Mitglieder-ID an.")
+                if target.id == actor.id or target.id == guild.owner_id:
+                    raise PermissionError("Du kannst dich selbst oder den Serverinhaber nicht moderieren.")
+                if target.top_role >= actor.top_role and actor.id != guild.owner_id:
+                    raise PermissionError("Deine höchste Rolle muss über der Zielrolle liegen.")
+                if target.top_role >= bot_member.top_role:
+                    raise PermissionError("Die höchste Rolle des Bots muss über der Zielrolle liegen.")
+                audit_reason = reason or f"Dashboard-Aktion durch {actor} ({actor.id})"
+                if action == "timeout":
+                    if not actor.guild_permissions.moderate_members or not bot_member.guild_permissions.moderate_members:
+                        raise PermissionError("Du und der Bot benötigen „Mitglieder moderieren“.")
+                    try:
+                        minutes = int(request.form.get("minutes", "10"))
+                    except ValueError:
+                        raise ValueError("Die Dauer muss eine Zahl sein.")
+                    if not 1 <= minutes <= 40320:
+                        raise ValueError("Die Timeout-Dauer muss zwischen 1 Minute und 28 Tagen liegen.")
+                    await target.timeout(discord.utils.utcnow() + __import__("datetime").timedelta(minutes=minutes), reason=audit_reason)
+                    return f"{target} wurde für {minutes} Minuten timeoutet."
+                if confirm != ("KICK" if action == "kick" else "BAN"):
+                    raise ValueError(f"Zur Bestätigung musst du {('KICK' if action == 'kick' else 'BAN')} eingeben.")
+                if action == "kick":
+                    if not actor.guild_permissions.kick_members or not bot_member.guild_permissions.kick_members:
+                        raise PermissionError("Du und der Bot benötigen „Mitglieder kicken“.")
+                    await target.kick(reason=audit_reason)
+                    return f"{target} wurde vom Server gekickt."
+                if not actor.guild_permissions.ban_members or not bot_member.guild_permissions.ban_members:
+                    raise PermissionError("Du und der Bot benötigen „Mitglieder bannen“.")
+                await target.ban(reason=audit_reason, delete_message_seconds=0)
+                return f"{target} wurde vom Server gebannt."
+            raise ValueError("Unbekannte Aktion.")
+        try:
+            future = asyncio.run_coroutine_threadsafe(execute_action(), _bot.loop)
+            result = future.result(timeout=25)
+            result_html = '<div class="notice">✅ ' + html.escape(str(result)) + '</div>'
+        except Exception as exc:
+            detail = str(exc) or type(exc).__name__
+            result_html = '<div class="notice">⚠️ ' + html.escape(detail[:500]) + '</div>'
+    channels = _guild_channels(guild)
+    channel_options = '<option value="">— Textkanal auswählen —</option>' + ''.join(
+        f'<option value="{cid}">{html.escape(name)}</option>' for cid, name in channels
+    )
+    csrf = _csrf_field()
+    base = f'<input type="hidden" name="guild_id" value="{gid}">{csrf}'
+    announcement = (
+        '<section class="card"><h2>📣 Nachricht senden</h2><p>Sendet eine Nachricht ohne automatische @everyone- oder Rollen-Erwähnungen.</p>'
+        f'<form method="post">{base}<input type="hidden" name="action" value="announce">'
+        f'<label>Kanal</label><select name="channel_id" required>{channel_options}</select>'
+        '<label>Nachricht (max. 2000 Zeichen)</label><textarea name="message" maxlength="2000" required></textarea>'
+        '<button type="submit">Nachricht senden</button></form></section>'
+    )
+    moderation = (
+        '<section class="card"><h2>🛡️ Mitglieder moderieren</h2><p>Mitglieder-ID verwenden. Kick und Ban verlangen eine zusätzliche Bestätigung.</p>'
+        f'<form method="post">{base}<input type="hidden" name="action" value="timeout">'
+        '<label>Mitglieder-ID für Timeout</label><input type="text" name="target_id" inputmode="numeric" required>'
+        '<label>Dauer in Minuten (1–40320)</label><input type="text" name="minutes" value="10" inputmode="numeric" required>'
+        '<label>Grund (optional)</label><input type="text" name="reason" maxlength="400">'
+        '<button type="submit">Timeout setzen</button></form>'
+        f'<form method="post">{base}<input type="hidden" name="action" value="kick">'
+        '<label>Mitglieder-ID für Kick</label><input type="text" name="target_id" inputmode="numeric" required>'
+        '<label>Grund (optional)</label><input type="text" name="reason" maxlength="400">'
+        '<label>Zur Bestätigung KICK eingeben</label><input type="text" name="confirm" required>'
+        '<button type="submit" class="secondary">Mitglied kicken</button></form>'
+        f'<form method="post">{base}<input type="hidden" name="action" value="ban">'
+        '<label>Mitglieder-ID für Ban</label><input type="text" name="target_id" inputmode="numeric" required>'
+        '<label>Grund (optional)</label><input type="text" name="reason" maxlength="400">'
+        '<label>Zur Bestätigung BAN eingeben</label><input type="text" name="confirm" required>'
+        '<button type="submit" class="secondary">Mitglied bannen</button></form></section>'
+    )
+    cleanup = (
+        '<section class="card"><h2>🧹 Nachrichten löschen</h2><p>Unwiderruflich; es können 1–100 aktuelle Nachrichten entfernt werden.</p>'
+        f'<form method="post">{base}<input type="hidden" name="action" value="purge">'
+        f'<label>Kanal</label><select name="channel_id" required>{channel_options}</select>'
+        '<label>Anzahl (1–100)</label><input type="text" name="amount" value="10" inputmode="numeric" required>'
+        '<label>Grund (optional)</label><input type="text" name="reason" maxlength="400">'
+        '<label>Zur Bestätigung LOESCHEN eingeben</label><input type="text" name="confirm" required>'
+        '<button type="submit" class="secondary">Nachrichten löschen</button></form></section>'
+    )
+    body = (
+        f'<h1>⚡ Aktionszentrale · {html.escape(guild.name)}</h1>'
+        '<p class="muted">Direkte Discord-Aktionen. Berechtigungen werden beim Absenden erneut geprüft.</p>'
+        + result_html + '<div class="grid"><div>' + announcement + cleanup + '</div><div>' + moderation + '</div></div>'
+        + f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
+    )
+    return _render(guild.name + " · Aktionszentrale", body)
 
 
 @app.route("/create-module", methods=["POST"])
 def create_module():
+
     login = _require_login()
     if login:
         return login
