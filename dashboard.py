@@ -347,27 +347,41 @@ def guild_page(guild_id):
             _save_json(data_path("config.json"), _config)
             return redirect(url_for("guild_page", guild_id=gid))
         if action == "settings":
-            for key, meta in TEXT_SETTINGS.items():
-                if key in request.form:
-                    value = request.form.get(key, "").strip()
-                    if len(value) > meta["max_length"]:
-                        abort(400, f"{meta['label']} ist zu lang.")
-                    cfg[key] = value
-            for key in BOOL_SETTINGS:
-                cfg[key] = request.form.get(key) == "on"
-            channel_ids = {str(item.id) for item in guild.text_channels}
-            role_ids = {str(item.id) for item in guild.roles}
-            for key in CHANNEL_SETTINGS:
-                raw = request.form.get(key, "").strip()
-                if raw and raw not in channel_ids:
-                    abort(400, "Ungültiger Kanal ausgewählt.")
-                cfg[key] = int(raw) if raw else None
-            for key in ROLE_SETTINGS:
-                raw = request.form.get(key, "").strip()
-                if raw and raw not in role_ids:
-                    abort(400, "Ungültige Rolle ausgewählt.")
-                cfg[key] = int(raw) if raw else None
-            _save_json(data_path("config.json"), _config)
+            # Keep the in-memory configuration unchanged if persistence fails.
+            import copy
+            original_cfg = copy.deepcopy(cfg)
+            try:
+                for key, meta in TEXT_SETTINGS.items():
+                    if key in request.form:
+                        value = request.form.get(key, "").strip()
+                        if len(value) > meta["max_length"]:
+                            abort(400, f"{meta['label']} ist zu lang.")
+                        cfg[key] = value
+                for key in BOOL_SETTINGS:
+                    cfg[key] = request.form.get(key) == "on"
+                channel_ids = {str(item.id) for item in guild.text_channels}
+                role_ids = {str(item.id) for item in guild.roles}
+                for key in CHANNEL_SETTINGS:
+                    raw = request.form.get(key, "").strip()
+                    if raw and raw not in channel_ids:
+                        abort(400, "Ungültiger Kanal ausgewählt.")
+                    cfg[key] = int(raw) if raw else None
+                for key in ROLE_SETTINGS:
+                    raw = request.form.get(key, "").strip()
+                    if raw and raw not in role_ids:
+                        abort(400, "Ungültige Rolle ausgewählt.")
+                    cfg[key] = int(raw) if raw else None
+                _save_json(data_path("config.json"), _config)
+            except Exception as exc:
+                from werkzeug.exceptions import HTTPException
+                if isinstance(exc, HTTPException):
+                    raise
+                cfg.clear()
+                cfg.update(original_cfg)
+                import traceback
+                print(f"[DASHBOARD] Failed to save settings for guild {gid}: {type(exc).__name__}: {exc}", flush=True)
+                traceback.print_exc()
+                return _render("Speichern fehlgeschlagen", '<div class="card"><h1>Änderungen konnten nicht gespeichert werden</h1><p>Die Einstellungen wurden zurückgesetzt. Prüfe die Railway-Logs nach <code>[DASHBOARD] Failed to save settings</code>, um den genauen technischen Fehler zu sehen.</p><a class="button secondary" href="/guild/' + gid + '">Zurück zu den Einstellungen</a></div>', 500)
         else:
             abort(400, "Unbekannte Aktion.")
         return redirect(url_for("guild_page", guild_id=gid))
