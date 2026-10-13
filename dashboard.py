@@ -115,7 +115,7 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 .notice{{padding:15px 17px;border-radius:12px;background:rgba(141,168,194,.08);border:1px solid rgba(141,168,194,.23);margin:18px 0;color:#dbe5ef}}code{{overflow-wrap:anywhere;background:#0a1018;border:1px solid var(--border);border-radius:6px;padding:2px 5px;font-size:.92em}}form{{margin-top:10px}}form button{{width:auto}}.card form>button{{margin-top:18px}}select{{cursor:pointer}}
 .section-nav{{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 22px;padding:10px;background:rgba(17,24,35,.72);border:1px solid var(--border);border-radius:13px}}.section-nav a{{display:inline-flex;padding:7px 11px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:750;background:rgba(255,255,255,.025);border:1px solid transparent}}.section-nav a:hover{{border-color:rgba(214,166,79,.45);background:rgba(214,166,79,.07)}}section[id]{{scroll-margin-top:90px}}
 @media(max-width:650px){{nav{{padding:12px 15px}}nav a:first-child{{font-size:15px}}main{{margin:24px auto;padding:0 14px 30px}}.card{{padding:18px;border-radius:13px}}.row{{align-items:flex-start}}.section-nav{{gap:6px}}.section-nav a{{font-size:12px;padding:7px 9px}}button,.button{{max-width:100%}}}}
-@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{scroll-behavior:auto!important;transition:none!important}}}}
+.command-groups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;align-items:start}}.command-group{{border:1px solid var(--border);background:rgba(8,13,20,.42);border-radius:12px;padding:12px;min-width:0}}.command-group h3{{margin:2px 0 8px;padding-bottom:9px;border-bottom:1px solid var(--border)}}.command-group .row{{gap:8px;padding:9px 0}}.command-group .row strong{{font-size:13px;overflow-wrap:anywhere}}.command-group .check label{{font-size:12px}}@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{scroll-behavior:auto!important;transition:none!important}}}}
 </style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf Control Center · Änderungen gelten serverbezogen. Neue Python-Module werden nicht automatisch ausgeführt.</small></p></main></body></html>"""
 
 
@@ -400,15 +400,22 @@ def guild_page(guild_id):
         settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
     settings_html += '<button type="submit">Einstellungen speichern</button></form></section>'
     commands = _command_records(guild.id)
-    command_html = '<section class="card" id="commands"><h2>🧩 Befehle aktivieren/deaktivieren</h2><p class="muted">Deaktivierte Befehle werden serverbezogen blockiert. Der Bot-Code wird dabei nicht verändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands">'
+    command_html = '<section class="card" id="commands"><h2>⌘ Befehle</h2><p class="muted">Nach Modul gruppiert. Änderungen gelten nur auf diesem Server.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands"><div class="command-groups">'
     current_cog = None
+    group_open = False
     for item in commands:
         if item["cog"] != current_cog:
+            if group_open:
+                command_html += '</div>'
             current_cog = item["cog"]
-            command_html += f'<h3>{html.escape(current_cog)}</h3>'
+            command_html += '<div class="command-group"><h3>' + html.escape(current_cog) + '</h3>'
+            group_open = True
         checked = " checked" if item["enabled"] else ""
-        command_html += f'<div class="row"><div><strong>{html.escape(item["name"])}</strong><br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">Aktiv</label></div></div>'
-    command_html += '<button type="submit">Befehle speichern</button></form></section>'
+        command_html += f'<div class="row"><div><strong>{html.escape(item["name"])}</strong><br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
+    if group_open:
+        command_html += '</div>'
+    command_html += '</div><button type="submit">Befehle speichern</button></form></section>'
+
     module_records = _module_records(guild.id)
     modules_html = '<section class="card" id="modules"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
     for item in module_records:
