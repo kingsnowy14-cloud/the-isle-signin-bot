@@ -1002,6 +1002,8 @@ class CaptchaChoiceView(discord.ui.View):
                 if not interaction.guild or not isinstance(interaction.user, discord.Member):
                     await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
                     return
+                # Acknowledge before Discord role edits, which may take time.
+                await interaction.response.defer(ephemeral=True, thinking=True)
                 cfg = guild_config(interaction.guild.id)
                 await finish_verification(interaction, cfg)
             button.callback = callback
@@ -1009,7 +1011,8 @@ class CaptchaChoiceView(discord.ui.View):
 
 
 async def send_captcha_challenge(interaction: discord.Interaction):
-    """Create a fresh image challenge and three randomized answer buttons."""
+    """Acknowledge the click immediately, then deliver the generated captcha."""
+    await interaction.response.defer(ephemeral=True, thinking=True)
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     answer = _new_captcha_code()
     choices = {answer}
@@ -1026,24 +1029,27 @@ async def send_captcha_challenge(interaction: discord.Interaction):
         color=discord.Color.blurple(),
     )
     embed.set_image(url="attachment://verification-captcha.png")
-    await interaction.response.send_message(
+    await interaction.edit_original_response(
         embed=embed,
-        file=image_file,
+        attachments=[image_file],
         view=CaptchaChoiceView(interaction.user.id, answer, choice_list),
-        ephemeral=True,
     )
 
 
 async def finish_verification(interaction: discord.Interaction, cfg):
+    """Apply roles and respond correctly whether the interaction was deferred or not."""
+    async def respond(message: str):
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+
     verified_id = cfg.get("verified_role")
     unverified_id = cfg.get("unverified_role")
     verified_role = interaction.guild.get_role(int(verified_id)) if verified_id else None
     unverified_role = interaction.guild.get_role(int(unverified_id)) if unverified_id else None
     if not verified_role:
-        await interaction.response.send_message(
-            "Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.",
-            ephemeral=True,
-        )
+        await respond("Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.")
         return
     try:
         if unverified_role and unverified_role in interaction.user.roles:
@@ -1051,12 +1057,9 @@ async def finish_verification(interaction: discord.Interaction, cfg):
         if verified_role not in interaction.user.roles:
             await interaction.user.add_roles(verified_role, reason="Mitglied hat Verifizierung abgeschlossen")
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await interaction.response.send_message(
-            f"Rolle konnte nicht geändert werden: {type(exc).__name__}. Bitte Bot-Rollenposition prüfen.",
-            ephemeral=True,
-        )
+        await respond(f"Rolle konnte nicht geändert werden: {type(exc).__name__}. Bitte Bot-Rollenposition prüfen.")
         return
-    await interaction.response.send_message("✅ Du bist jetzt verifiziert. Willkommen!", ephemeral=True)
+    await respond("✅ Du bist jetzt verifiziert. Willkommen!")
 
 
 class VerifyView(discord.ui.View):
