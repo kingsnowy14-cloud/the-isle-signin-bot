@@ -522,7 +522,7 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
     return _render(guild.name + " · Control Center", body)
 
 
@@ -536,6 +536,8 @@ def guild_tickets(guild_id):
     panels = cfg.setdefault("ticket_panels", {})
     result_html = ""
     if request.method == "POST":
+        if not guild_has_feature(cfg, "ticket"):
+            abort(403, "Ticket-System Pro ist für diesen Server nicht freigeschaltet. Öffne zuerst die Premium-Seite.")
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
@@ -579,6 +581,16 @@ def guild_tickets(guild_id):
             "category_id": category.id if category else None,
             "support_role_id": support_role.id if support_role else None,
         })
+        if guild_has_feature(cfg, "branding"):
+            import re
+            color_raw = request.form.get("brand_color", "5865F2").strip().lstrip("#")
+            logo_url = request.form.get("brand_logo_url", "").strip()
+            if not re.fullmatch(r"[0-9a-fA-F]{6}", color_raw):
+                abort(400, "Die Branding-Farbe muss ein 6-stelliger Hex-Farbcode sein.")
+            if logo_url and (not logo_url.startswith("https://") or len(logo_url) > 500):
+                abort(400, "Das Logo muss eine HTTPS-URL mit höchstens 500 Zeichen sein.")
+            panel["brand_color"] = color_raw.upper()
+            panel["brand_logo_url"] = logo_url
         async def save_panel_message():
             bot_member = guild.me
             if bot_member is None or not channel.permissions_for(bot_member).send_messages or not channel.permissions_for(bot_member).embed_links:
@@ -644,6 +656,7 @@ def guild_tickets(guild_id):
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
+            + ('<h3>✨ Custom Branding (Premium+)</h3><label>Embed-Farbe (6-stelliger Hex-Code)</label><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")), quote=True) + '"><label>Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '">' if guild_has_feature(cfg, "branding") else '<p class="muted">Custom Branding mit eigener Embed-Farbe und Logo ist im Premium-Plan verfügbar.</p>')
             + '<button type="submit">Panel speichern und veröffentlichen</button></form></section>'
         )
     body += f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
