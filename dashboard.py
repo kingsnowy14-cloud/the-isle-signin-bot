@@ -11,6 +11,7 @@ import os
 import secrets
 import threading
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -40,6 +41,10 @@ _config = None
 _save_json = None
 _guild_config = None
 _oauth_state = None
+_guild_cache = {}
+_guild_cache_lock = threading.Lock()
+_GUILD_CACHE_TTL = 45
+_GUILD_CACHE_STALE_TTL = 300
 
 TEXT_SETTINGS = {
     "welcome_message": {
@@ -144,8 +149,36 @@ def _api_get(path):
 
 
 def _user_guilds():
-    guilds = _api_get("/users/@me/guilds")
-    return guilds if isinstance(guilds, list) else []
+    # Cache Discord's guild list briefly to avoid rate-limiting on redirects and page navigation.
+    user_key = str(session.get("user_id") or "")
+    now = time.monotonic()
+    with _guild_cache_lock:
+        cached = _guild_cache.get(user_key)
+        if cached and now - cached["time"] <= _GUILD_CACHE_TTL:
+            return cached["guilds"]
+
+    try:
+        guilds = _api_get("/users/@me/guilds")
+    except requests.HTTPError as exc:
+        response = exc.response
+        if response is not None and response.status_code == 429:
+            with _guild_cache_lock:
+                cached = _guild_cache.get(user_key)
+            if cached and now - cached["time"] <= _GUILD_CACHE_STALE_TTL:
+                print("[DASHBOARD] Discord rate limit; using briefly cached guild list.", flush=True)
+                return cached["guilds"]
+            print("[DASHBOARD] Discord rate limit while loading guild list; no usable cache.", flush=True)
+            abort(503, "Discord begrenzt gerade Anfragen. Bitte warte kurz und lade die Seite erneut.")
+        raise
+    except requests.RequestException as exc:
+        print(f"[DASHBOARD] Discord API request failed while loading guild list: {type(exc).__name__}", flush=True)
+        abort(502, "Discord ist momentan nicht erreichbar. Bitte versuche es später erneut.")
+
+    if not isinstance(guilds, list):
+        abort(502, "Discord hat eine unerwartete Antwort auf die Serverliste geliefert.")
+    with _guild_cache_lock:
+        _guild_cache[user_key] = {"guilds": guilds, "time": now}
+    return guilds
 
 
 def _authorized_guild(guild_id):
