@@ -195,7 +195,9 @@ def _command_records(guild_id):
         if key in seen:
             continue
         seen.add(key)
-        records.append({"key": key, "name": "!" + command.name, "kind": "Prefix", "enabled": key not in disabled, "cog": command.cog_name or "Allgemein"})
+        cog = command.cog
+        module_name = cog.__class__.__name__ if cog is not None else None
+        records.append({"key": key, "name": "!" + command.name, "kind": "Prefix", "enabled": key not in disabled and module_name not in disabled_modules, "cog": command.cog_name or "Allgemein"})
     for command in _bot.tree.walk_commands():
         if isinstance(command, app_commands.Group):
             continue
@@ -203,7 +205,9 @@ def _command_records(guild_id):
         if key in seen:
             continue
         seen.add(key)
-        records.append({"key": key, "name": "/" + command.qualified_name, "kind": "Slash", "enabled": key not in disabled, "cog": getattr(command, "binding", None).__class__.__name__ if getattr(command, "binding", None) else "Allgemein"})
+        cog = getattr(command, "binding", None)
+        module_name = cog.__class__.__name__ if cog is not None else None
+        records.append({"key": key, "name": "/" + command.qualified_name, "kind": "Slash", "enabled": key not in disabled and module_name not in disabled_modules, "cog": module_name or "Allgemein"})
     return sorted(records, key=lambda item: (item["cog"].lower(), item["name"].lower()))
 
 
