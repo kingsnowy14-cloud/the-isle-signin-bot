@@ -321,6 +321,14 @@ def guild_config(guild_id):
 
 
 
+def _safe_automation_interval(job):
+    try:
+        value = int(job.get("interval_minutes", 1440) or 1440)
+    except (TypeError, ValueError):
+        value = 1440
+    return max(60, min(10080, value))
+
+
 async def premium_automation_worker():
     """Run configured recurring announcements only while the linked account is entitled."""
     while not bot.is_closed():
@@ -338,7 +346,7 @@ async def premium_automation_worker():
                 if next_run.tzinfo is None:
                     next_run = next_run.replace(tzinfo=timezone.utc)
             except (TypeError, ValueError):
-                interval = max(60, min(10080, int(job.get("interval_minutes", 1440) or 1440)))
+                interval = _safe_automation_interval(job)
                 job["next_run_at"] = (now + timedelta(minutes=interval)).isoformat()
                 save_json(CONFIG_FILE, config)
                 continue
@@ -355,7 +363,7 @@ async def premium_automation_worker():
                 if not message or len(message) > 1800:
                     raise ValueError("Configured automation message is empty or too long")
                 await channel.send(message, allowed_mentions=discord.AllowedMentions.none())
-                interval = max(60, min(10080, int(job.get("interval_minutes", 1440) or 1440)))
+                interval = _safe_automation_interval(job)
                 job["next_run_at"] = (now + timedelta(minutes=interval)).isoformat()
                 save_json(CONFIG_FILE, config)
                 print(f"[AUTOMATION] Sent scheduled announcement in guild {guild.id}.", flush=True)
