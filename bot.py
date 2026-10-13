@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
+from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
 from collections import defaultdict, deque
 import discord
@@ -935,38 +936,102 @@ def _verify_code_hash(code: str, salt: bytes) -> str:
     return hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, 200_000).hex()
 
 
-class VerifyCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode"):
-    code = discord.ui.TextInput(
-        label="Verifizierungscode",
-        placeholder="Code eingeben …",
-        min_length=1,
-        max_length=128,
-        required=True,
-    )
+def _make_captcha_image(code: str) -> io.BytesIO:
+    """Render a randomized verification challenge as an in-memory PNG."""
+    image = Image.new("RGB", (420, 150), (245, 247, 250))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=52)
+    small_font = ImageFont.load_default(size=18)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
-            return
-        cfg = guild_config(interaction.guild.id)
-        salt_hex = cfg.get("verify_code_salt")
-        expected_hash = cfg.get("verify_code_hash")
-        if not salt_hex or not expected_hash:
-            await interaction.response.send_message(
-                "Die Code-Verifizierung ist nicht vollständig eingerichtet. Bitte Admin informieren.",
-                ephemeral=True,
-            )
-            return
-        try:
-            salt = bytes.fromhex(salt_hex)
-            supplied_hash = _verify_code_hash(str(self.code.value).strip(), salt)
-        except (ValueError, TypeError):
-            await interaction.response.send_message("Verifizierung fehlgeschlagen. Bitte Admin informieren.", ephemeral=True)
-            return
-        if not __import__("hmac").compare_digest(supplied_hash, expected_hash):
-            await interaction.response.send_message("❌ Falscher Code. Bitte prüfe ihn und versuche es erneut.", ephemeral=True)
-            return
-        await finish_verification(interaction, cfg)
+    # Light visual noise makes simple automated OCR less reliable while keeping
+    # the characters readable for people.
+    for _ in range(18):
+        x1, y1 = random.randint(0, 420), random.randint(0, 150)
+        x2, y2 = random.randint(0, 420), random.randint(0, 150)
+        draw.line((x1, y1, x2, y2), fill=(random.randint(175, 220), random.randint(175, 220), random.randint(175, 220)), width=2)
+    for _ in range(700):
+        x, y = random.randint(0, 419), random.randint(0, 149)
+        shade = random.randint(190, 235)
+        draw.point((x, y), fill=(shade, shade, shade))
+
+    # Draw each character with a small independent rotation.
+    char_width = 58
+    start_x = (420 - char_width * len(code)) // 2
+    for index, char in enumerate(code):
+        tile = Image.new("RGBA", (70, 86), (0, 0, 0, 0))
+        tile_draw = ImageDraw.Draw(tile)
+        tile_draw.text((12, 10), char, font=font, fill=(25, 43, 75, 255), stroke_width=1)
+        tile = tile.rotate(random.randint(-14, 14), resample=Image.Resampling.BICUBIC, expand=False)
+        image.paste(tile, (start_x + index * char_width, 28), tile)
+
+    draw.text((12, 8), "VERIFIZIERUNGSCODE", font=small_font, fill=(70, 80, 95))
+    draw.rectangle((1, 1, 418, 148), outline=(120, 130, 145), width=2)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
+def _new_captcha_code(length: int = 5) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(random.SystemRandom().choice(alphabet) for _ in range(length))
+
+
+class CaptchaChoiceView(discord.ui.View):
+    """One-use, user-bound captcha challenge with three choices."""
+    def __init__(self, user_id: int, answer: str, choices: list[str]):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        self.answer = answer
+        for choice in choices:
+            button = discord.ui.Button(label=choice, style=discord.ButtonStyle.primary)
+            async def callback(interaction: discord.Interaction, selected=choice):
+                if interaction.user.id != self.user_id:
+                    await interaction.response.send_message(
+                        "Diese Verifizierungsaufgabe gehört zu einer anderen Person. Drücke selbst auf den Verifizierungsbutton.",
+                        ephemeral=True,
+                    )
+                    return
+                self.stop()
+                if selected != self.answer:
+                    await interaction.response.send_message(
+                        "❌ Leider falsch. Klicke im Verifizierungs-Panel erneut, um eine neue Aufgabe zu erhalten.",
+                        ephemeral=True,
+                    )
+                    return
+                if not interaction.guild or not isinstance(interaction.user, discord.Member):
+                    await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+                    return
+                cfg = guild_config(interaction.guild.id)
+                await finish_verification(interaction, cfg)
+            button.callback = callback
+            self.add_item(button)
+
+
+async def send_captcha_challenge(interaction: discord.Interaction):
+    """Create a fresh image challenge and three randomized answer buttons."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    answer = _new_captcha_code()
+    choices = {answer}
+    while len(choices) < 3:
+        candidate = "".join(random.SystemRandom().choice(alphabet) for _ in range(5))
+        choices.add(candidate)
+    choice_list = list(choices)
+    random.SystemRandom().shuffle(choice_list)
+
+    image_file = discord.File(_make_captcha_image(answer), filename="verification-captcha.png")
+    embed = create_embed(
+        title="🧩 Verifizierung",
+        description="Lies den Code im Bild und drücke unten die passende von drei Antworten. Die Aufgabe läuft nach 2 Minuten ab.",
+        color=discord.Color.blurple(),
+    )
+    embed.set_image(url="attachment://verification-captcha.png")
+    await interaction.response.send_message(
+        embed=embed,
+        file=image_file,
+        view=CaptchaChoiceView(interaction.user.id, answer, choice_list),
+        ephemeral=True,
+    )
 
 
 async def finish_verification(interaction: discord.Interaction, cfg):
@@ -1020,95 +1085,9 @@ class VerifyView(discord.ui.View):
             )
             return
         if cfg.get("verify_mode", "click") == "code":
-            await interaction.response.send_modal(VerifyCodeModal())
+            await send_captcha_challenge(interaction)
             return
         await finish_verification(interaction, cfg)
-
-
-class VerifyAdminCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode festlegen"):
-    code = discord.ui.TextInput(
-        label="Neuer Verifizierungscode",
-        placeholder="Mindestens 6 Zeichen",
-        min_length=6,
-        max_length=128,
-        required=True,
-    )
-
-    def __init__(self, channel, verified_role, unverified_role, button_label, button_emoji, panel_title="🔐 Server-Verifizierung", panel_description="Lies die Serverregeln und klicke auf den Button. Gib anschließend den Verifizierungscode ein."):
-        super().__init__()
-        self.channel = channel
-        self.verified_role = verified_role
-        self.unverified_role = unverified_role
-        self.button_label = button_label
-        self.button_emoji = button_emoji
-        self.panel_title = panel_title
-        self.panel_description = panel_description
-
-    async def on_submit(self, interaction: discord.Interaction):
-        if not interaction.guild or not interaction.user.guild_permissions.manage_guild:
-            await interaction.response.send_message("Dafür benötigst du die Berechtigung Server verwalten.", ephemeral=True)
-            return
-        cfg = guild_config(interaction.guild.id)
-        salt = os.urandom(16)
-        cfg["verify_channel"] = self.channel.id
-        cfg["verified_role"] = self.verified_role.id
-        cfg["unverified_role"] = self.unverified_role.id if self.unverified_role else None
-        cfg["verify_mode"] = "code"
-        cfg["verify_code_salt"] = salt.hex()
-        cfg["verify_code_hash"] = _verify_code_hash(str(self.code.value).strip(), salt)
-        cfg["verify_button_label"] = self.button_label
-        cfg["verify_button_emoji"] = self.button_emoji
-        cfg["verify_embed_title"] = self.panel_title[:256]
-        cfg["verify_embed_description"] = self.panel_description[:4000]
-        save_json(CONFIG_FILE, config)
-        embed = create_embed(
-            title=self.panel_title[:256],
-            description=self.panel_description[:4000],
-            color=discord.Color.green(),
-        )
-        await self.channel.send(embed=embed, view=VerifyView(self.button_label, self.button_emoji))
-        await interaction.response.send_message(
-            f"Code-Verifizierung eingerichtet. Das Panel wurde in {self.channel.mention} erstellt. "
-            "Der Code wird nur als gesalzener Hash gespeichert.",
-            ephemeral=True,
-        )
-
-
-
-
-class VerifyChangeCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode ändern"):
-    code = discord.ui.TextInput(
-        label="Neuer Verifizierungscode",
-        placeholder="Mindestens 6 Zeichen",
-        min_length=6,
-        max_length=128,
-        required=True,
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        if not interaction.guild or not interaction.user.guild_permissions.manage_guild:
-            await interaction.response.send_message(
-                "Dafür benötigst du die Berechtigung Server verwalten.",
-                ephemeral=True,
-            )
-            return
-        cfg = guild_config(interaction.guild.id)
-        if cfg.get("verify_mode") != "code" or not cfg.get("verified_role"):
-            await interaction.response.send_message(
-                "Die Code-Verifizierung ist noch nicht eingerichtet. Nutze zuerst /verify-setup mit „Code eingeben“.",
-                ephemeral=True,
-            )
-            return
-
-        # Nur Salt und Hash erneuern; alle übrigen Servereinstellungen bleiben erhalten.
-        salt = os.urandom(16)
-        cfg["verify_code_salt"] = salt.hex()
-        cfg["verify_code_hash"] = _verify_code_hash(str(self.code.value).strip(), salt)
-        save_json(CONFIG_FILE, config)
-        await interaction.response.send_message(
-            "✅ Der Verifizierungscode wurde geändert. Kanal, Rollen, Button und Modus bleiben unverändert.",
-            ephemeral=True,
-        )
 
 
 # ----------------------------- SLASH COMMANDS -----------------------------
@@ -2353,22 +2332,11 @@ async def verify_command(
     panel_button = button_name.strip()[:80] or "Verifizieren"
     panel_emoji = emoji.strip()[:100] if emoji else "✅"
 
-    if mode_value == "code":
-        await interaction.response.send_modal(
-            VerifyAdminCodeModal(
-                kanal, rolle_geben, rolle_entfernen, panel_button, panel_emoji,
-                panel_title, panel_description,
-            )
-        )
-        return
-
     cfg = guild_config(interaction.guild_id)
     cfg["verify_channel"] = kanal.id
     cfg["verified_role"] = rolle_geben.id
     cfg["unverified_role"] = rolle_entfernen.id if rolle_entfernen else None
-    cfg["verify_mode"] = "click"
-    cfg.pop("verify_code_salt", None)
-    cfg.pop("verify_code_hash", None)
+    cfg["verify_mode"] = mode_value
     cfg["verify_button_label"] = panel_button
     cfg["verify_button_emoji"] = panel_emoji
     cfg["verify_embed_title"] = panel_title
@@ -2428,17 +2396,11 @@ async def verify_setup(
         await interaction.response.send_message("Die Bot-Rolle muss über den Verifizierungsrollen stehen.", ephemeral=True)
         return
     mode_value = modus.value if modus else "click"
-    if mode_value == "code":
-        await interaction.response.send_modal(VerifyAdminCodeModal(kanal, verifiziert, unverified, button_text, emoji))
-        return
-
     cfg = guild_config(interaction.guild_id)
     cfg["verify_channel"] = kanal.id
     cfg["verified_role"] = verifiziert.id
     cfg["unverified_role"] = unverified.id if unverified else None
-    cfg["verify_mode"] = "click"
-    cfg.pop("verify_code_salt", None)
-    cfg.pop("verify_code_hash", None)
+    cfg["verify_mode"] = mode_value
     cfg["verify_button_label"] = button_text
     cfg["verify_button_emoji"] = emoji
     save_json(CONFIG_FILE, config)
@@ -2449,19 +2411,6 @@ async def verify_setup(
     )
     await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
     await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
-
-
-@bot.tree.command(name="verify-code-aendern", description="Ändert nur den Verifizierungscode")
-@app_commands.checks.has_permissions(manage_guild=True)
-async def verify_code_aendern(interaction: discord.Interaction):
-    cfg = guild_config(interaction.guild_id)
-    if cfg.get("verify_mode") != "code" or not cfg.get("verified_role"):
-        await interaction.response.send_message(
-            "Die Code-Verifizierung ist noch nicht eingerichtet. Nutze zuerst /verify-setup mit „Code eingeben“.",
-            ephemeral=True,
-        )
-        return
-    await interaction.response.send_modal(VerifyChangeCodeModal())
 
 
 @bot.tree.command(name="poll", description="Erstelle eine Abstimmung mit zwei bis vier Optionen")
