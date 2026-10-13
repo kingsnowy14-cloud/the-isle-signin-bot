@@ -99,7 +99,7 @@ def _csrf_field():
 def _page(title, body):
     logged_in = bool(session.get("access_token"))
     nav = (
-        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><span></span>'
+        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten ↗</a><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -279,6 +279,7 @@ def index():
 <p>Verwalte deine IronWolf-Server an einem Ort: Einstellungen, Befehle und Modulvorlagen.</p>
 <div class="notice">🔐 Die Anmeldung erfolgt über Discord. Du kannst nur Server verwalten, auf denen du „Server verwalten“ oder Administrator-Rechte besitzt und auf denen der Bot online ist.</div>
 <a class="button" href="/login">Mit Discord anmelden</a>
+<div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> Fragen oder Nachrichten? <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Tritt unserem Discord bei</a>.</div>
 <h2>Was du hier machen kannst</h2><ul><li>Serverbezogene Einstellungen mit Formularen ändern</li><li>Prefix- und Slash-Befehle einzeln aktivieren/deaktivieren</li><li>Neue Python-Modulvorlagen erstellen und herunterladen</li></ul></section>"""
         if not _oauth_ready():
             body += '<div class="card"><h2>Einmalige Einrichtung nötig</h2><p>Setze in Railway die Variablen <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>, <code>DASHBOARD_REDIRECT_URI</code> und <code>DASHBOARD_SECRET_KEY</code>. Als Redirect URI muss exakt die öffentliche URL plus <code>/callback</code> in der Discord Developer Portal OAuth2-Einstellung stehen.</p></div>'
@@ -297,7 +298,7 @@ def index():
         if not bot_guild:
             continue
         cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
-    body = '<section class="card hero"><span class="pill">WILLKOMMEN BEI IRONWOLF</span><h1 style="margin-top:14px">Dein Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord-Server bequem über eine Oberfläche.</p><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
+    body = '<section class="card hero"><span class="pill">WILLKOMMEN BEI IRONWOLF</span><h1 style="margin-top:14px">Dein Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord-Server bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
     body += '<p><a class="button" href="/premium">✨ Premium verwalten →</a></p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
@@ -380,7 +381,7 @@ def premium_page():
         '<div class="notice">Aktueller Plan: <strong>' + html.escape(labels[plan]) + '</strong></div>'
         '<p>Die Zahlungsintegration ist noch nicht aktiviert. Bis ein Zahlungsanbieter festgelegt und sicher angebunden ist, werden Pläne ausschließlich manuell über Railway-Variablen freigeschaltet.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
-        '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium:</strong> Ticket-System Pro und Custom Branding.</p>'
+        '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium: 5 € pro Jahr.</strong> Ticket-System Pro und Custom Branding.</p>'
         '<p><strong>Premium+:</strong> alle vier Module einschließlich Security Pro und Automation Pro.</p>'
         '<p class="muted">Diese Übersicht zeigt den Kontostatus. Die Module werden erst nach ihrer jeweiligen Implementierung produktiv freigeschaltet.</p>'
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
