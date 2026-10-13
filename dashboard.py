@@ -90,7 +90,7 @@ def _csrf_field():
 def _page(title, body):
     logged_in = bool(session.get("access_token"))
     nav = (
-        '<nav><a href="/">🐺 IronWolf Control Center</a><span></span>'
+        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -98,19 +98,21 @@ def _page(title, body):
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} · IronWolf</title>
 <style>
-:root{{--bg:#10131b;--panel:#1a2030;--text:#f4f6fb;--muted:#aeb8ca;--accent:#8b9dff;--border:#30394d;}}
-*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif}}
-nav{{display:flex;gap:20px;align-items:center;padding:16px max(20px,calc((100vw - 1100px)/2));border-bottom:1px solid var(--border);background:#141925}}
-nav span{{flex:1}}a{{color:var(--accent)}}main{{max-width:1100px;margin:28px auto;padding:0 18px}}
-h1,h2{{line-height:1.2}}h1{{font-size:clamp(26px,4vw,38px)}}h2{{font-size:21px}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}}
-.card{{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;margin:14px 0}}
-label{{display:block;font-weight:650;margin:12px 0 5px}}input[type=text],input[type=password],select,textarea{{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#0e121b;color:var(--text)}}
-textarea{{min-height:95px;resize:vertical}}button,.button{{display:inline-block;border:0;border-radius:8px;padding:10px 14px;background:var(--accent);color:#10131b;font-weight:750;cursor:pointer;text-decoration:none;margin-top:12px}}
-button.secondary,.button.secondary{{background:#30394d;color:var(--text)}}.muted{{color:var(--muted)}}.pill{{display:inline-block;padding:3px 8px;border-radius:20px;background:#30394d;font-size:13px}}
-.row{{display:flex;gap:12px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding:10px 0}}.row:last-child{{border:0}}
-.check{{display:flex;gap:10px;align-items:center}}.check label{{margin:0;font-weight:500}}.check input{{width:18px;height:18px}}
-.notice{{padding:12px;border-radius:8px;background:#252d40;margin:14px 0}}code{{overflow-wrap:anywhere}}small{{color:var(--muted)}}
+:root{{--bg:#0a0d16;--panel:#121827;--text:#f4f7ff;--muted:#9ba8c1;--accent:#9aa9ff;--accent2:#67e8d2;--border:#27334b;--shadow:0 18px 50px rgba(0,0,0,.22);}}
+*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}
+body{{margin:0;background:radial-gradient(ellipse at 12% -10%,rgba(94,109,255,.19),transparent 38%),radial-gradient(ellipse at 95% 15%,rgba(56,214,194,.08),transparent 30%),var(--bg);color:var(--text);font:15px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;min-height:100vh}}
+nav{{position:sticky;top:0;z-index:5;display:flex;gap:18px;align-items:center;padding:14px max(20px,calc((100vw - 1180px)/2));border-bottom:1px solid rgba(154,169,255,.17);background:rgba(10,13,22,.88);backdrop-filter:blur(16px)}}nav a:first-child{{font-weight:850;font-size:17px;text-decoration:none;color:var(--text)}}nav span{{flex:1}}nav a:last-child{{padding:8px 13px;border:1px solid var(--border);border-radius:10px;text-decoration:none;font-weight:650}}a{{color:var(--accent)}}
+main{{max-width:1180px;margin:34px auto;padding:0 22px 42px}}main>p:last-child{{border-top:1px solid var(--border);padding-top:18px;margin-top:32px}}h1,h2,h3{{line-height:1.2;letter-spacing:-.45px}}h1{{font-size:clamp(29px,4vw,42px);margin:0 0 10px;font-weight:850}}h2{{font-size:20px;margin:0 0 12px}}h3{{font-size:16px;margin:20px 0 8px}}main>p.muted{{margin-top:0;margin-bottom:24px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:18px;align-items:start}}.grid>.card,.grid>div>.card{{margin:0 0 16px}}
+.card{{background:linear-gradient(145deg,rgba(23,31,49,.96),rgba(16,22,36,.96));border:1px solid var(--border);border-radius:18px;padding:22px;margin:16px 0;box-shadow:var(--shadow);min-width:0}}.card h1{{margin-bottom:14px}}.card p{{color:var(--muted)}}.card ul{{padding-left:22px;color:var(--muted)}}.card li{{padding:3px 0}}
+.grid>a.card{{transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}}.grid>a.card:hover{{transform:translateY(-3px);border-color:rgba(154,169,255,.65);box-shadow:0 22px 55px rgba(0,0,0,.34)}}
+label{{display:block;font-weight:700;margin:14px 0 6px;color:#dce4f7}}input[type=text],input[type=password],select,textarea{{width:100%;padding:11px 13px;border:1px solid #35415c;border-radius:10px;background:#0b101c;color:var(--text);font:inherit;outline:none;transition:border-color .15s,box-shadow .15s}}input:focus,select:focus,textarea:focus{{border-color:var(--accent);box-shadow:0 0 0 3px rgba(154,169,255,.13)}}textarea{{min-height:100px;resize:vertical}}
+button,.button{{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;border-radius:10px;padding:10px 15px;background:linear-gradient(120deg,var(--accent),#b9c2ff);color:#101426;font:inherit;font-weight:800;cursor:pointer;text-decoration:none;margin-top:14px;transition:transform .15s,filter .15s}}button:hover,.button:hover{{transform:translateY(-1px);filter:brightness(1.06)}}button.secondary,.button.secondary{{background:#202a40;border-color:#35415c;color:var(--text)}}
+.muted,small{{color:var(--muted)}}.pill{{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(103,232,210,.1);border:1px solid rgba(103,232,210,.24);color:var(--accent2);font-size:12px;font-weight:750;letter-spacing:.2px}}
+.row{{display:flex;gap:14px;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(53,65,92,.65);padding:12px 0}}.row:last-child{{border:0}}.row strong{{overflow-wrap:anywhere}}.check{{display:flex;gap:9px;align-items:center;flex-shrink:0}}.check label{{margin:0;font-weight:600;color:var(--muted)}}.check input{{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}}
+.notice{{padding:14px 16px;border-radius:12px;background:rgba(154,169,255,.08);border:1px solid rgba(154,169,255,.22);margin:18px 0;color:#d9e1f8}}code{{overflow-wrap:anywhere;background:#0a101b;border:1px solid var(--border);border-radius:6px;padding:2px 5px;font-size:.92em}}form{{margin-top:10px}}form button{{width:auto}}.card form>button{{margin-top:18px}}select{{cursor:pointer}}
+@media(max-width:650px){{nav{{padding:12px 16px}}nav a:first-child{{font-size:15px}}main{{margin:24px auto;padding:0 14px 30px}}.card{{padding:17px;border-radius:14px}}.row{{align-items:flex-start}}}}
+@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{scroll-behavior:auto!important;transition:none!important}}}}
 </style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf Control Center · Änderungen gelten serverbezogen. Neue Python-Module werden nicht automatisch ausgeführt.</small></p></main></body></html>"""
 
 
@@ -233,7 +235,7 @@ def security_headers(response):
 def index():
     login = _require_login()
     if login:
-        body = """<section class="card"><h1>🐺 IronWolf Control Center</h1>
+        body = """<section class="card hero"><span class="pill">CONTROL CENTER</span><h1 style="margin-top:16px">Dein Server. Deine Regeln.</h1>
 <p>Verwalte deine IronWolf-Server an einem Ort: Einstellungen, Befehle und Modulvorlagen.</p>
 <div class="notice">🔐 Die Anmeldung erfolgt über Discord. Du kannst nur Server verwalten, auf denen du „Server verwalten“ oder Administrator-Rechte besitzt und auf denen der Bot online ist.</div>
 <a class="button" href="/login">Mit Discord anmelden</a>
@@ -254,8 +256,8 @@ def index():
         bot_guild = _bot.get_guild(int(gid)) if _bot else None
         if not bot_guild:
             continue
-        cards.append(f'<a class="card" style="display:block;text-decoration:none" href="/guild/{gid}"><h2>{html.escape(item.get("name","Server"))}</h2><span class="pill">Bot verbunden</span><p class="muted">Einstellungen, Befehle und Module öffnen →</p></a>')
-    body = '<h1>Deine IronWolf-Server</h1><p class="muted">Es werden nur Server angezeigt, auf denen du verwalten darfst und IronWolf verbunden ist.</p>'
+        cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
+    body = '<span class="pill">ÜBERSICHT</span><h1 style="margin-top:14px">Deine IronWolf-Server</h1><p class="muted">Wähle einen Server, um Einstellungen, Befehle und Module an einem Ort zu verwalten.</p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
 
