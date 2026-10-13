@@ -2130,6 +2130,45 @@ async def social_alert_set(interaction: discord.Interaction, plattform: app_comm
     await interaction.response.send_message(f"{plattform.name}-Benachrichtigungen sind eingerichtet. Der Bot prüft neue Inhalte automatisch, wenn er online ist.", ephemeral=True)
 
 
+@bot.tree.command(name="social-alert-aus", description="Deaktiviert Social-Benachrichtigungen für eine Plattform")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(plattform=[
+    app_commands.Choice(name="YouTube", value="youtube"),
+    app_commands.Choice(name="Twitch", value="twitch"),
+])
+async def social_alert_disable(interaction: discord.Interaction, plattform: app_commands.Choice[str]):
+    cfg = guild_config(interaction.guild_id)
+    alerts = cfg.setdefault("social_alerts", {})
+    if plattform.value not in alerts:
+        await interaction.response.send_message(f"Für {plattform.name} ist kein Alert eingerichtet.", ephemeral=True)
+        return
+    alerts[plattform.value]["enabled"] = False
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"⏸️ {plattform.name}-Alerts wurden deaktiviert. Die Konfiguration bleibt gespeichert.", ephemeral=True)
+
+
+@bot.tree.command(name="social-alert-status", description="Zeigt konfigurierte Social Alerts")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def social_alert_status(interaction: discord.Interaction):
+    alerts = guild_config(interaction.guild_id).get("social_alerts", {})
+    embed = create_embed(title="📡 Social-Alerts · Status", color=discord.Color.blurple())
+    if not alerts:
+        embed.description = "Noch keine Alerts eingerichtet. Nutze /social-alert-set."
+    else:
+        for platform, alert in sorted(alerts.items()):
+            channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
+            state = "🟢 Aktiv" if alert.get("enabled") else "⏸️ Pausiert"
+            source = str(alert.get("source", "unbekannt"))
+            embed.add_field(
+                name=f"{platform.capitalize()} · {state}",
+                value=f"**Quelle:** {source[:150]}\n**Kanal:** {channel.mention if channel else 'Kanal nicht gefunden'}",
+                inline=False,
+            )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 async def social_alert_loop():
     await bot.wait_until_ready()
     while not bot.is_closed():
@@ -2155,17 +2194,50 @@ async def social_alert_loop():
                                     if resp.status != 200: continue
                                     root = ET.fromstring(await resp.text())
                                 ns = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
-                                entry = root.find("atom:entry", ns)
-                                if entry is None: continue
-                                video_id = entry.findtext("yt:videoId", default="", namespaces=ns)
-                                title = entry.findtext("atom:title", default="Neues YouTube-Video", namespaces=ns)
-                                link_el = entry.find("atom:link", ns)
-                                link = link_el.attrib.get("href", "") if link_el is not None else f"https://www.youtube.com/watch?v={video_id}"
+                                entries = root.findall("atom:entry", ns)
+                                if not entries:
+                                    continue
+                                parsed_entries = []
+                                for entry in entries:
+                                    video_id = entry.findtext("yt:videoId", default="", namespaces=ns)
+                                    if not video_id:
+                                        continue
+                                    title = entry.findtext("atom:title", default="Neues YouTube-Video", namespaces=ns)
+                                    link_el = entry.find("atom:link", ns)
+                                    link = link_el.attrib.get("href", "") if link_el is not None else f"https://www.youtube.com/watch?v={video_id}"
+                                    published = entry.findtext("atom:published", default="", namespaces=ns)
+                                    parsed_entries.append({"id": video_id, "title": title, "url": link, "published": published})
+                                if not parsed_entries:
+                                    continue
                                 seen = data.setdefault("social_alert_seen", {}).get(key)
-                                if video_id and video_id != seen:
-                                    if seen:
-                                        await channel.send(f"📺 Neues Video auf YouTube: **{title[:200]}**\n{link}")
-                                    data["social_alert_seen"][key] = video_id; save_json(DATA_FILE, data)
+                                # Backwards-compatible with the previous single-ID state.
+                                seen_ids = seen if isinstance(seen, list) else ([seen] if isinstance(seen, str) and seen else [])
+                                current_ids = [item["id"] for item in parsed_entries]
+                                if not seen_ids:
+                                    # Seed existing feed entries on first run instead of announcing old uploads.
+                                    data["social_alert_seen"][key] = current_ids[:10]
+                                    save_json(DATA_FILE, data)
+                                else:
+                                    new_entries = []
+                                    for item in parsed_entries:
+                                        if item["id"] in seen_ids:
+                                            break
+                                        new_entries.append(item)
+                                    for item in reversed(new_entries):
+                                        embed = create_embed(
+                                            title=f"📺 Neues YouTube-Video",
+                                            description=f"**{item['title'][:250]}**\n[Video ansehen]({item['url']})",
+                                            color=discord.Color.red(),
+                                        )
+                                        if item["published"]:
+                                            try:
+                                                published_dt = datetime.fromisoformat(item["published"].replace("Z", "+00:00"))
+                                                embed.timestamp = published_dt
+                                            except ValueError:
+                                                pass
+                                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                                    data["social_alert_seen"][key] = (current_ids + seen_ids)[:10]
+                                    save_json(DATA_FILE, data)
                             elif platform == "twitch":
                                 client_id = os.getenv("TWITCH_CLIENT_ID"); token = os.getenv("TWITCH_ACCESS_TOKEN")
                                 if not client_id or not token: continue
@@ -2178,8 +2250,27 @@ async def social_alert_loop():
                                 live_id = stream[0].get("id") if stream else None
                                 seen = data.setdefault("social_alert_seen", {}).get(key)
                                 if live_id and live_id != seen:
-                                    await channel.send(f"🔴 **{stream[0].get('user_name', name)} ist jetzt live!**\nhttps://twitch.tv/{name}")
-                                data["social_alert_seen"][key] = live_id; save_json(DATA_FILE, data)
+                                    current = stream[0]
+                                    embed = create_embed(
+                                        title=f"🔴 {current.get('user_name', name)} ist jetzt live!",
+                                        description=f"**{current.get('title') or 'Livestream gestartet'}**\n[Zum Stream](https://twitch.tv/{name})",
+                                        color=discord.Color.purple(),
+                                    )
+                                    game_name = current.get("game_name")
+                                    if game_name:
+                                        embed.add_field(name="🎮 Kategorie", value=str(game_name)[:200], inline=True)
+                                    viewers = current.get("viewer_count")
+                                    if viewers is not None:
+                                        embed.add_field(name="👀 Zuschauer", value=str(viewers), inline=True)
+                                    started_at = current.get("started_at")
+                                    if started_at:
+                                        try:
+                                            embed.timestamp = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                                        except ValueError:
+                                            pass
+                                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                                data["social_alert_seen"][key] = live_id
+                                save_json(DATA_FILE, data)
                         except (aiohttp.ClientError, asyncio.TimeoutError, ET.ParseError, ValueError) as exc:
                             print(f"[SOCIAL ALERT] {platform} check failed: {type(exc).__name__}")
         except Exception as exc:
