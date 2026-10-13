@@ -2917,6 +2917,7 @@ _nuke_events = defaultdict(deque)       # (guild_id, actor_id) -> timestamps
 _raid_joins = defaultdict(deque)        # guild_id -> (timestamp, member_id)
 _raid_lockdown_until = {}               # guild_id -> monotonic timestamp
 _nuke_handled = set()                   # avoid handling the same audit entry twice
+_nuke_handled_order = deque()           # bounds memory use for long-running bots
 
 
 async def security_log(guild: discord.Guild, title: str, description: str, color=discord.Color.orange()):
@@ -2949,6 +2950,11 @@ async def get_audit_actor(guild: discord.Guild, action: discord.AuditLogAction, 
                 if target_id is None or getattr(entry.target, "id", None) == target_id:
                     if entry.id not in _nuke_handled:
                         _nuke_handled.add(entry.id)
+                        _nuke_handled_order.append(entry.id)
+                        # Audit-log deduplication must not grow without bound.
+                        while len(_nuke_handled_order) > 5000:
+                            expired_id = _nuke_handled_order.popleft()
+                            _nuke_handled.discard(expired_id)
                         return entry.user, entry.id, entry.reason
         except (discord.Forbidden, discord.HTTPException):
             return None, None, None
@@ -3503,6 +3509,23 @@ async def security_setup(
     cfg["anti_nuke_threshold"] = max(2, min(10, int(cfg.get("anti_nuke_threshold", 4))))
     cfg["automod_enabled"] = anti_spam
     save_json(CONFIG_FILE, config)
+
+    # Report missing permissions during setup so admins can fix protection gaps.
+    warnings = []
+    bot_member = interaction.guild.get_member(bot.user.id) if bot.user else None
+    if bot_member is None:
+        warnings.append("Bot-Mitglied konnte nicht ermittelt werden; Rechte bitte manuell prüfen.")
+    else:
+        log_permissions = log_kanal.permissions_for(bot_member)
+        if not log_permissions.view_channel or not log_permissions.send_messages or not log_permissions.embed_links:
+            warnings.append(f"Im Log-Kanal {log_kanal.mention} fehlen dem Bot möglicherweise Kanal ansehen, Nachrichten senden oder Links einbetten.")
+        if not bot_member.guild_permissions.view_audit_log:
+            warnings.append("Audit-Log ansehen fehlt: Anti-Nuke kann Akteure nicht zuverlässig zuordnen.")
+        if not bot_member.guild_permissions.kick_members:
+            warnings.append("Mitglieder entfernen fehlt: Anti-Nuke kann erkannte Akteure nicht entfernen.")
+        if not bot_member.guild_permissions.moderate_members:
+            warnings.append("Mitglieder moderieren fehlt: Anti-Raid und AutoMod können Timeouts nicht setzen.")
+
     embed = create_embed(
         title="🛡️ IronWolf Security eingerichtet",
         description=(
@@ -3514,6 +3537,7 @@ async def security_setup(
             "6 Nachrichten/8 Sekunden lösen eine Löschung und einen 2-Minuten-Timeout aus.\n\n"
             "Hinweis: Der Bot benötigt passende Moderations- und Audit-Log-Berechtigungen "
             "sowie eine ausreichend hohe Rollenposition."
+            + (("\n\n⚠️ **Berechtigungsprüfung**\n" + "\n".join(f"• {item}" for item in warnings)) if warnings else "\n\n✅ Die grundlegenden Berechtigungen wurden geprüft.")
         ),
         color=discord.Color.green(),
     )
