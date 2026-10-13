@@ -1428,10 +1428,9 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
     for member in guild.members:
         if member.bot:
             continue
-        recorded_activity = _activity_timestamp(get_user_stats(guild.id, member.id))
-        # If we have no tracked activity yet, use the join date instead of
-        # classifying every newly joined member as automatically inactive.
-        last_activity = recorded_activity or _member_last_activity(member)
+        # _member_last_activity uses the later of tracked activity and join
+        # date, so recent re-joins are not marked inactive based on old history.
+        last_activity = _member_last_activity(member)
         if last_activity is None or last_activity < cutoff:
             inactive.append((last_activity, member))
     inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
