@@ -47,9 +47,22 @@ async def dashboard_command_enabled(guild_id, key):
     return key not in set(cfg.get("disabled_commands", []))
 
 
+async def dashboard_module_enabled(guild_id, module_name):
+    """Check whether a Cog module is disabled for this server."""
+    if guild_id is None or not module_name:
+        return True
+    cfg = config.get(str(guild_id), {})
+    return module_name not in set(cfg.get("disabled_modules", []))
+
+
 @bot.check
 async def dashboard_prefix_command_check(ctx):
-    return await dashboard_command_enabled(ctx.guild.id if ctx.guild else None, f"prefix:!{ctx.command.name}")
+    guild_id = ctx.guild.id if ctx.guild else None
+    if not await dashboard_command_enabled(guild_id, f"prefix:!{ctx.command.name}"):
+        return False
+    cog = getattr(ctx, "cog", None)
+    module_name = cog.__class__.__name__ if cog is not None else None
+    return await dashboard_module_enabled(guild_id, module_name)
 
 
 async def dashboard_slash_command_check(interaction):
@@ -59,6 +72,15 @@ async def dashboard_slash_command_check(interaction):
     key = f"slash:/{command.qualified_name}"
     if not await dashboard_command_enabled(interaction.guild_id, key):
         message = "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+        return False
+    cog = getattr(command, "binding", None)
+    module_name = cog.__class__.__name__ if cog is not None else None
+    if not await dashboard_module_enabled(interaction.guild_id, module_name):
+        message = "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert."
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
