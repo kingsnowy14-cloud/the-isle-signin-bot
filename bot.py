@@ -891,33 +891,143 @@ async def leaderboard_command(ctx):
     await ctx.reply(embed=embed, mention_author=False)
 
 
-class VerifyView(discord.ui.View):
-    """Persistent verification button; removes the unverified role and grants verified role."""
-    def __init__(self):
-        super().__init__(timeout=None)
+def _verify_code_hash(code: str, salt: bytes) -> str:
+    return hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, 200_000).hex()
 
-    @discord.ui.button(label="Regeln akzeptieren / Verifizieren", style=discord.ButtonStyle.success, emoji="✅", custom_id="verify:accept")
-    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+class VerifyCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode"):
+    code = discord.ui.TextInput(
+        label="Verifizierungscode",
+        placeholder="Code eingeben …",
+        min_length=1,
+        max_length=128,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        salt_hex = cfg.get("verify_code_salt")
+        expected_hash = cfg.get("verify_code_hash")
+        if not salt_hex or not expected_hash:
+            await interaction.response.send_message(
+                "Die Code-Verifizierung ist nicht vollständig eingerichtet. Bitte Admin informieren.",
+                ephemeral=True,
+            )
+            return
+        try:
+            salt = bytes.fromhex(salt_hex)
+            supplied_hash = _verify_code_hash(str(self.code.value).strip(), salt)
+        except (ValueError, TypeError):
+            await interaction.response.send_message("Verifizierung fehlgeschlagen. Bitte Admin informieren.", ephemeral=True)
+            return
+        if not __import__("hmac").compare_digest(supplied_hash, expected_hash):
+            await interaction.response.send_message("❌ Falscher Code. Bitte prüfe ihn und versuche es erneut.", ephemeral=True)
+            return
+        await finish_verification(interaction, cfg)
+
+
+async def finish_verification(interaction: discord.Interaction, cfg):
+    verified_id = cfg.get("verified_role")
+    unverified_id = cfg.get("unverified_role")
+    verified_role = interaction.guild.get_role(int(verified_id)) if verified_id else None
+    unverified_role = interaction.guild.get_role(int(unverified_id)) if unverified_id else None
+    if not verified_role:
+        await interaction.response.send_message(
+            "Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.",
+            ephemeral=True,
+        )
+        return
+    try:
+        if unverified_role and unverified_role in interaction.user.roles:
+            await interaction.user.remove_roles(unverified_role, reason="Mitglied hat Verifizierung abgeschlossen")
+        if verified_role not in interaction.user.roles:
+            await interaction.user.add_roles(verified_role, reason="Mitglied hat Verifizierung abgeschlossen")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(
+            f"Rolle konnte nicht geändert werden: {type(exc).__name__}. Bitte Bot-Rollenposition prüfen.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message("✅ Du bist jetzt verifiziert. Willkommen!", ephemeral=True)
+
+
+class VerifyView(discord.ui.View):
+    """Persistent verification panel; supports one-click and code-based verification."""
+    def __init__(self, label: str = "Regeln akzeptieren / Verifizieren", emoji: str = "✅"):
+        super().__init__(timeout=None)
+        button = discord.ui.Button(
+            label=(label or "Verifizieren")[:80],
+            style=discord.ButtonStyle.success,
+            emoji=emoji or None,
+            custom_id="verify:accept",
+        )
+        button.callback = self.verify_button
+        self.add_item(button)
+
+    async def verify_button(self, interaction: discord.Interaction):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
             return
         cfg = guild_config(interaction.guild.id)
         verified_id = cfg.get("verified_role")
-        unverified_id = cfg.get("unverified_role")
-        verified_role = interaction.guild.get_role(int(verified_id)) if verified_id else None
-        unverified_role = interaction.guild.get_role(int(unverified_id)) if unverified_id else None
-        if not verified_role:
-            await interaction.response.send_message("Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.", ephemeral=True)
+        if not verified_id or not interaction.guild.get_role(int(verified_id)):
+            await interaction.response.send_message(
+                "Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.",
+                ephemeral=True,
+            )
             return
-        try:
-            if unverified_role and unverified_role in interaction.user.roles:
-                await interaction.user.remove_roles(unverified_role, reason="Mitglied hat Verifizierung abgeschlossen")
-            if verified_role not in interaction.user.roles:
-                await interaction.user.add_roles(verified_role, reason="Mitglied hat Verifizierung abgeschlossen")
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            await interaction.response.send_message(f"Rolle konnte nicht geändert werden: {type(exc).__name__}. Bitte Bot-Rollenposition prüfen.", ephemeral=True)
+        if cfg.get("verify_mode", "click") == "code":
+            await interaction.response.send_modal(VerifyCodeModal())
             return
-        await interaction.response.send_message("✅ Du bist jetzt verifiziert. Willkommen!", ephemeral=True)
+        await finish_verification(interaction, cfg)
+
+
+class VerifyAdminCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode festlegen"):
+    code = discord.ui.TextInput(
+        label="Neuer Verifizierungscode",
+        placeholder="Mindestens 6 Zeichen",
+        min_length=6,
+        max_length=128,
+        required=True,
+    )
+
+    def __init__(self, channel, verified_role, unverified_role, button_label, button_emoji):
+        super().__init__()
+        self.channel = channel
+        self.verified_role = verified_role
+        self.unverified_role = unverified_role
+        self.button_label = button_label
+        self.button_emoji = button_emoji
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message("Dafür benötigst du die Berechtigung Server verwalten.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        salt = os.urandom(16)
+        cfg["verify_channel"] = self.channel.id
+        cfg["verified_role"] = self.verified_role.id
+        cfg["unverified_role"] = self.unverified_role.id if self.unverified_role else None
+        cfg["verify_mode"] = "code"
+        cfg["verify_code_salt"] = salt.hex()
+        cfg["verify_code_hash"] = _verify_code_hash(str(self.code.value).strip(), salt)
+        cfg["verify_button_label"] = self.button_label
+        cfg["verify_button_emoji"] = self.button_emoji
+        save_json(CONFIG_FILE, config)
+        embed = create_embed(
+            title="🔐 Server-Verifizierung",
+            description="Lies die Serverregeln und klicke auf den Button. Gib anschließend den Verifizierungscode ein.",
+            color=discord.Color.green(),
+        )
+        await self.channel.send(embed=embed, view=VerifyView(self.button_label, self.button_emoji))
+        await interaction.response.send_message(
+            f"Code-Verifizierung eingerichtet. Das Panel wurde in {self.channel.mention} erstellt. "
+            "Der Code wird nur als gesalzener Hash gespeichert.",
+            ephemeral=True,
+        )
 
 
 # ----------------------------- SLASH COMMANDS -----------------------------
@@ -2074,19 +2184,54 @@ async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.Voi
     await interaction.response.send_message(f"Temp-Voice aktiviert. Wenn jemand {trigger.mention} betritt, wird ein eigener Raum erstellt.", ephemeral=True)
 
 
-@bot.tree.command(name="verify-setup", description="Erstellt ein Verifizierungs-Panel und legt Rollen fest")
+@bot.tree.command(name="verify-setup", description="Richtet die Verifizierung, Methode und Button ein")
 @app_commands.checks.has_permissions(manage_guild=True)
-async def verify_setup(interaction: discord.Interaction, kanal: discord.TextChannel, verifiziert: discord.Role, unverified: discord.Role = None):
-    if verifiziert.is_default() or verifiziert >= interaction.guild.me.top_role or (unverified and unverified >= interaction.guild.me.top_role):
+@app_commands.describe(
+    kanal="Kanal, in dem das Verifizierungs-Panel erscheint",
+    verifiziert="Rolle für erfolgreich verifizierte Mitglieder",
+    unverified="Optionale Rolle für noch nicht verifizierte Mitglieder",
+    modus="Verifizierung mit einem Klick oder mit Code",
+    button_text="Beschriftung des Verifizierungsbuttons",
+    emoji="Emoji für den Verifizierungsbutton",
+)
+@app_commands.choices(modus=[
+    app_commands.Choice(name="Ein Klick", value="click"),
+    app_commands.Choice(name="Code eingeben", value="code"),
+])
+async def verify_setup(
+    interaction: discord.Interaction,
+    kanal: discord.TextChannel,
+    verifiziert: discord.Role,
+    unverified: discord.Role = None,
+    modus: app_commands.Choice[str] = None,
+    button_text: str = "Regeln akzeptieren / Verifizieren",
+    emoji: str = "✅",
+):
+    bot_member = interaction.guild.me if interaction.guild else None
+    if not bot_member or verifiziert.is_default() or verifiziert >= bot_member.top_role or (unverified and unverified >= bot_member.top_role):
         await interaction.response.send_message("Die Bot-Rolle muss über den Verifizierungsrollen stehen.", ephemeral=True)
         return
+    mode_value = modus.value if modus else "click"
+    if mode_value == "code":
+        await interaction.response.send_modal(VerifyAdminCodeModal(kanal, verifiziert, unverified, button_text, emoji))
+        return
+
     cfg = guild_config(interaction.guild_id)
     cfg["verify_channel"] = kanal.id
     cfg["verified_role"] = verifiziert.id
     cfg["unverified_role"] = unverified.id if unverified else None
+    cfg["verify_mode"] = "click"
+    cfg.pop("verify_code_salt", None)
+    cfg.pop("verify_code_hash", None)
+    cfg["verify_button_label"] = button_text
+    cfg["verify_button_emoji"] = emoji
     save_json(CONFIG_FILE, config)
-    embed = create_embed(title="✅ Server-Verifizierung", description="Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren.", color=discord.Color.green())
-    await kanal.send(embed=embed, view=VerifyView())
+    embed = create_embed(
+        title="✅ Server-Verifizierung",
+        description="Lies die Serverregeln und klicke auf den Button, um dich mit einem Klick zu verifizieren.",
+        color=discord.Color.green(),
+    )
+    await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
     await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
 
 
