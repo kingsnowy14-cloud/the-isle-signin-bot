@@ -130,7 +130,7 @@ def guild_server_banner(guild_id):
                 image_format = (image.format or "").upper()
                 image.verify()
             if image_format not in _ALLOWED_IMAGE_TYPES:
-                abort(400, "Erlaubte Bildformate: PNG, JPEG oder GIF.")
+                abort(400, "Erlaubte Bildformate: PNG, JPEG, GIF oder WEBP.")
             if image_format == "GIF" and "ANIMATED_BANNER" not in guild.features:
                 abort(400, "Animierte GIF-Banner sind für diesen Server nicht freigeschaltet. Lade bitte ein statisches PNG-, JPEG- oder WEBP-Bild hoch.")
         except (UnidentifiedImageError, OSError, ValueError):
