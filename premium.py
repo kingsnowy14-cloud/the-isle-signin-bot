@@ -49,3 +49,11 @@ def has_feature(user_id, feature):
 
 def feature_label(feature):
     return PREMIUM_FEATURES.get(feature, "Unbekanntes Premium-Modul")
+
+
+def guild_has_feature(guild_config, feature):
+    """Resolve a server feature through its explicitly linked purchasing account."""
+    if not isinstance(guild_config, dict):
+        return False
+    owner_id = guild_config.get("premium_owner_id")
+    return has_feature(owner_id, feature)
