@@ -4844,6 +4844,48 @@ async def server_template_error(ctx, error):
         await ctx.reply(f"❌ Fehler beim Serverbau: {error}", mention_author=False)
 
 
+@bot.tree.command(name="module-manager", description="Öffnet das IronWolf Control Center zur Modulverwaltung")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def module_manager_command(interaction: discord.Interaction):
+    dashboard_url = os.getenv("DASHBOARD_PUBLIC_URL", "").strip().rstrip("/")
+    if not dashboard_url:
+        await interaction.response.send_message(
+            "Das Web-Dashboard ist noch nicht vollständig eingerichtet. Bitte setze DASHBOARD_PUBLIC_URL sowie die Discord-OAuth2-Variablen in Railway.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        f"🐺 **IronWolf Control Center**\nÖffne das Dashboard, um Module und Befehle für diesen Server zu verwalten: {dashboard_url}",
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.tree.command(name="module-status", description="Zeigt den Status der IronWolf-Cog-Module für diesen Server")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def module_status_command(interaction: discord.Interaction):
+    disabled = set(config.get(str(interaction.guild_id), {}).get("disabled_modules", []))
+    names = set()
+    for cog_name in bot.cogs:
+        names.add(cog_name)
+    if not names:
+        await interaction.response.send_message("Aktuell sind keine Cog-Module registriert.", ephemeral=True)
+        return
+    lines = [
+        f"{'🔴 AUS' if name in disabled else '🟢 AN'} · **{name}**"
+        for name in sorted(names, key=str.lower)
+    ]
+    embed = discord.Embed(
+        title="🐺 IronWolf · Modulstatus",
+        description="\n".join(lines)[:4000],
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text="Modulverwaltung: /module-manager")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.event
 async def on_ready():
     record_module_changes()
