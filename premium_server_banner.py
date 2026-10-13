@@ -10,9 +10,10 @@ import discord
 from flask import Blueprint, abort, redirect, request, session, url_for
 from PIL import Image, UnidentifiedImageError
 from storage import data_path
+from premium import guild_has_feature
 
 premium_banner_bp = Blueprint("premium_server_banner", __name__)
-_ALLOWED_IMAGE_TYPES = {"PNG", "JPEG", "GIF"}
+_ALLOWED_IMAGE_TYPES = {"PNG", "JPEG", "GIF", "WEBP"}
 _PREMIUM_GUILDS_FILE = data_path("premium_guilds.json")
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 _bot = None
@@ -102,8 +103,9 @@ def guild_server_banner(guild_id):
     if response:
         return response
     gid = str(guild.id)
-    if gid not in _load_premium_guilds():
-        abort(403, "Dieser Server wurde noch nicht manuell für Premium-Serverbanner freigeschaltet.")
+    cfg = _guild_config(guild.id)
+    if gid not in _load_premium_guilds() and not guild_has_feature(cfg, "branding"):
+        abort(403, "Custom Branding benötigt ein verknüpftes Premium-Konto oder eine manuelle Serverbanner-Freischaltung.")
     actor_id = str(session.get("user_id", ""))
     actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
     if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
@@ -111,8 +113,7 @@ def guild_server_banner(guild_id):
     bot_member = guild.me
     if bot_member is None or not bot_member.guild_permissions.manage_guild:
         abort(403, "Der Bot benötigt die Discord-Berechtigung „Server verwalten“.")
-    if "BANNER" not in guild.features:
-        abort(400, "Discord hat für diesen Server das Serverbanner-Feature nicht freigeschaltet. IronWolf-Premium kann Discords Server-Boost-Voraussetzungen nicht umgehen.")
+    banner_feature_available = "BANNER" in guild.features
 
     result_html = ""
     if request.method == "POST":
@@ -131,7 +132,7 @@ def guild_server_banner(guild_id):
             if image_format not in _ALLOWED_IMAGE_TYPES:
                 abort(400, "Erlaubte Bildformate: PNG, JPEG oder GIF.")
             if image_format == "GIF" and "ANIMATED_BANNER" not in guild.features:
-                abort(400, "Animierte GIF-Banner sind für diesen Server nicht freigeschaltet. Lade bitte ein statisches PNG/JPEG/WEBP-Bild hoch.")
+                abort(400, "Animierte GIF-Banner sind für diesen Server nicht freigeschaltet. Lade bitte ein statisches PNG-, JPEG- oder WEBP-Bild hoch.")
         except (UnidentifiedImageError, OSError, ValueError):
             abort(400, "Die hochgeladene Datei ist kein gültiges Bild.")
         try:
@@ -154,10 +155,10 @@ def guild_server_banner(guild_id):
         f'<h1 style="margin-top:12px">Serverbanner ändern · {html.escape(guild.name)}</h1>'
         '<p>Das Banner wird für den gesamten Discord-Server geändert. Discord muss die Banner-Funktion für diesen Server freigeschaltet haben.</p>'
         + result_html + current_banner
-        + '<div class="notice">Empfohlen: 960 × 540 Pixel (16:9). Maximal 8 MB. Discord kann zusätzliche Format- oder Größenanforderungen durchsetzen.</div>'
+        + ('<div class="notice">⚠️ Discord hat das Serverbanner-Feature für diesen Server nicht freigeschaltet. Dein Premium-Plan ist aktiv, aber Discord kann das Banner-Ändern trotzdem ablehnen.</div>' if not banner_feature_available else '<div class="notice">Empfohlen: 960 × 540 Pixel (16:9). Maximal 8 MB.</div>')
         + '<form method="post" enctype="multipart/form-data">' + _csrf_field()
         + '<label for="banner">Neues Banner (PNG, JPEG, GIF oder WEBP)</label>'
-        + '<input id="banner" type="file" name="banner" accept="image/png,image/jpeg,image/gif" required>'
+        + '<input id="banner" type="file" name="banner" accept="image/png,image/jpeg,image/gif,image/webp" required>'
         + '<button type="submit">Serverbanner anwenden</button></form>'
         + f'<p><a class="button secondary" href="/guild/{gid}">Zur Serververwaltung</a></p></section>'
     )
