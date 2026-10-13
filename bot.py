@@ -3377,10 +3377,11 @@ class ServerLogs(commands.Cog):
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
         if before.nick != after.nick:
+            actor = await self.audit_actor(after.guild, discord.AuditLogAction.member_update, after.id)
             await self.log(
                 after.guild, "Nickname geändert",
                 f"Mitglied: {after.mention} · ID {after.id}\nVorher: {before.nick or 'Kein Nickname'}\nNachher: {after.nick or 'Kein Nickname'}",
-                actor=after, target=after,
+                actor=actor, target=after,
             )
         added = [role for role in after.roles if role not in before.roles and not role.is_default()]
         removed = [role for role in before.roles if role not in after.roles and not role.is_default()]
