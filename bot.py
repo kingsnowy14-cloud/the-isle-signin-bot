@@ -526,12 +526,38 @@ class TicketPanelView(discord.ui.View):
 
 
 class TicketControlView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, claimed: bool = False):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.primary, emoji="🙋",
-                       custom_id="ticket:claim")
-    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if claimed:
+            release_button = discord.ui.Button(
+                label="Freigeben",
+                style=discord.ButtonStyle.secondary,
+                emoji="🔓",
+                custom_id="ticket:release",
+            )
+            release_button.callback = self.release
+            self.add_item(release_button)
+        else:
+            claim_button = discord.ui.Button(
+                label="Claim",
+                style=discord.ButtonStyle.primary,
+                emoji="🙋",
+                custom_id="ticket:claim",
+            )
+            claim_button.callback = self.claim
+            self.add_item(claim_button)
+
+        close_button = discord.ui.Button(
+            label="Close ticket",
+            style=discord.ButtonStyle.danger,
+            emoji="🔒",
+            custom_id="ticket:close",
+        )
+        close_button.callback = self.close
+        self.add_item(close_button)
+
+    async def claim(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
         if not meta:
             await interaction.response.send_message("Ticket data not found.", ephemeral=True)
@@ -539,17 +565,54 @@ class TicketControlView(discord.ui.View):
         if not is_support(interaction.user, meta, interaction.guild):
             await interaction.response.send_message("Only the configured support team can claim tickets.", ephemeral=True)
             return
+        if meta.get("claimed_by"):
+            await interaction.response.send_message(
+                f"This ticket is already claimed by <@{meta['claimed_by']}>.", ephemeral=True
+            )
+            return
+
         meta["claimed_by"] = interaction.user.id
         save_json(DATA_FILE, data)
-        await interaction.response.send_message(f"Ticket claimed by {interaction.user.mention}.")
         try:
-            await interaction.channel.edit(topic=f"Ticket owner ID: {meta['owner_id']} | Claimed by ID: {interaction.user.id}")
+            await interaction.channel.edit(
+                topic=f"Ticket owner ID: {meta['owner_id']} | Claimed by ID: {interaction.user.id}"
+            )
         except discord.HTTPException:
             pass
 
-    @discord.ui.button(label="Close ticket", style=discord.ButtonStyle.danger, emoji="🔒",
-                       custom_id="ticket:close")
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content=f"Ticket claimed by {interaction.user.mention}.",
+            view=TicketControlView(claimed=True),
+        )
+
+    async def release(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta:
+            await interaction.response.send_message("Ticket data not found.", ephemeral=True)
+            return
+        if not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Only the configured support team can release tickets.", ephemeral=True)
+            return
+        if not meta.get("claimed_by"):
+            await interaction.response.send_message("This ticket is not currently claimed.", ephemeral=True)
+            return
+
+        previous_claimer = meta.get("claimed_by")
+        meta["claimed_by"] = None
+        save_json(DATA_FILE, data)
+        try:
+            await interaction.channel.edit(
+                topic=f"Ticket owner ID: {meta['owner_id']} | Unclaimed"
+            )
+        except discord.HTTPException:
+            pass
+
+        await interaction.response.edit_message(
+            content=f"Ticket released by {interaction.user.mention}. It can now be claimed again.",
+            view=TicketControlView(claimed=False),
+        )
+
+    async def close(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
         if not meta:
             await interaction.response.send_message("Ticket data not found.", ephemeral=True)
