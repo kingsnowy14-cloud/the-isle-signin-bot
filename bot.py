@@ -1173,8 +1173,9 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
     for member in guild.members:
         if member.bot:
             continue
-        last_activity = _member_last_activity(member)
-        if last_activity is None or last_activity < cutoff:
+        recorded_activity = _activity_timestamp(get_user_stats(guild.id, member.id))
+        last_activity = recorded_activity or _member_last_activity(member)
+        if recorded_activity is None or recorded_activity < cutoff:
             inactive.append((last_activity, member))
     inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
     lines = [f"• {member.mention} — {_activity_age_text(last_activity, now)}" for last_activity, member in inactive[:40]]
@@ -1231,8 +1232,9 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
         started_at = _active_voice_sessions.get((guild.id, member.id))
         if started_at:
             total_voice_seconds += max(0, int((now - started_at).total_seconds()))
-        last_activity = _member_last_activity(member)
-        if last_activity and last_activity >= cutoff:
+        recorded_activity = _activity_timestamp(stats)
+        last_activity = recorded_activity or _member_last_activity(member)
+        if recorded_activity and recorded_activity >= cutoff:
             active.append((last_activity, member))
         else:
             inactive.append((last_activity, member))
