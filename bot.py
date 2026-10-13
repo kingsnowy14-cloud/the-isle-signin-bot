@@ -1030,6 +1030,43 @@ class VerifyAdminCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode fest
         )
 
 
+
+
+class VerifyChangeCodeModal(discord.ui.Modal, title="🔐 Verifizierungscode ändern"):
+    code = discord.ui.TextInput(
+        label="Neuer Verifizierungscode",
+        placeholder="Mindestens 6 Zeichen",
+        min_length=6,
+        max_length=128,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.guild or not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "Dafür benötigst du die Berechtigung Server verwalten.",
+                ephemeral=True,
+            )
+            return
+        cfg = guild_config(interaction.guild.id)
+        if cfg.get("verify_mode") != "code" or not cfg.get("verified_role"):
+            await interaction.response.send_message(
+                "Die Code-Verifizierung ist noch nicht eingerichtet. Nutze zuerst /verify-setup mit „Code eingeben“.",
+                ephemeral=True,
+            )
+            return
+
+        # Nur Salt und Hash erneuern; alle übrigen Servereinstellungen bleiben erhalten.
+        salt = os.urandom(16)
+        cfg["verify_code_salt"] = salt.hex()
+        cfg["verify_code_hash"] = _verify_code_hash(str(self.code.value).strip(), salt)
+        save_json(CONFIG_FILE, config)
+        await interaction.response.send_message(
+            "✅ Der Verifizierungscode wurde geändert. Kanal, Rollen, Button und Modus bleiben unverändert.",
+            ephemeral=True,
+        )
+
+
 # ----------------------------- SLASH COMMANDS -----------------------------
 
 @bot.tree.command(name="sprache", description="Set your private registration form language")
@@ -2233,6 +2270,19 @@ async def verify_setup(
     )
     await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
     await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
+
+
+@bot.tree.command(name="verify-code-aendern", description="Ändert nur den Verifizierungscode")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def verify_code_aendern(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    if cfg.get("verify_mode") != "code" or not cfg.get("verified_role"):
+        await interaction.response.send_message(
+            "Die Code-Verifizierung ist noch nicht eingerichtet. Nutze zuerst /verify-setup mit „Code eingeben“.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_modal(VerifyChangeCodeModal())
 
 
 @bot.tree.command(name="poll", description="Erstelle eine Abstimmung mit zwei bis vier Optionen")
