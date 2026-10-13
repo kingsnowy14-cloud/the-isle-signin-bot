@@ -12,7 +12,7 @@ from PIL import Image, UnidentifiedImageError
 from storage import data_path
 
 premium_banner_bp = Blueprint("premium_server_banner", __name__)
-_ALLOWED_IMAGE_TYPES = {"PNG", "JPEG", "GIF", "WEBP"}
+_ALLOWED_IMAGE_TYPES = {"PNG", "JPEG", "GIF"}
 _PREMIUM_GUILDS_FILE = data_path("premium_guilds.json")
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 _bot = None
@@ -129,7 +129,7 @@ def guild_server_banner(guild_id):
                 image_format = (image.format or "").upper()
                 image.verify()
             if image_format not in _ALLOWED_IMAGE_TYPES:
-                abort(400, "Erlaubte Bildformate: PNG, JPEG, GIF oder WEBP.")
+                abort(400, "Erlaubte Bildformate: PNG, JPEG oder GIF.")
             if image_format == "GIF" and "ANIMATED_BANNER" not in guild.features:
                 abort(400, "Animierte GIF-Banner sind für diesen Server nicht freigeschaltet. Lade bitte ein statisches PNG/JPEG/WEBP-Bild hoch.")
         except (UnidentifiedImageError, OSError, ValueError):
@@ -157,7 +157,7 @@ def guild_server_banner(guild_id):
         + '<div class="notice">Empfohlen: 960 × 540 Pixel (16:9). Maximal 8 MB. Discord kann zusätzliche Format- oder Größenanforderungen durchsetzen.</div>'
         + '<form method="post" enctype="multipart/form-data">' + _csrf_field()
         + '<label for="banner">Neues Banner (PNG, JPEG, GIF oder WEBP)</label>'
-        + '<input id="banner" type="file" name="banner" accept="image/png,image/jpeg,image/gif,image/webp" required>'
+        + '<input id="banner" type="file" name="banner" accept="image/png,image/jpeg,image/gif" required>'
         + '<button type="submit">Serverbanner anwenden</button></form>'
         + f'<p><a class="button secondary" href="/guild/{gid}">Zur Serververwaltung</a></p></section>'
     )
