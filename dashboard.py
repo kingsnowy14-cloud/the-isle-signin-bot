@@ -12,6 +12,7 @@ import secrets
 import threading
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -433,6 +434,65 @@ def guild_premium(guild_id):
     return _render(guild.name + " · Premium", body)
 
 
+@app.route("/guild/<guild_id>/automation", methods=["GET", "POST"])
+def guild_automation(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    user_id = str(session.get("user_id", ""))
+    actor = guild.get_member(int(user_id)) if user_id.isdigit() else None
+    job = cfg.setdefault("automation_announcement", {"enabled": False, "channel_id": None, "message": "", "interval_minutes": 1440, "next_run_at": None})
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        if not guild_has_feature(cfg, "automation"):
+            abort(403, "Automation Pro ist nur mit einem verknüpften Premium+-Konto verfügbar.")
+        channel_raw = request.form.get("channel_id", "").strip()
+        message = request.form.get("message", "").strip()
+        enabled = request.form.get("enabled") == "on"
+        try:
+            channel_id = int(channel_raw)
+            interval = int(request.form.get("interval_minutes", "1440"))
+        except (TypeError, ValueError):
+            abort(400, "Bitte einen gültigen Kanal und ein gültiges Intervall auswählen.")
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            abort(400, "Bitte einen gültigen Textkanal dieses Servers auswählen.")
+        if not message or len(message) > 1800:
+            abort(400, "Die Nachricht muss zwischen 1 und 1800 Zeichen lang sein.")
+        if interval < 60 or interval > 10080:
+            abort(400, "Das Intervall muss zwischen 60 Minuten und 7 Tagen liegen.")
+        job.update({"enabled": enabled, "channel_id": channel.id, "message": message, "interval_minutes": interval})
+        job["next_run_at"] = (datetime.now(timezone.utc) + timedelta(minutes=interval)).isoformat() if enabled else None
+        _save_json(data_path("config.json"), _config)
+        return redirect(url_for("guild_automation", guild_id=gid))
+    if not guild_has_feature(cfg, "automation"):
+        body = '<section class="card"><h1>⚙️ Automation Pro</h1><p>Geplante Nachrichten sind eine Premium+-Funktion. Verknüpfe zuerst dein berechtigtes Konto auf der Premium-Seite.</p><a class="button" href="/guild/' + gid + '/premium">Premium verwalten →</a></section>'
+    else:
+        channel_options = '<option value="">— Textkanal auswählen —</option>'
+        for channel in guild.text_channels:
+            selected = " selected" if str(job.get("channel_id") or "") == str(channel.id) else ""
+            channel_options += '<option value="' + str(channel.id) + '"' + selected + '>' + html.escape(channel.name) + '</option>'
+        checked = " checked" if job.get("enabled") else ""
+        body = (
+            '<section class="card hero"><span class="pill">PREMIUM+</span><h1 style="margin-top:14px">⚙️ Automation Pro</h1>'
+            '<p>Veröffentliche automatisch wiederkehrende Server-Ankündigungen. Die erste Nachricht wird erst nach dem gewählten Intervall gesendet.</p>'
+            '<div class="notice">Mindestens 60 Minuten zwischen Nachrichten; maximale Nachrichtenlänge 1800 Zeichen. Erwähnungen werden standardmäßig deaktiviert.</div>'
+            '<form method="post">' + _csrf_field() +
+            '<label for="channel_id">Zielkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
+            '<label for="message">Nachricht</label><textarea id="message" name="message" maxlength="1800" required>' + html.escape(str(job.get("message", ""))) + '</textarea>'
+            '<label for="interval_minutes">Intervall in Minuten (60–10080)</label><input id="interval_minutes" name="interval_minutes" type="number" min="60" max="10080" step="1" value="' + str(max(60, min(10080, int(job.get("interval_minutes", 1440) or 1440)))) + '" required>'
+            '<div class="check"><input type="checkbox" id="enabled" name="enabled"' + checked + '><label for="enabled">Automation aktivieren</label></div>'
+            '<button type="submit">Automation speichern</button></form></section>'
+        )
+    body += '<p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
+    return _render(guild.name + " · Automation Pro", body)
+
+
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
 def guild_page(guild_id):
     guild, response = _authorized_guild(guild_id)
@@ -522,7 +582,7 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
     return _render(guild.name + " · Control Center", body)
 
 
