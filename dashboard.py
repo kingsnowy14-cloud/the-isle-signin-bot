@@ -374,14 +374,7 @@ def premium_page():
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         status = "Enthalten" if feature in included_features else "Nicht enthalten"
-        feature_links = {
-            "ticket": ("/guild/" + gid + "/tickets", "Ticket-System verwalten"),
-            "branding": ("/guild/" + gid + "/banner", "Custom Branding öffnen"),
-            "security": ("/guild/" + gid + "/commands", "Security-Befehle verwalten"),
-            "automation": ("/guild/" + gid + "/automation", "Automation einstellen"),
-        }
-        link_url, link_label = feature_links.get(feature, ("/guild/" + gid, "Serververwaltung öffnen"))
-        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p><p><a class="button" href="' + html.escape(link_url) + '">' + html.escape(link_label) + ' →</a></p></div>')
+        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p></div>')
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF PREMIUM</span><h1 style="margin-top:14px">Dein Premium-Konto</h1>'
         '<p>Dein Zugriff wird an dein angemeldetes Discord-Konto gebunden.</p>'
@@ -445,7 +438,14 @@ def guild_premium(guild_id):
             status = "Aktiv · 15-Tage-Testphase"
         else:
             status = "Aktiv für diesen Server" if entitled else ("Konto berechtigt, Server noch nicht verknüpft" if feature in PLAN_FEATURES.get(plan, frozenset()) and not owner_matches else "Nicht im Kontoplan enthalten")
-        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p></div>')
+        feature_links = {
+            "ticket": ("/guild/" + gid + "/tickets", "Ticket-System verwalten"),
+            "branding": ("/guild/" + gid + "/banner", "Custom Branding öffnen"),
+            "security": ("/guild/" + gid + "/commands", "Security-Befehle verwalten"),
+            "automation": ("/guild/" + gid + "/automation", "Automation einstellen"),
+        }
+        link_url, link_label = feature_links.get(feature, ("/guild/" + gid, "Serververwaltung öffnen"))
+        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p><p><a class="button" href="' + html.escape(link_url) + '">' + html.escape(link_label) + ' →</a></p></div>')
 
     if trial_active:
         plan_display = "Premium+ Testphase"
