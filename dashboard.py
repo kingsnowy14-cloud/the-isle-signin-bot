@@ -422,9 +422,8 @@ def guild_premium(guild_id):
 
     owner_id = str(cfg.get("premium_owner_id") or "")
     owner_matches = owner_id == user_id and bool(owner_id)
-    trial_active = guild_trial_active(cfg)
+    trial_active = guild_trial_active(cfg) and not (owner_matches and plan != "free")
     trial_used = bool(cfg.get("premium_trial_used"))
-    effective_plan = "premium_plus" if trial_active else plan
     labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
