@@ -470,7 +470,7 @@ class TicketCreateModal(discord.ui.Modal):
             overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
         try:
             channel = await guild.create_text_channel(
-                channel_name, category=category, overwrites=overwrites,
+                channel_name, category=category, overwrites=overwrites or {},
                 topic=f"Ticket owner ID: {interaction.user.id} | Ticket number: {ticket_number}"
             )
         except discord.Forbidden:
@@ -3339,7 +3339,7 @@ async def _ensure_server_category(guild, name, overwrites=None):
         return category, False
     category = await guild.create_category(
         name,
-        overwrites=overwrites,
+        overwrites=overwrites or {},
         reason="Server template setup command",
     )
     return category, True
@@ -3353,7 +3353,7 @@ async def _ensure_server_text(guild, category, name, topic=None, overwrites=None
         name,
         category=category,
         topic=topic,
-        overwrites=overwrites,
+        overwrites=overwrites or {},
         reason="Server template setup command",
     )
     return channel, True
@@ -3366,7 +3366,7 @@ async def _ensure_server_voice(guild, category, name, overwrites=None):
     channel = await guild.create_voice_channel(
         name,
         category=category,
-        overwrites=overwrites,
+        overwrites=overwrites or {},
         reason="Server template setup command",
     )
     return channel, True
