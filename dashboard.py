@@ -374,7 +374,14 @@ def premium_page():
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         status = "Enthalten" if feature in included_features else "Nicht enthalten"
-        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p></div>')
+        feature_links = {
+            "ticket": ("/guild/" + gid + "/tickets", "Ticket-System verwalten"),
+            "branding": ("/guild/" + gid + "/banner", "Custom Branding öffnen"),
+            "security": ("/guild/" + gid + "/commands", "Security-Befehle verwalten"),
+            "automation": ("/guild/" + gid + "/automation", "Automation einstellen"),
+        }
+        link_url, link_label = feature_links.get(feature, ("/guild/" + gid, "Serververwaltung öffnen"))
+        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p><p><a class="button" href="' + html.escape(link_url) + '">' + html.escape(link_label) + ' →</a></p></div>')
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF PREMIUM</span><h1 style="margin-top:14px">Dein Premium-Konto</h1>'
         '<p>Dein Zugriff wird an dein angemeldetes Discord-Konto gebunden.</p>'
@@ -383,7 +390,7 @@ def premium_page():
         '</section><div class="grid">' + "".join(rows) + '</div>'
         '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium: 5 € pro Jahr.</strong> Ticket-System Pro und Custom Branding.</p>'
         '<p><strong>Premium+:</strong> alle vier Module einschließlich Security Pro und Automation Pro.</p>'
-        '<p class="muted">Diese Übersicht zeigt den Kontostatus. Die Module werden erst nach ihrer jeweiligen Implementierung produktiv freigeschaltet.</p>'
+        '<p class="muted">Öffne die Premium-Verwaltung eines Servers, um deinen Plan mit ihm zu verknüpfen. Dort führen direkte Schaltflächen zu den jeweiligen Einstellungen.</p>'
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
     return _render("Premium · IronWolf", body)
@@ -420,7 +427,13 @@ def guild_premium(guild_id):
         _save_json(data_path("config.json"), _config)
         return redirect(url_for("guild_premium", guild_id=gid))
 
+    # Automatically attach a manually granted account plan when its owner opens Premium
+    # management, unless the server is already linked to another account.
     owner_id = str(cfg.get("premium_owner_id") or "")
+    if plan != "free" and not owner_id:
+        cfg["premium_owner_id"] = user_id
+        _save_json(data_path("config.json"), _config)
+        owner_id = user_id
     owner_matches = owner_id == user_id and bool(owner_id)
     trial_active = guild_trial_active(cfg) and not (owner_matches and plan != "free")
     trial_used = bool(cfg.get("premium_trial_used"))
@@ -786,7 +799,13 @@ def guild_commands(guild_id):
         command_html += '<section class="command-group"><h3>' + html.escape(group_name) + '</h3>'
         for item in items:
             checked = " checked" if item["enabled"] else ""
-            command_html += f'<div class="row"><div><strong>{html.escape(item["name"])}</strong><br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
+            command_name = item["name"]
+            premium_marker = ""
+            if item["cog"] in {"SecurityTools", "EventTools"}:
+                premium_marker = ' <span class="pill">PREMIUM+</span>'
+            elif item["cog"] in {"TicketTools", "TicketSystem"}:
+                premium_marker = ' <span class="pill">PREMIUM</span>'
+            command_html += f'<div class="row"><div><strong>{html.escape(command_name)}</strong>{premium_marker}<br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
         command_html += '</section>'
     command_html += '</div><button type="submit">Änderungen speichern</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
     return _render(guild.name + " · Befehle", command_html)
