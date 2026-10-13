@@ -260,7 +260,7 @@ def index():
         if not bot_guild:
             continue
         cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
-    body = '<span class="pill">ÜBERSICHT</span><h1 style="margin-top:14px">Deine IronWolf-Server</h1><p class="muted">Wähle einen Server, um Einstellungen, Befehle und Module an einem Ort zu verwalten.</p>'
+    body = '<section class="card hero"><span class="pill">WILLKOMMEN BEI IRONWOLF</span><h1 style="margin-top:14px">Dein Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord-Server bequem über eine Oberfläche.</p><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
 
@@ -367,16 +367,6 @@ def guild_page(guild_id):
                     abort(400, "Ungültige Rolle ausgewählt.")
                 cfg[key] = int(raw) if raw else None
             _save_json(data_path("config.json"), _config)
-        elif action == "commands":
-            disabled = set(cfg.get("disabled_commands", []))
-            valid_keys = {item["key"] for item in _command_records(guild.id)}
-            for key in valid_keys:
-                if request.form.get("cmd:" + key) == "on":
-                    disabled.discard(key)
-                else:
-                    disabled.add(key)
-            cfg["disabled_commands"] = sorted(disabled)
-            _save_json(data_path("config.json"), _config)
         else:
             abort(400, "Unbekannte Aktion.")
         return redirect(url_for("guild_page", guild_id=gid))
@@ -399,23 +389,6 @@ def guild_page(guild_id):
     for key, label in ROLE_SETTINGS.items():
         settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
     settings_html += '<button type="submit">Einstellungen speichern</button></form></section>'
-    commands = _command_records(guild.id)
-    command_html = '<section class="card" id="commands"><h2>⌘ Befehle</h2><p class="muted">Nach Modul gruppiert. Änderungen gelten nur auf diesem Server.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands"><div class="command-groups">'
-    current_cog = None
-    group_open = False
-    for item in commands:
-        if item["cog"] != current_cog:
-            if group_open:
-                command_html += '</div>'
-            current_cog = item["cog"]
-            command_html += '<div class="command-group"><h3>' + html.escape(current_cog) + '</h3>'
-            group_open = True
-        checked = " checked" if item["enabled"] else ""
-        command_html += f'<div class="row"><div><strong>{html.escape(item["name"])}</strong><br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
-    if group_open:
-        command_html += '</div>'
-    command_html += '</div><button type="submit">Befehle speichern</button></form></section>'
-
     module_records = _module_records(guild.id)
     modules_html = '<section class="card" id="modules"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
     for item in module_records:
@@ -425,8 +398,47 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="#commands">⌘ Befehle</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{command_html}{module_form}</div></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
     return _render(guild.name + " · Control Center", body)
+
+
+@app.route("/guild/<guild_id>/commands", methods=["GET", "POST"])
+def guild_commands(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        if request.form.get("action") != "commands":
+            abort(400, "Unbekannte Aktion.")
+        disabled = set(cfg.get("disabled_commands", []))
+        valid_keys = {item["key"] for item in _command_records(guild.id)}
+        for key in valid_keys:
+            if request.form.get("cmd:" + key) == "on":
+                disabled.discard(key)
+            else:
+                disabled.add(key)
+        cfg["disabled_commands"] = sorted(disabled)
+        _save_json(data_path("config.json"), _config)
+        return redirect(url_for("guild_commands", guild_id=gid))
+    commands = _command_records(guild.id)
+    groups = {}
+    for item in commands:
+        groups.setdefault(item["cog"], []).append(item)
+    command_html = '<span class="pill">IRONWOLF · COMMAND CENTER</span><h1 style="margin-top:12px">⌘ Befehle</h1><p class="muted">Alle Befehle sind nach Modul gruppiert. Schalte nur die Befehle ab, die auf diesem Server nicht verfügbar sein sollen.</p><div class="section-nav"><a href="/guild/' + gid + '">← Serverübersicht</a><a href="#prefix">Prefix-Befehle</a><a href="#slash">Slash-Befehle</a></div>'
+    command_html += '<div class="notice">💡 <strong>Tipp:</strong> Nutze die Browser-Suche (Strg+F bzw. „Auf Seite suchen“ auf dem Handy), um einen Befehl schnell zu finden. Speichere Änderungen unten.</div>'
+    command_html += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands"><div class="command-groups">'
+    for group_name, items in sorted(groups.items(), key=lambda pair: pair[0].lower()):
+        command_html += '<section class="command-group"><h3>' + html.escape(group_name) + '</h3>'
+        for item in items:
+            checked = " checked" if item["enabled"] else ""
+            command_html += f'<div class="row"><div><strong>{html.escape(item["name"])}</strong><br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
+        command_html += '</section>'
+    command_html += '</div><button type="submit">Änderungen speichern</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
+    return _render(guild.name + " · Befehle", command_html)
 
 
 @app.route("/guild/<guild_id>/actions", methods=["GET", "POST"])
