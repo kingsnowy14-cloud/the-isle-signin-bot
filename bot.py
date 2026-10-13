@@ -15,7 +15,7 @@ from typing import Optional
 from urllib.parse import parse_qs, urlparse
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
-from premium import guild_has_feature
+from premium import guild_has_feature, expired_grants, mark_expiry_dm_sent
 from collections import defaultdict, deque
 import discord
 from discord import app_commands
@@ -330,9 +330,24 @@ def _safe_automation_interval(job):
 
 
 async def premium_automation_worker():
-    """Run configured recurring announcements only while the linked account is entitled."""
+    """Run announcements and notify users when annual manual Premium expires."""
     while not bot.is_closed():
         await asyncio.sleep(60)
+        try:
+            for user_id, grant in expired_grants():
+                try:
+                    user = await bot.fetch_user(int(user_id))
+                    plan_label = "Premium+" if grant.get("plan") == "premium_plus" else "Premium"
+                    await user.send(f"Dein {plan_label}-Zugang bei IronWolf ist abgelaufen. Deine Premium-Funktionen wurden deaktiviert. Wenn du Premium erneut möchtest, wende dich bitte an das IronWolf-Team.")
+                    mark_expiry_dm_sent(user_id)
+                    print(f"[PREMIUM] Expiry DM sent to user {user_id}.", flush=True)
+                except discord.Forbidden:
+                    print(f"[PREMIUM] Could not DM expired user {user_id}; DMs are closed.", flush=True)
+                    mark_expiry_dm_sent(user_id)
+                except (discord.HTTPException, ValueError) as exc:
+                    print(f"[PREMIUM] Could not notify expired user {user_id}: {type(exc).__name__}: {exc}", flush=True)
+        except Exception as exc:
+            print(f"[PREMIUM] Expiry check failed: {type(exc).__name__}: {exc}", flush=True)
         now = datetime.now(timezone.utc)
         for guild in list(bot.guilds):
             cfg = guild_config(guild.id)
