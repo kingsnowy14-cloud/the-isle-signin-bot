@@ -1088,6 +1088,191 @@ async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=pages[0], view=view, ephemeral=True)
 
 
+
+# ----------------------------- CLAN ACTIVITY TRACKING -----------------------------
+
+def _activity_timestamp(stats):
+    """Return the most recent recorded message/voice activity as an aware datetime."""
+    values = []
+    for key in ("last_message_at", "last_voice_at", "last_activity_at"):
+        raw = stats.get(key)
+        if not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            values.append(parsed.astimezone(timezone.utc))
+        except (TypeError, ValueError):
+            continue
+    return max(values) if values else None
+
+
+def _member_last_activity(member):
+    stats = get_user_stats(member.guild.id, member.id)
+    recorded = _activity_timestamp(stats)
+    joined = member.joined_at
+    if joined is not None:
+        if joined.tzinfo is None:
+            joined = joined.replace(tzinfo=timezone.utc)
+        joined = joined.astimezone(timezone.utc)
+    return max([value for value in (recorded, joined) if value is not None], default=None)
+
+
+def _activity_age_text(last_activity, now=None):
+    if last_activity is None:
+        return "Keine Aktivität erfasst"
+    now = now or datetime.now(timezone.utc)
+    age = max(0, int((now - last_activity).total_seconds()))
+    return f"vor {format_duration(age)}"
+
+
+@bot.tree.command(name="aktivitaet", description="Zeigt Nachrichten, Voice-Zeit und letzte Aktivität eines Mitglieds")
+@app_commands.guild_only()
+@app_commands.describe(mitglied="Mitglied, dessen Aktivität du ansehen möchtest")
+async def clan_activity(interaction: discord.Interaction, mitglied: discord.Member | None = None):
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    target = mitglied or interaction.user
+    stats = get_user_stats(guild.id, target.id)
+    voice_seconds = int(stats.get("voice_seconds", 0))
+    started_at = _active_voice_sessions.get((guild.id, target.id))
+    if started_at is not None:
+        voice_seconds += max(0, int((datetime.now(timezone.utc) - started_at).total_seconds()))
+    last_activity = _member_last_activity(target)
+    embed = create_embed(
+        title=f"🦖 Clan-Aktivität · {target.display_name}",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.add_field(name="💬 Nachrichten", value=f"{int(stats.get('messages', 0)):,}".replace(",", "."), inline=True)
+    embed.add_field(name="🔊 Voice-Zeit", value=format_duration(voice_seconds), inline=True)
+    embed.add_field(name="🕒 Letzte Aktivität", value=_activity_age_text(last_activity), inline=False)
+    if last_activity:
+        embed.add_field(name="📅 Datum", value=discord.utils.format_dt(last_activity, style="F"), inline=False)
+    embed.set_footer(text="Aktivität wird ab Aktivierung der Erfassung gespeichert. • Created by KingSnowy")
+    await interaction.response.send_message(embed=embed, ephemeral=(target.id != interaction.user.id))
+
+
+@bot.tree.command(name="inaktive", description="Listet Mitglieder ohne kürzliche Aktivität auf")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(tage="Als inaktiv gelten Mitglieder ohne Aktivität seit mindestens so vielen Tagen (1–365)")
+async def inactive_members(interaction: discord.Interaction, tage: app_commands.Range[int, 1, 365] = 14):
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=int(tage))
+    inactive = []
+    for member in guild.members:
+        if member.bot:
+            continue
+        last_activity = _member_last_activity(member)
+        if last_activity is None or last_activity < cutoff:
+            inactive.append((last_activity, member))
+    inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
+    lines = [f"• {member.mention} — {_activity_age_text(last_activity, now)}" for last_activity, member in inactive[:40]]
+    if not lines:
+        description = f"Keine Mitglieder mit mindestens {tage} Tagen ohne erfasste Aktivität gefunden."
+    else:
+        description = "\n".join(lines)
+        if len(inactive) > 40:
+            description += f"\n… und {len(inactive) - 40} weitere."
+    embed = create_embed(
+        title=f"💤 Inaktive Mitglieder · {tage}+ Tage",
+        description=description[:4000],
+        color=discord.Color.orange() if inactive else discord.Color.green(),
+        timestamp=now,
+    )
+    embed.set_footer(text=f"{len(inactive)} inaktive Mitglieder gefunden · Beitrittsdatum ist Basis, wenn keine Aktivität vorliegt")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="aktivitaetskanal", description="Legt den Kanal für Clan-Aktivitätsberichte fest")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(kanal="Textkanal, in dem Aktivitätsberichte veröffentlicht werden")
+async def set_activity_log_channel(interaction: discord.Interaction, kanal: discord.TextChannel):
+    cfg = guild_config(interaction.guild_id)
+    cfg["activity_log_channel"] = kanal.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"✅ Aktivitätsberichte werden in {kanal.mention} veröffentlicht.", ephemeral=True
+    )
+
+
+@bot.tree.command(name="aktivitaetsbericht", description="Erstellt und protokolliert einen Clan-Aktivitätsbericht")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(tage="Zeitraum für die Inaktivitätsübersicht (1–365 Tage)")
+async def activity_report(interaction: discord.Interaction, tage: app_commands.Range[int, 1, 365] = 14):
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=int(tage))
+    members = [m for m in guild.members if not m.bot]
+    active = []
+    inactive = []
+    total_messages = 0
+    total_voice_seconds = 0
+    for member in members:
+        stats = get_user_stats(guild.id, member.id)
+        total_messages += int(stats.get("messages", 0))
+        total_voice_seconds += int(stats.get("voice_seconds", 0))
+        started_at = _active_voice_sessions.get((guild.id, member.id))
+        if started_at:
+            total_voice_seconds += max(0, int((now - started_at).total_seconds()))
+        last_activity = _member_last_activity(member)
+        if last_activity and last_activity >= cutoff:
+            active.append((last_activity, member))
+        else:
+            inactive.append((last_activity, member))
+    active.sort(key=lambda item: item[0], reverse=True)
+    inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
+    top_lines = [f"• {member.display_name} — {_activity_age_text(last_activity, now)}" for last_activity, member in active[:10]]
+    embed = create_embed(
+        title=f"📊 Clan-Aktivitätsbericht · letzte {tage} Tage",
+        description=(
+            f"**Mitglieder:** {len(members)}\n"
+            f"**Aktiv im Zeitraum:** {len(active)}\n"
+            f"**Inaktiv / keine Aktivität:** {len(inactive)}\n"
+            f"**Erfasste Nachrichten gesamt:** {total_messages:,}\n"
+            f"**Erfasste Voice-Zeit gesamt:** {format_duration(total_voice_seconds)}\n\n"
+            f"**Zuletzt aktive Mitglieder**\n" + ("\n".join(top_lines) if top_lines else "Noch keine Aktivität erfasst.")
+        ).replace(",", "."),
+        color=discord.Color.blurple(),
+        timestamp=now,
+    )
+    embed.set_footer(text="Statistiken werden ab Aktivierung der Erfassung gesammelt. • Created by KingSnowy")
+    cfg = guild_config(guild.id)
+    channel_id = cfg.get("activity_log_channel")
+    log_channel = guild.get_channel(int(channel_id)) if channel_id else None
+    if isinstance(log_channel, discord.TextChannel):
+        try:
+            await log_channel.send(embed=embed)
+            await interaction.followup.send(f"✅ Aktivitätsbericht wurde in {log_channel.mention} protokolliert.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"❌ Ich kann nicht in {log_channel.mention} schreiben. Prüfe die Kanalrechte.", ephemeral=True
+            )
+    else:
+        await interaction.followup.send(
+            "ℹ️ Es ist kein Aktivitätskanal eingerichtet. Bericht wird dir privat angezeigt. "
+            "Nutze zuerst /aktivitaetskanal, um einen Protokollkanal festzulegen.",
+            embed=embed,
+            ephemeral=True,
+        )
+
+
 # ----------------------------- PREFIX COMMANDS -----------------------------
 
 @bot.command(name="stats")
@@ -2122,6 +2307,9 @@ async def on_message(message: discord.Message):
         # Count messages and award XP with a cooldown.
         stats = get_user_stats(guild.id, message.author.id)
         stats["messages"] = int(stats.get("messages", 0)) + 1
+        activity_now = datetime.now(timezone.utc).isoformat()
+        stats["last_message_at"] = activity_now
+        stats["last_activity_at"] = activity_now
         earned_xp, reached_level = add_message_xp(guild.id, message.author.id)
         save_json(DATA_FILE, data)
 
@@ -2271,6 +2459,14 @@ async def on_voice_state_update(
 
     key = (member.guild.id, member.id)
     now = datetime.now(timezone.utc)
+
+    # Voice joins/leaves count as activity and are stored with a UTC timestamp.
+    if before.channel != after.channel and (before.channel is None or after.channel is None):
+        stats = get_user_stats(member.guild.id, member.id)
+        activity_now = now.isoformat()
+        stats["last_voice_at"] = activity_now
+        stats["last_activity_at"] = activity_now
+        save_json(DATA_FILE, data)
 
     # Leaving voice: add the completed session to the persistent total.
     if before.channel is not None and after.channel is None:
