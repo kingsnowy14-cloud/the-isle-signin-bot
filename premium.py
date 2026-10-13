@@ -122,9 +122,25 @@ def feature_label(feature):
     return PREMIUM_FEATURES.get(feature, "Unbekanntes Premium-Modul")
 
 
-def guild_has_feature(guild_config, feature):
-    """Resolve a server feature through its explicitly linked purchasing account."""
-    if not isinstance(guild_config, dict):
+def guild_trial_active(guild_config):
+    """Return whether this server's one-time 15-day Premium+ trial is active."""
+    if not isinstance(guild_config, dict) or not guild_config.get("premium_trial_used"):
         return False
+    raw_expiry = guild_config.get("premium_trial_expires_at")
+    try:
+        expiry = datetime.fromisoformat(str(raw_expiry or "").replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return False
+    return expiry > _now()
+
+
+def guild_has_feature(guild_config, feature):
+    """Resolve a feature from a linked account or an active server trial."""
+    if not isinstance(guild_config, dict) or feature not in PREMIUM_FEATURES:
+        return False
+    if guild_trial_active(guild_config):
+        return feature in PLAN_FEATURES["premium_plus"]
     owner_id = guild_config.get("premium_owner_id")
     return has_feature(owner_id, feature)
