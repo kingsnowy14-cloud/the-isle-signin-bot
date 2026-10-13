@@ -161,16 +161,54 @@ def create_embed(*args, **kwargs):
 
 
 def load_json(path, default):
+    """Load JSON defensively and preserve malformed files for recovery."""
+    path = Path(path)
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return default
+    except OSError as exc:
+        print(f"[STORAGE] Could not read {path.name}: {type(exc).__name__}: {exc}")
+        return default
+
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        value = None
+
+    # The bot expects dictionaries for config/data. A valid JSON value with the
+    # wrong root type is just as unsafe as malformed JSON; preserve it first.
+    if not isinstance(value, type(default)):
+        if raw:
+            try:
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                backup = path.with_name(f"{path.name}.corrupt-{stamp}.bak")
+                shutil.copy2(path, backup)
+                print(f"[STORAGE] Invalid JSON structure preserved at {backup.name}")
+            except OSError as exc:
+                print(f"[STORAGE] Could not back up {path.name}: {type(exc).__name__}: {exc}")
+        return default
+    return value
 
 
 def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """Write JSON atomically so interrupted writes do not truncate saved data."""
+    path = Path(path)
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    except OSError as exc:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        print(f"[STORAGE] Could not save {path.name}: {type(exc).__name__}: {exc}")
+        raise
 
 
 config = load_json(CONFIG_FILE, {})
