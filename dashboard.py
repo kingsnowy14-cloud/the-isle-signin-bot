@@ -160,9 +160,32 @@ def _authorized_guild(guild_id):
     return guild, None
 
 
+def _module_records(guild_id):
+    cfg = _config.get(str(guild_id), {})
+    disabled = set(cfg.get("disabled_modules", []))
+    modules = {}
+    for command in _bot.commands:
+        if command.hidden or command.name == "help":
+            continue
+        cog = command.cog
+        if cog is not None:
+            modules[cog.__class__.__name__] = cog.__class__.__name__
+    for command in _bot.tree.walk_commands():
+        if isinstance(command, app_commands.Group):
+            continue
+        cog = getattr(command, "binding", None)
+        if cog is not None:
+            modules[cog.__class__.__name__] = cog.__class__.__name__
+    return [
+        {"name": name, "enabled": name not in disabled}
+        for name in sorted(modules, key=str.lower)
+    ]
+
+
 def _command_records(guild_id):
     cfg = _config.get(str(guild_id), {})
     disabled = set(cfg.get("disabled_commands", []))
+    disabled_modules = set(cfg.get("disabled_modules", []))
     records = []
     seen = set()
     for command in _bot.commands:
@@ -301,6 +324,17 @@ def guild_page(guild_id):
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         action = request.form.get("action", "")
+        if action == "modules":
+            disabled = set(cfg.get("disabled_modules", []))
+            valid_modules = {item["name"] for item in _module_records(guild.id)}
+            for name in valid_modules:
+                if request.form.get("module:" + name) == "on":
+                    disabled.discard(name)
+                else:
+                    disabled.add(name)
+            cfg["disabled_modules"] = sorted(disabled)
+            _save_json(data_path("config.json"), _config)
+            return redirect(url_for("guild_page", guild_id=gid))
         if action == "settings":
             for key, meta in TEXT_SETTINGS.items():
                 if key in request.form:
@@ -365,8 +399,16 @@ def guild_page(guild_id):
         checked = " checked" if item["enabled"] else ""
         command_html += f'<div class="row"><div><strong>{html.escape(item["name"])}</strong><br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">Aktiv</label></div></div>'
     command_html += '<button type="submit">Befehle speichern</button></form></section>'
+    module_records = _module_records(guild.id)
+    modules_html = '<section class="card"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
+    for item in module_records:
+        checked = " checked" if item["enabled"] else ""
+        modules_html += f'<div class="row"><strong>{html.escape(item["name"])}</strong><div class="check"><input type="checkbox" id="module-{html.escape(item["name"])}" name="module:{html.escape(item["name"])}"{checked}><label for="module-{html.escape(item["name"])}">Aktiv</label></div></div>'
+    if not module_records:
+        modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
+    modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<h1>🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id}</p><div class="grid"><div>{settings_html}</div><div>{command_html}{module_form}</div></div>'
+    body = f'<h1>🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id}</p><div class="grid"><div>{settings_html}</div><div>{modules_html}{command_html}{module_form}</div></div>'
     return _render(guild.name + " · Control Center", body)
 
 
