@@ -38,6 +38,7 @@ intents.members = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, case_insensitive=True)
+_automation_worker_task = None
 
 
 async def dashboard_command_enabled(guild_id, key):
@@ -308,7 +309,60 @@ def guild_config(guild_id):
     cfg.setdefault("tempvoice_category", None)
     cfg.setdefault("social_alerts", {})
     cfg.setdefault("ticket_auto_close_hours", 0)
+    cfg.setdefault("automation_announcement", {
+        "enabled": False,
+        "channel_id": None,
+        "message": "",
+        "interval_minutes": 1440,
+        "next_run_at": None,
+    })
     return cfg
+
+
+
+
+async def premium_automation_worker():
+    """Run configured recurring announcements only while the linked account is entitled."""
+    while not bot.is_closed():
+        await asyncio.sleep(60)
+        now = datetime.now(timezone.utc)
+        for guild in list(bot.guilds):
+            cfg = guild_config(guild.id)
+            if not guild_has_feature(cfg, "automation"):
+                continue
+            job = cfg.get("automation_announcement", {})
+            if not isinstance(job, dict) or not job.get("enabled"):
+                continue
+            try:
+                next_run = datetime.fromisoformat(str(job.get("next_run_at", "")).replace("Z", "+00:00"))
+                if next_run.tzinfo is None:
+                    next_run = next_run.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                interval = max(60, min(10080, int(job.get("interval_minutes", 1440) or 1440)))
+                job["next_run_at"] = (now + timedelta(minutes=interval)).isoformat()
+                save_json(CONFIG_FILE, config)
+                continue
+            if next_run > now:
+                continue
+            try:
+                channel_id = int(job.get("channel_id") or 0)
+                channel = guild.get_channel(channel_id)
+                if channel is None and channel_id:
+                    channel = await bot.fetch_channel(channel_id)
+                if not isinstance(channel, discord.TextChannel):
+                    raise ValueError("Configured automation channel is unavailable")
+                message = str(job.get("message", "")).strip()
+                if not message or len(message) > 1800:
+                    raise ValueError("Configured automation message is empty or too long")
+                await channel.send(message, allowed_mentions=discord.AllowedMentions.none())
+                interval = max(60, min(10080, int(job.get("interval_minutes", 1440) or 1440)))
+                job["next_run_at"] = (now + timedelta(minutes=interval)).isoformat()
+                save_json(CONFIG_FILE, config)
+                print(f"[AUTOMATION] Sent scheduled announcement in guild {guild.id}.", flush=True)
+            except (discord.Forbidden, discord.HTTPException, ValueError, TypeError) as exc:
+                job["next_run_at"] = (now + timedelta(minutes=15)).isoformat()
+                save_json(CONFIG_FILE, config)
+                print(f"[AUTOMATION] Could not send announcement in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
 
 def user_language(user_id):
@@ -4906,7 +4960,10 @@ async def module_status_command(interaction: discord.Interaction):
 
 @bot.event
 async def on_ready():
+    global _automation_worker_task
     record_module_changes()
+    if _automation_worker_task is None or _automation_worker_task.done():
+        _automation_worker_task = asyncio.create_task(premium_automation_worker(), name="premium-automation-worker")
     # Start tracking members already in voice after a bot start/reconnect.
     # Only seed sessions that are not already tracked to avoid resetting time
     # when Discord reconnects the bot.
