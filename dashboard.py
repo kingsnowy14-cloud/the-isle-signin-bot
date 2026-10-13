@@ -20,6 +20,7 @@ from discord import app_commands
 import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response
 from storage import data_path
+from premium import PREMIUM_FEATURES, account_plan
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -357,6 +358,32 @@ def logout():
     session.clear()
     return redirect(url_for("index"))
 
+
+@app.route("/premium")
+def premium_page():
+    login = _require_login()
+    if login:
+        return login
+    user_id = str(session.get("user_id", ""))
+    plan = account_plan(user_id)
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
+    included_features = {"premium": {"ticket", "branding"}, "premium_plus": set(PREMIUM_FEATURES)}.get(plan, set())
+    rows = []
+    for feature, label in PREMIUM_FEATURES.items():
+        status = "Enthalten" if feature in included_features else "Nicht enthalten"
+        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p></div>')
+    body = (
+        '<section class="card hero"><span class="pill">IRONWOLF PREMIUM</span><h1 style="margin-top:14px">Dein Premium-Konto</h1>'
+        '<p>Dein Zugriff wird an dein angemeldetes Discord-Konto gebunden.</p>'
+        '<div class="notice">Aktueller Plan: <strong>' + html.escape(labels[plan]) + '</strong></div>'
+        '<p>Die Zahlungsintegration ist noch nicht aktiviert. Bis ein Zahlungsanbieter festgelegt und sicher angebunden ist, werden Pläne ausschließlich manuell über Railway-Variablen freigeschaltet.</p>'
+        '</section><div class="grid">' + "".join(rows) + '</div>'
+        '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium:</strong> Ticket-System Pro und Custom Branding.</p>'
+        '<p><strong>Premium+:</strong> alle vier Module einschließlich Security Pro und Automation Pro.</p>'
+        '<p class="muted">Diese Übersicht zeigt den Kontostatus. Die Module werden erst nach ihrer jeweiligen Implementierung produktiv freigeschaltet.</p>'
+        '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
+    )
+    return _render("Premium · IronWolf", body)
 
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
 def guild_page(guild_id):
