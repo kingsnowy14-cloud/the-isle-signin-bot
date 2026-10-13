@@ -626,6 +626,9 @@ class RegistrationView(discord.ui.View):
 
 # ----------------------------- TICKET SYSTEM -----------------------------
 
+# Prevent duplicate ticket channels when a modal is submitted twice in quick succession.
+_ticket_creations_in_progress = set()
+
 class TicketCreateModal(discord.ui.Modal):
     def __init__(self, panel_key: str, button_index: int, button_label: str):
         super().__init__(title=f"Create ticket: {button_label[:35]}")
@@ -649,9 +652,16 @@ class TicketCreateModal(discord.ui.Modal):
         if guild is None:
             await interaction.followup.send("Use this inside a server.", ephemeral=True)
             return
+        creation_key = (guild.id, interaction.user.id, self.panel_key)
+        if creation_key in _ticket_creations_in_progress:
+            await interaction.followup.send("Dein Ticket wird bereits erstellt. Bitte warte kurz.", ephemeral=True)
+            return
+        _ticket_creations_in_progress.add(creation_key)
+
         cfg = guild_config(guild.id)
         panel = cfg.get("ticket_panels", {}).get(self.panel_key)
         if not panel:
+            _ticket_creations_in_progress.discard(creation_key)
             await interaction.followup.send("This ticket panel is no longer configured.", ephemeral=True)
             return
         category_id = panel.get("category_id") or cfg.get("ticket_category")
@@ -678,12 +688,14 @@ class TicketCreateModal(discord.ui.Modal):
                 topic=f"Ticket owner ID: {interaction.user.id} | Ticket number: {ticket_number}"
             )
         except discord.Forbidden:
+            _ticket_creations_in_progress.discard(creation_key)
             await interaction.followup.send(
                 "I don't have permission to create ticket channels. Check Manage Channels permission.",
                 ephemeral=True
             )
             return
         except discord.HTTPException as exc:
+            _ticket_creations_in_progress.discard(creation_key)
             await interaction.followup.send(
                 f"Discord could not create the ticket channel (HTTP {exc.status}). Please try again or check the bot's permissions.",
                 ephemeral=True
@@ -724,6 +736,7 @@ class TicketCreateModal(discord.ui.Modal):
             embed=embed,
             view=TicketControlView(),
         )
+        _ticket_creations_in_progress.discard(creation_key)
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
 
