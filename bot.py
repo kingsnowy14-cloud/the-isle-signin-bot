@@ -1090,6 +1090,8 @@ class VerifyView(discord.ui.View):
         if cfg.get("verify_mode", "click") == "code":
             await send_captcha_challenge(interaction)
             return
+        # Role changes can take longer than Discord's initial interaction window.
+        await interaction.response.defer(ephemeral=True, thinking=True)
         await finish_verification(interaction, cfg)
 
 
