@@ -3450,7 +3450,7 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
             "• `/security-konfigurieren` – Sicherheits- und Raid-Logkanal festlegen\\n"
             "• `/serverlogs` – Aktivitätslogs in einem Kanal aktivieren\\n"
             "• `/event-erstellen` – ein Serverevent veröffentlichen\\n"
-            "• `/abstimmung` – eine Community-Abstimmung starten (falls verfügbar)\\n"
+            "• `/bewerbung-fragen` – Bewerbungsfragen für das Team anpassen\\n"
             "• Danach: Kanalrechte prüfen, Teamrollen vergeben und Regeln/Willkommensnachricht anpassen."
         ))
     except discord.Forbidden:
