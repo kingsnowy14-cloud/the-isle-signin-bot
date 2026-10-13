@@ -2148,6 +2148,28 @@ async def social_alert_disable(interaction: discord.Interaction, plattform: app_
     await interaction.response.send_message(f"⏸️ {plattform.name}-Alerts wurden deaktiviert. Die Konfiguration bleibt gespeichert.", ephemeral=True)
 
 
+@bot.tree.command(name="social-alert-test", description="Sendet eine Testnachricht in den Alert-Kanal")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
+async def social_alert_test(interaction: discord.Interaction, plattform: app_commands.Choice[str]):
+    alert = guild_config(interaction.guild_id).get("social_alerts", {}).get(plattform.value)
+    if not alert:
+        await interaction.response.send_message("Für diese Plattform ist kein Alert eingerichtet.", ephemeral=True)
+        return
+    channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("Der konfigurierte Kanal wurde nicht gefunden.", ephemeral=True)
+        return
+    embed = create_embed(title=f"🧪 Social-Alert-Test · {plattform.name}", description=f"Testnachricht für Quelle: {str(alert.get('source', 'unbekannt'))[:180]}\nStatus: {'aktiv' if alert.get('enabled') else 'pausiert'}", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+    try:
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.response.send_message(f"Test konnte nicht gesendet werden ({type(exc).__name__}). Prüfe die Kanalrechte.", ephemeral=True)
+        return
+    await interaction.response.send_message(f"Testnachricht in {channel.mention} gesendet. Externe API-Verbindung wird damit nicht getestet.", ephemeral=True)
+
+
 @bot.tree.command(name="social-alert-status", description="Zeigt konfigurierte Social Alerts")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
