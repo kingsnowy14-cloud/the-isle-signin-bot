@@ -1306,6 +1306,78 @@ async def moderation_purge(interaction: discord.Interaction, anzahl: app_command
         await interaction.followup.send(f"Löschen fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
 
 
+@bot.tree.command(name="clean", description="Bereinige gezielt Nachrichten im aktuellen Textkanal")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_messages=True)
+@app_commands.describe(
+    typ="Welche Nachrichten sollen gelöscht werden?",
+    anzahl="Wie viele Nachrichten maximal durchsuchen (1–100)",
+    mitglied="Optional: nur Nachrichten dieses Mitglieds löschen",
+)
+@app_commands.choices(typ=[
+    app_commands.Choice(name="Alle Nachrichten", value="all"),
+    app_commands.Choice(name="Nur Bot-Nachrichten", value="bots"),
+    app_commands.Choice(name="Nur Links", value="links"),
+    app_commands.Choice(name="Nur Nachrichten mit Anhängen", value="attachments"),
+    app_commands.Choice(name="Nur Befehlsnachrichten (! oder /)", value="commands"),
+])
+async def moderation_clean(
+    interaction: discord.Interaction,
+    typ: app_commands.Choice[str],
+    anzahl: app_commands.Range[int, 1, 100] = 50,
+    mitglied: discord.Member | None = None,
+):
+    """Clean selected messages from the current channel; never deletes channels or roles."""
+    channel = interaction.channel
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message(
+            "❌ Dieser Befehl funktioniert nur in normalen Textkanälen.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+
+    def should_delete(message: discord.Message) -> bool:
+        if mitglied is not None and message.author.id != mitglied.id:
+            return False
+        if typ.value == "all":
+            return True
+        if typ.value == "bots":
+            return message.author.bot
+        if typ.value == "links":
+            content = (message.content or "").lower()
+            return "http://" in content or "https://" in content or "www." in content or "discord.gg/" in content
+        if typ.value == "attachments":
+            return bool(message.attachments)
+        if typ.value == "commands":
+            content = (message.content or "").lstrip()
+            return content.startswith("!") or content.startswith("/") or content.startswith(bot.command_prefix if isinstance(bot.command_prefix, str) else "!")
+        return False
+
+    try:
+        deleted = await channel.purge(limit=anzahl, check=should_delete, bulk=True, reason=f"/clean von {interaction.user} ({interaction.user.id}); Typ: {typ.value}")
+        await interaction.followup.send(
+            f"🧹 **Bereinigung abgeschlossen**\n"
+            f"**Kanal:** {channel.mention}\n"
+            f"**Auswahl:** {typ.name}\n"
+            f"**Durchsuchte Nachrichten:** maximal {anzahl}\n"
+            f"**Gelöscht:** {len(deleted)} Nachricht(en)"
+            + (f"\n**Mitgliedsfilter:** {mitglied.mention}" if mitglied else ""),
+            ephemeral=True,
+        )
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "❌ Mir fehlen Rechte zum Nachrichtenverlauf-Lesen oder Nachrichten-Verwalten in diesem Kanal.",
+            ephemeral=True,
+        )
+    except discord.HTTPException as exc:
+        await interaction.followup.send(
+            f"❌ Discord konnte die Bereinigung nicht abschließen ({type(exc).__name__}).",
+            ephemeral=True,
+        )
+
+
 @bot.tree.command(name="slowmode", description="Setze den Nachrichten-Abstand für den aktuellen Kanal")
 @app_commands.checks.has_permissions(manage_channels=True)
 @app_commands.describe(sekunden="0 deaktiviert Slowmode; maximal 21600 Sekunden")
