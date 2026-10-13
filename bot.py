@@ -3463,6 +3463,63 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
         await status.edit(content=f"⚠️ Discord konnte die Einrichtung nicht vollständig abschließen: {exc}. Bereits erstellte Elemente bleiben bestehen; du kannst den Befehl nach Behebung erneut ausführen.")
 
 
+@bot.command(name="deleteserver")
+@commands.guild_only()
+@commands.has_guild_permissions(administrator=True)
+async def deleteserver(ctx, bestaetigung: str = ""):
+    """Deletes every channel and category after an explicit confirmation."""
+    if bestaetigung.casefold() != "bestätigen":
+        await ctx.reply(
+            "⚠️ **Achtung: Dieser Befehl löscht alle Kanäle und Kategorien dieses Servers.** "
+            "Rollen und Mitglieder bleiben bestehen. Wenn du sicher bist, tippe "
+            "`!deleteserver BESTÄTIGEN`. Der Vorgang kann nicht rückgängig gemacht werden.",
+            mention_author=False,
+        )
+        return
+
+    guild = ctx.guild
+    # Notify the administrator privately because the command's channel will be deleted too.
+    try:
+        await ctx.author.send(
+            f"🧨 Der Löschvorgang für **{guild.name}** wurde gestartet. "
+            "Alle Serverkanäle und Kategorien werden entfernt."
+        )
+    except discord.HTTPException:
+        pass
+
+    deleted = 0
+    failed = 0
+    # Delete regular channels first, then categories to avoid category dependencies.
+    channels = sorted(
+        list(guild.channels),
+        key=lambda channel: isinstance(channel, discord.CategoryChannel),
+    )
+    for channel in channels:
+        try:
+            await channel.delete(reason=f"Server cleanup requested by {ctx.author} ({ctx.author.id})")
+            deleted += 1
+        except (discord.Forbidden, discord.HTTPException):
+            failed += 1
+
+    try:
+        await ctx.author.send(
+            f"✅ Löschvorgang für **{guild.name}** beendet. "
+            f"Gelöscht: **{deleted}** Kanäle/Kategorien. Fehlgeschlagen: **{failed}**."
+        )
+    except discord.HTTPException:
+        pass
+
+
+@deleteserver.error
+async def deleteserver_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("❌ Nur Server-Administratoren dürfen diesen Befehl verwenden.", mention_author=False)
+    elif isinstance(error, commands.NoPrivateMessage):
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+    else:
+        await ctx.reply(f"❌ Fehler bei !deleteserver: {error}", mention_author=False)
+
+
 @bot.command(name="serverbau")
 @commands.guild_only()
 @commands.has_guild_permissions(manage_guild=True)
