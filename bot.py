@@ -12,6 +12,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 from storage import data_path
 from collections import defaultdict, deque
 import discord
@@ -2553,6 +2554,28 @@ async def ticket_stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+def _normalize_youtube_source(source):
+    """Accept only HTTPS YouTube channel/RSS URLs; never fetch arbitrary URLs."""
+    try:
+        parsed = urlparse(str(source).strip())
+    except ValueError:
+        return None
+    if parsed.scheme.lower() != "https" or parsed.hostname not in {"youtube.com", "www.youtube.com"}:
+        return None
+
+    if parsed.path == "/feeds/videos.xml":
+        channel_id = parse_qs(parsed.query).get("channel_id", [""])[0]
+    else:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) != 2 or parts[0] != "channel":
+            return None
+        channel_id = parts[1]
+
+    if not re.fullmatch(r"UC[A-Za-z0-9_-]{10,}", channel_id):
+        return None
+    return f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+
+
 def _normalize_social_alerts(cfg):
     """Normalize legacy platform-keyed alerts to one entry per platform/source."""
     alerts = cfg.setdefault("social_alerts", {})
@@ -2604,12 +2627,14 @@ def _social_alert_mentions(role):
 async def social_alert_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], kanal: discord.TextChannel, quelle: str, rolle: discord.Role = None):
     source = quelle.strip()
     if plattform.value == "youtube":
-        if "youtube.com/feeds/videos.xml" not in source and "youtube.com/channel/" not in source:
-            await interaction.response.send_message("Für YouTube bitte eine RSS-Feed-URL oder eine youtube.com/channel/CHANNEL_ID-URL verwenden.", ephemeral=True)
+        normalized_source = _normalize_youtube_source(source)
+        if normalized_source is None:
+            await interaction.response.send_message(
+                "Ungültige YouTube-Quelle. Verwende eine HTTPS-URL von youtube.com mit /channel/CHANNEL_ID oder /feeds/videos.xml?channel_id=CHANNEL_ID.",
+                ephemeral=True,
+            )
             return
-        if "youtube.com/channel/" in source and "feeds/videos.xml" not in source:
-            channel_id = source.split("youtube.com/channel/", 1)[1].split("/", 1)[0].split("?", 1)[0]
-            source = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+        source = normalized_source
     elif not re.fullmatch(r"[A-Za-z0-9_]{1,25}", source):
         await interaction.response.send_message("Für Twitch bitte nur den Kanalnamen angeben.", ephemeral=True)
         return
@@ -2787,10 +2812,11 @@ async def social_alert_loop():
                         try:
                             role = _social_alert_role(guild, alert)
                             if platform == "youtube":
-                                url = source
-                                if "youtube.com/channel/" in url and "feeds/videos.xml" not in url:
-                                    channel_id = url.split("youtube.com/channel/", 1)[1].split("/", 1)[0].split("?", 1)[0]
-                                    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+                                url = _normalize_youtube_source(source)
+                                if url is None:
+                                    alert["last_error"] = "Ungültige oder nicht vertrauenswürdige YouTube-Quelle; bitte /social-alert-set erneut verwenden."
+                                    save_json(CONFIG_FILE, config)
+                                    continue
                                 async with session.get(url) as resp:
                                     if resp.status != 200:
                                         alert["last_error"] = f"YouTube RSS antwortete mit HTTP {resp.status}."
