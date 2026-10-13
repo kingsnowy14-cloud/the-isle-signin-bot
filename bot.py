@@ -2221,6 +2221,39 @@ async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.Voi
     await interaction.response.send_message(f"Temp-Voice aktiviert. Wenn jemand {trigger.mention} betritt, wird ein eigener Raum erstellt.", ephemeral=True)
 
 
+@bot.tree.command(name="nachricht", description="Sendet eine Nachricht als Bot in einen Discord-Kanal")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    kanal="Kanal, in den die Bot-Nachricht gesendet werden soll",
+    text="Der Nachrichtentext (maximal 2000 Zeichen)",
+)
+async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel, text: str):
+    if not interaction.guild or kanal.guild.id != interaction.guild.id:
+        await interaction.response.send_message("Bitte wähle einen Kanal von diesem Server.", ephemeral=True)
+        return
+    if not text.strip():
+        await interaction.response.send_message("Der Nachrichtentext darf nicht leer sein.", ephemeral=True)
+        return
+    try:
+        await kanal.send(
+            text[:2000],
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "Ich darf in diesem Kanal keine Nachrichten senden. Prüfe meine Kanalrechte.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException:
+        await interaction.response.send_message(
+            "Die Nachricht konnte nicht gesendet werden. Bitte prüfe den Text und versuche es erneut.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(f"✅ Nachricht wurde als Bot in {kanal.mention} gesendet.", ephemeral=True)
+
+
 @bot.tree.command(name="verify-setup", description="Richtet die Verifizierung, Methode und Button ein")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
