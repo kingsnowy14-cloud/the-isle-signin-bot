@@ -1060,7 +1060,7 @@ async def finish_verification(interaction: discord.Interaction, cfg):
 
 
 class VerifyView(discord.ui.View):
-    """Persistent verification panel; supports one-click and code-based verification."""
+    """Persistent verification panel; supports one-click and image-captcha verification."""
     def __init__(self, label: str = "Regeln akzeptieren / Verifizieren", emoji: str = "✅"):
         super().__init__(timeout=None)
         button = discord.ui.Button(
@@ -2284,7 +2284,7 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
     kanal="Kanal, in dem das Verifizierungs-Panel erscheinen soll",
     rolle_geben="Rolle, die nach erfolgreicher Verifizierung vergeben wird",
     rolle_entfernen="Rolle, die nach erfolgreicher Verifizierung entfernt wird (optional)",
-    modus="Ein Klick oder Code-Eingabe",
+    modus="Ein Klick oder Bild-Captcha mit drei Auswahlmöglichkeiten",
     titel="Titel des Verifizierungs-Embeds",
     beschreibung="Beschreibung des Verifizierungs-Embeds",
     button_name="Text auf dem Verifizierungsbutton",
@@ -2292,7 +2292,7 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
 )
 @app_commands.choices(modus=[
     app_commands.Choice(name="Nur Knopf drücken", value="click"),
-    app_commands.Choice(name="Code eingeben", value="code"),
+    app_commands.Choice(name="Bild-Captcha (3 Antworten)", value="code"),
 ])
 async def verify_command(
     interaction: discord.Interaction,
@@ -2374,7 +2374,7 @@ async def verify_command(
     kanal="Kanal, in dem das Verifizierungs-Panel erscheint",
     verifiziert="Rolle für erfolgreich verifizierte Mitglieder",
     unverified="Optionale Rolle für noch nicht verifizierte Mitglieder",
-    modus="Verifizierung mit einem Klick oder mit Code",
+    modus="Ein Klick oder Bild-Captcha mit drei Auswahlmöglichkeiten",
     button_text="Beschriftung des Verifizierungsbuttons",
     emoji="Emoji für den Verifizierungsbutton",
 )
@@ -2406,7 +2406,12 @@ async def verify_setup(
     save_json(CONFIG_FILE, config)
     embed = create_embed(
         title="✅ Server-Verifizierung",
-        description="Lies die Serverregeln und klicke auf den Button, um dich mit einem Klick zu verifizieren.",
+        description=(
+            "Lies die Serverregeln und klicke auf den Button. "
+            + ("Anschließend löst du ein Bild-Captcha, indem du den passenden Code aus drei Antworten auswählst."
+               if mode_value == "code"
+               else "Du wirst direkt verifiziert.")
+        ),
         color=discord.Color.green(),
     )
     await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
