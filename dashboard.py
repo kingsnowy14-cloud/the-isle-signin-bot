@@ -10,6 +10,7 @@ import html
 import os
 import secrets
 import threading
+import sys
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -398,8 +399,132 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
     return _render(guild.name + " · Control Center", body)
+
+
+@app.route("/guild/<guild_id>/tickets", methods=["GET", "POST"])
+def guild_tickets(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    panels = cfg.setdefault("ticket_panels", {})
+    result_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        panel_key = request.form.get("panel_id", "").strip()
+        panel = panels.get(panel_key)
+        if not panel:
+            abort(404, "Ticket-Panel nicht gefunden.")
+        title = request.form.get("title", "").strip()[:256]
+        description = request.form.get("description", "").strip()[:4000]
+        labels = [request.form.get(f"button{i}", "").strip()[:80] for i in range(1, 6)]
+        labels = [label for label in labels if label]
+        channel_raw = request.form.get("channel_id", "").strip()
+        category_raw = request.form.get("category_id", "").strip()
+        role_raw = request.form.get("support_role_id", "").strip()
+        try:
+            channel_id = int(channel_raw) if channel_raw else None
+            category_id = int(category_raw) if category_raw else None
+            support_role_id = int(role_raw) if role_raw else None
+        except ValueError:
+            abort(400, "Ungültige Kanal- oder Rollen-ID.")
+        channel = guild.get_channel(channel_id) if channel_id else None
+        category = guild.get_channel(category_id) if category_id else None
+        support_role = guild.get_role(support_role_id) if support_role_id else None
+        if not title:
+            abort(400, "Der Titel darf nicht leer sein.")
+        if not labels:
+            abort(400, "Mindestens ein Button-Label ist erforderlich.")
+        if not isinstance(channel, discord.TextChannel):
+            abort(400, "Bitte wähle einen gültigen Textkanal.")
+        if category_id and not isinstance(category, discord.CategoryChannel):
+            abort(400, "Bitte wähle eine gültige Ticket-Kategorie.")
+        if support_role_id and support_role is None:
+            abort(400, "Bitte wähle eine gültige Support-Rolle.")
+        panel.update({
+            "title": title,
+            "description": description,
+            "labels": labels,
+            "channel_id": channel.id,
+            "category_id": category.id if category else None,
+            "support_role_id": support_role.id if support_role else None,
+        })
+        async def save_panel_message():
+            bot_member = guild.me
+            if bot_member is None or not channel.permissions_for(bot_member).send_messages or not channel.permissions_for(bot_member).embed_links:
+                raise PermissionError("Der Bot benötigt in diesem Kanal die Rechte „Nachrichten senden“ und „Links einbetten“.")
+            view_cls = getattr(sys.modules.get("__main__"), "TicketPanelView", None)
+            if view_cls is None:
+                view_cls = getattr(sys.modules.get("bot"), "TicketPanelView", None)
+            if view_cls is None:
+                raise RuntimeError("Die vorhandene TicketPanelView-Klasse konnte nicht gefunden werden; die Panel-Konfiguration wurde noch nicht veröffentlicht.")
+            embed = discord.Embed(title=title, description=description or None, color=discord.Color.blurple())
+            embed.set_footer(text=f"IronWolf Ticket-Panel · ID {panel_key}")
+            view = view_cls(panel_key, labels)
+            old_channel_id = panel.get("channel_id")
+            old_message_id = panel.get("message_id")
+            # Existing panels with a saved message ID are edited in place when possible.
+            if old_message_id and old_channel_id == channel.id:
+                try:
+                    old_message = await channel.fetch_message(int(old_message_id))
+                    await old_message.edit(embed=embed, view=view)
+                    return f"Ticket-Panel {panel_key} wurde in #{channel.name} aktualisiert."
+                except discord.NotFound:
+                    pass
+            message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+            panel["message_id"] = message.id
+            return f"Ticket-Panel gespeichert und in #{channel.name} veröffentlicht. Nachrichten-ID: {message.id}"
+        try:
+            result = asyncio.run_coroutine_threadsafe(save_panel_message(), _bot.loop).result(timeout=25)
+            _save_json(data_path("config.json"), _config)
+            result_html = '<div class="notice">✅ ' + html.escape(result) + '</div>'
+        except Exception as exc:
+            # Keep configuration only if the panel was successfully published/edited.
+            detail = str(exc) or type(exc).__name__
+            result_html = '<div class="notice">⚠️ ' + html.escape(detail[:500]) + '</div>'
+        _save_json(data_path("config.json"), _config)
+    channels = _guild_channels(guild)
+    categories = [(item.id, item.name) for item in guild.categories]
+    roles = _guild_roles(guild)
+    def options(items, current, empty_label):
+        out = [f'<option value="">{empty_label}</option>']
+        for item_id, name in items:
+            selected = " selected" if str(item_id) == str(current or "") else ""
+            out.append(f'<option value="{item_id}"{selected}>{html.escape(name)}</option>')
+        return "".join(out)
+    body = (
+        f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
+        '<p class="muted">Bearbeite Titel, Beschreibung, Button-Texte, Zielkanal, Ticket-Kategorie und Support-Rolle. Gespeicherte Panel-Nachrichten werden nach Möglichkeit direkt bearbeitet.</p>'
+        + result_html
+    )
+    if not panels:
+        body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Erstelle zuerst ein Panel mit dem vorhandenen Ticket-Befehl in Discord; danach kannst du es hier bearbeiten.</div>'
+    for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
+        labels = list(panel.get("labels", []))[:5]
+        button_fields = ""
+        for i in range(1, 6):
+            value = labels[i-1] if len(labels) >= i else ""
+            button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
+        body += (
+            '<section class="card"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
+            '<form method="post">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '">'
+            '<label>Titel</label><input type="text" name="title" maxlength="256" required value="' + html.escape(str(panel.get("title", "Support-Ticket")), quote=True) + '">'
+            '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(panel.get("description", ""))) + '</textarea>'
+            + button_fields
+            + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
+            + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
+            + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
+            + '<button type="submit">Panel speichern und veröffentlichen</button></form></section>'
+        )
+    body += f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
+    return _render(guild.name + " · Ticket-System", body)
 
 
 @app.route("/guild/<guild_id>/commands", methods=["GET", "POST"])
