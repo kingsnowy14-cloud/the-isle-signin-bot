@@ -32,3 +32,24 @@ Verwende ausschließlich echte Discord-Benutzer-IDs, die du selbst kontrollierst
 5. Tests für unberechtigte Konten, abgelaufene Pläne, manipulierte Formulare und Webhook-Wiederholungen durchführen.
 
 API-Schlüssel und Webhook-Secrets gehören ausschließlich in Railway Variables, niemals in Git.
+
+## Aktueller Funktionsumfang der Premium-Stufe
+
+- **Ticket-System Pro (Premium):** Ticket-Panel-Konfiguration ist nur mit einem berechtigten und verknüpften Premium-Konto speicherbar. Mitglieder, die ein Ticket öffnen, benötigen selbst kein Premium.
+- **Custom Branding (Premium):** Ticket-Embeds können eine eigene sechsstellige Hex-Farbe und ein optionales HTTPS-Logo verwenden.
+- **Security Pro (Premium+):** Die Slash-Befehle des `SecurityTools`-Cogs werden nur für einen Server mit aktiver Premium+-Berechtigung freigegeben. Die bereits vorhandenen allgemeinen Schutz-Listener bleiben davon getrennt.
+- **Automation Pro (Premium+):** Über die Serververwaltung kann eine wiederkehrende Textnachricht konfiguriert werden. Das Intervall ist auf 60 Minuten bis 7 Tage begrenzt; Erwähnungen sind deaktiviert. Bei fehlgeschlagenem Versand wird mit 15 Minuten Abstand erneut versucht.
+
+## Jahresmodell bei manueller Freischaltung
+
+Da noch kein Zahlungsanbieter integriert ist, gibt es keine automatische Jahreslaufzeit, Rechnungsstellung oder Verlängerung. Für ein manuelles Jahresmodell musst du das Ablaufdatum extern dokumentieren und die Benutzer-ID nach Ablauf aus `PREMIUM_USER_IDS` bzw. `PREMIUM_PLUS_USER_IDS` entfernen. Nach Ablauf verliert das Konto beim nächsten Berechtigungscheck den Zugriff. Das Dashboard akzeptiert keine Zahlungsdaten.
+
+## Aktivierungsschritte
+
+1. Trage die Discord-Benutzer-ID in die passende Railway-Variable ein.
+2. Melde dich mit genau diesem Discord-Konto im Dashboard an.
+3. Öffne einen Server, dann **Premium verwalten**, und verknüpfe das Konto mit diesem Server.
+4. Premium erlaubt Ticket-System Pro und Custom Branding. Premium+ erlaubt zusätzlich Security Pro und Automation Pro.
+5. Für Automation Pro: Öffne **Automation Pro**, wähle den Zielkanal, Nachricht und Intervall, und aktiviere die Regel.
+
+Die Pro-Module sind an das aktuell verknüpfte Konto gebunden. Ändere `premium_owner_id` nicht direkt, wenn du nicht sicher bist, wer die Serverbindung kontrolliert. Die App bietet absichtlich keinen automatischen Besitzerwechsel an.
