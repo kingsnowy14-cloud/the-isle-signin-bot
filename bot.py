@@ -2554,12 +2554,18 @@ async def ticket_stats(interaction: discord.Interaction):
 
 
 def _normalize_youtube_source(source):
-    """Accept only HTTPS YouTube channel/RSS URLs; never fetch arbitrary URLs."""
+    """Accept YouTube channel/RSS URLs and normalize them to a safe HTTPS feed."""
+    raw_source = str(source).strip()
+    # Preserve the legacy command's support for URLs entered without a scheme.
+    if raw_source.startswith(("youtube.com/", "www.youtube.com/")):
+        raw_source = "https://" + raw_source
     try:
-        parsed = urlparse(str(source).strip())
+        parsed = urlparse(raw_source)
     except ValueError:
         return None
-    if parsed.scheme.lower() != "https" or parsed.hostname not in {"youtube.com", "www.youtube.com"}:
+    if parsed.scheme.lower() not in {"http", "https"} or parsed.hostname not in {"youtube.com", "www.youtube.com"}:
+        return None
+    if parsed.username or parsed.password:
         return None
 
     if parsed.path == "/feeds/videos.xml":
