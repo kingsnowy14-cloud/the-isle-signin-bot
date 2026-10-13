@@ -20,7 +20,7 @@ from discord import app_commands
 import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response
 from storage import data_path
-from premium import PREMIUM_FEATURES, account_plan
+from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -385,6 +385,53 @@ def premium_page():
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
     return _render("Premium · IronWolf", body)
+
+@app.route("/guild/<guild_id>/premium", methods=["GET", "POST"])
+def guild_premium(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    user_id = str(session.get("user_id", ""))
+    plan = account_plan(user_id)
+    actor = guild.get_member(int(user_id)) if user_id.isdigit() else None
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        if plan == "free":
+            abort(403, "Dieses Discord-Konto hat keine manuelle Premium-Freischaltung.")
+        current_owner = str(cfg.get("premium_owner_id") or "")
+        if current_owner and current_owner != user_id:
+            abort(409, "Dieser Server ist bereits mit einem anderen Premium-Konto verknüpft.")
+        cfg["premium_owner_id"] = user_id
+        _save_json(data_path("config.json"), _config)
+        return redirect(url_for("guild_premium", guild_id=gid))
+    owner_id = str(cfg.get("premium_owner_id") or "")
+    owner_matches = owner_id == user_id and bool(owner_id)
+    rows = []
+    for feature, label in PREMIUM_FEATURES.items():
+        entitled = feature in PLAN_FEATURES.get(plan, frozenset()) and owner_matches
+        status = "Aktiv für diesen Server" if entitled else ("Konto berechtigt, Server noch nicht verknüpft" if feature in PLAN_FEATURES.get(plan, frozenset()) and not owner_matches else "Nicht im Kontoplan enthalten")
+        rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p></div>')
+    body = (
+        '<section class="card hero"><span class="pill">SERVER PREMIUM</span><h1 style="margin-top:14px">Premium für ' + html.escape(guild.name) + '</h1>'
+        '<p>Die Freischaltung wird an dein Discord-Konto gebunden und gilt für diesen Server, solange das Konto manuell berechtigt ist.</p>'
+        '<div class="notice">Kontoplan: <strong>' + html.escape({"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}[plan]) + '</strong></div>'
+    )
+    if owner_matches:
+        body += '<p>Dieser Server ist mit deinem Konto verknüpft.</p>'
+    elif owner_id:
+        body += '<p class="notice">Dieser Server ist bereits mit einem anderen Discord-Konto verknüpft. Die Verknüpfung wird nicht automatisch überschrieben.</p>'
+    elif plan != "free":
+        body += '<form method="post">' + _csrf_field() + '<button type="submit">Mein Premium-Konto mit diesem Server verknüpfen</button></form>'
+    else:
+        body += '<p>Für eine manuelle Freischaltung muss die Discord-Benutzer-ID in Railway unter PREMIUM_USER_IDS oder PREMIUM_PLUS_USER_IDS hinterlegt sein.</p>'
+    body += '</section><div class="grid">' + "".join(rows) + '</div><p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
+    return _render(guild.name + " · Premium", body)
+
 
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
 def guild_page(guild_id):
