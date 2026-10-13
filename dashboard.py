@@ -21,7 +21,7 @@ from discord import app_commands
 import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response
 from storage import data_path
-from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature
+from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -403,34 +403,64 @@ def guild_premium(guild_id):
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
-        if plan == "free":
-            abort(403, "Dieses Discord-Konto hat keine manuelle Premium-Freischaltung.")
-        current_owner = str(cfg.get("premium_owner_id") or "")
-        if current_owner and current_owner != user_id:
-            abort(409, "Dieser Server ist bereits mit einem anderen Premium-Konto verknüpft.")
-        cfg["premium_owner_id"] = user_id
+        if plan != "free":
+            current_owner = str(cfg.get("premium_owner_id") or "")
+            if current_owner and current_owner != user_id:
+                abort(409, "Dieser Server ist bereits mit einem anderen Premium-Konto verknüpft.")
+            cfg["premium_owner_id"] = user_id
+            _save_json(data_path("config.json"), _config)
+            return redirect(url_for("guild_premium", guild_id=gid))
+        if cfg.get("premium_trial_used"):
+            abort(409, "Dieser Server hat seine einmalige 15-Tage-Premium+-Testphase bereits verwendet.")
+        trial_started = datetime.now(timezone.utc)
+        cfg["premium_trial_used"] = True
+        cfg["premium_trial_started_at"] = trial_started.isoformat()
+        cfg["premium_trial_expires_at"] = (trial_started + timedelta(days=15)).isoformat()
+        cfg["premium_trial_owner_id"] = user_id
         _save_json(data_path("config.json"), _config)
         return redirect(url_for("guild_premium", guild_id=gid))
+
     owner_id = str(cfg.get("premium_owner_id") or "")
     owner_matches = owner_id == user_id and bool(owner_id)
+    trial_active = guild_trial_active(cfg)
+    trial_used = bool(cfg.get("premium_trial_used"))
+    effective_plan = "premium_plus" if trial_active else plan
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
-        entitled = feature in PLAN_FEATURES.get(plan, frozenset()) and owner_matches
-        status = "Aktiv für diesen Server" if entitled else ("Konto berechtigt, Server noch nicht verknüpft" if feature in PLAN_FEATURES.get(plan, frozenset()) and not owner_matches else "Nicht im Kontoplan enthalten")
+        entitled = trial_active or (feature in PLAN_FEATURES.get(plan, frozenset()) and owner_matches)
+        if trial_active:
+            status = "Aktiv · 15-Tage-Testphase"
+        else:
+            status = "Aktiv für diesen Server" if entitled else ("Konto berechtigt, Server noch nicht verknüpft" if feature in PLAN_FEATURES.get(plan, frozenset()) and not owner_matches else "Nicht im Kontoplan enthalten")
         rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p></div>')
+
+    if trial_active:
+        plan_display = "Premium+ Testphase"
+        expiry_display = str(cfg.get("premium_trial_expires_at", ""))[:10]
+    else:
+        plan_display = labels[plan]
+        expiry_display = ""
+
     body = (
         '<section class="card hero"><span class="pill">SERVER PREMIUM</span><h1 style="margin-top:14px">Premium für ' + html.escape(guild.name) + '</h1>'
-        '<p>Die Freischaltung wird an dein Discord-Konto gebunden und gilt für diesen Server, solange das Konto manuell berechtigt ist.</p>'
-        '<div class="notice">Kontoplan: <strong>' + html.escape({"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}[plan]) + '</strong></div>'
+        '<p>Premium wird automatisch aktiviert, sobald dein Konto freigeschaltet ist oder du die einmalige Server-Testphase startest.</p>'
+        '<div class="notice">Aktueller Plan: <strong>' + html.escape(plan_display) + '</strong></div>'
     )
+    if trial_active:
+        body += '<p>Premium+ ist auf diesem Server bis einschließlich <strong>' + html.escape(expiry_display) + '</strong> aktiv. Danach endet die Testphase automatisch.</p>'
     if owner_matches:
-        body += '<p>Dieser Server ist mit deinem Konto verknüpft.</p>'
+        body += '<p>Dieser Server ist mit deinem Premium-Konto verknüpft. Dein Kontoplan wird automatisch angezeigt.</p>'
+    elif trial_active:
+        body += '<p>Die kostenlose Testphase ist für diesen Server aktiv. Es ist keine weitere Aktion nötig.</p>'
     elif owner_id:
         body += '<p class="notice">Dieser Server ist bereits mit einem anderen Discord-Konto verknüpft. Die Verknüpfung wird nicht automatisch überschrieben.</p>'
     elif plan != "free":
         body += '<form method="post">' + _csrf_field() + '<button type="submit">Mein Premium-Konto mit diesem Server verknüpfen</button></form>'
+    elif trial_used:
+        body += '<p>Die einmalige 15-Tage-Premium+-Testphase wurde auf diesem Server bereits genutzt und kann nicht erneut gestartet werden.</p>'
     else:
-        body += '<p>Für eine manuelle Freischaltung muss die Discord-Benutzer-ID in Railway unter PREMIUM_USER_IDS oder PREMIUM_PLUS_USER_IDS hinterlegt sein.</p>'
+        body += '<p>Teste alle Premium+-Funktionen 15 Tage kostenlos. Jeder Server kann die Testphase einmal starten.</p><form method="post">' + _csrf_field() + '<button type="submit">🎁 15 Tage Premium+ kostenlos starten</button></form>'
     body += '</section><div class="grid">' + "".join(rows) + '</div><p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Premium", body)
 
