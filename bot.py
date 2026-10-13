@@ -482,14 +482,17 @@ class TicketCreateModal(discord.ui.Modal):
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Acknowledge the modal submission immediately so Discord does not time out
+        # while the channel is being created and ticket data is being saved.
+        await interaction.response.defer(ephemeral=True, thinking=True)
         guild = interaction.guild
         if guild is None:
-            await interaction.response.send_message("Use this inside a server.", ephemeral=True)
+            await interaction.followup.send("Use this inside a server.", ephemeral=True)
             return
         cfg = guild_config(guild.id)
         panel = cfg.get("ticket_panels", {}).get(self.panel_key)
         if not panel:
-            await interaction.response.send_message("This ticket panel is no longer configured.", ephemeral=True)
+            await interaction.followup.send("This ticket panel is no longer configured.", ephemeral=True)
             return
         category_id = panel.get("category_id") or cfg.get("ticket_category")
         category = guild.get_channel(category_id) if category_id else None
@@ -515,8 +518,14 @@ class TicketCreateModal(discord.ui.Modal):
                 topic=f"Ticket owner ID: {interaction.user.id} | Ticket number: {ticket_number}"
             )
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "I don't have permission to create ticket channels. Check Manage Channels permission.",
+                ephemeral=True
+            )
+            return
+        except discord.HTTPException as exc:
+            await interaction.followup.send(
+                f"Discord could not create the ticket channel (HTTP {exc.status}). Please try again or check the bot's permissions.",
                 ephemeral=True
             )
             return
@@ -546,7 +555,7 @@ class TicketCreateModal(discord.ui.Modal):
             embed=embed,
             view=TicketControlView(),
         )
-        await interaction.response.send_message(f"Your ticket has been created: {channel.mention}", ephemeral=True)
+        await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
 
 class TicketPanelView(discord.ui.View):
