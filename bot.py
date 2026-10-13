@@ -2115,80 +2115,212 @@ async def ticket_stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="social-alert-set", description="Konfiguriere YouTube- oder Twitch-Live-Benachrichtigungen")
-@app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.choices(plattform=[app_commands.Choice(name="YouTube RSS", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
-@app_commands.describe(plattform="Plattform", kanal="Ankündigungskanal", quelle="YouTube-RSS-URL oder Twitch-Benutzername")
-async def social_alert_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], kanal: discord.TextChannel, quelle: str):
-    if plattform.value == "youtube" and not ("youtube.com/feeds/videos.xml" in quelle or "youtube.com/channel/" in quelle):
-        await interaction.response.send_message("Für YouTube bitte eine RSS-Feed-URL (youtube.com/feeds/videos.xml?channel_id=...) verwenden.", ephemeral=True); return
-    if plattform.value == "twitch" and not re.fullmatch(r"[A-Za-z0-9_]{1,25}", quelle):
-        await interaction.response.send_message("Für Twitch bitte nur den Kanalnamen angeben.", ephemeral=True); return
-    cfg = guild_config(interaction.guild_id)
-    cfg.setdefault("social_alerts", {})[plattform.value] = {"channel_id": kanal.id, "source": quelle, "enabled": True}
-    save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"{plattform.name}-Benachrichtigungen sind eingerichtet. Der Bot prüft neue Inhalte automatisch, wenn er online ist.", ephemeral=True)
+def _normalize_social_alerts(cfg):
+    """Normalize legacy platform-keyed alerts to one entry per platform/source."""
+    alerts = cfg.setdefault("social_alerts", {})
+    normalized = {}
+    for old_key, alert in list(alerts.items()):
+        if not isinstance(alert, dict):
+            continue
+        platform = str(alert.get("platform") or (old_key if old_key in ("youtube", "twitch") else str(old_key).split(":", 1)[0])).lower()
+        source = str(alert.get("source", "")).strip()
+        if platform not in ("youtube", "twitch") or not source:
+            continue
+        key = f"{platform}:{source.casefold()}"
+        alert["platform"] = platform
+        alert.setdefault("enabled", True)
+        alert.setdefault("role_id", None)
+        alert.setdefault("last_check_at", None)
+        alert.setdefault("last_success_at", None)
+        alert.setdefault("last_error", None)
+        alert.setdefault("is_live", False)
+        alert.setdefault("live_title", None)
+        alert.setdefault("live_game", None)
+        alert.setdefault("live_viewers", None)
+        alert.setdefault("live_since", None)
+        normalized[key] = alert
+    if normalized != alerts:
+        cfg["social_alerts"] = normalized
+    return cfg["social_alerts"]
 
 
-@bot.tree.command(name="social-alert-aus", description="Deaktiviert Social-Benachrichtigungen für eine Plattform")
+def _social_alert_role(guild, alert):
+    role_id = alert.get("role_id")
+    try:
+        return guild.get_role(int(role_id)) if role_id else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _social_alert_mentions(role):
+    if role is None:
+        return discord.AllowedMentions.none()
+    return discord.AllowedMentions(roles=[role], users=False, everyone=False, replied_user=False)
+
+
+@bot.tree.command(name="social-alert-set", description="Fügt einen YouTube- oder Twitch-Creator hinzu")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.choices(plattform=[
-    app_commands.Choice(name="YouTube", value="youtube"),
-    app_commands.Choice(name="Twitch", value="twitch"),
-])
-async def social_alert_disable(interaction: discord.Interaction, plattform: app_commands.Choice[str]):
-    cfg = guild_config(interaction.guild_id)
-    alerts = cfg.setdefault("social_alerts", {})
-    if plattform.value not in alerts:
-        await interaction.response.send_message(f"Für {plattform.name} ist kein Alert eingerichtet.", ephemeral=True)
+@app_commands.choices(plattform=[app_commands.Choice(name="YouTube RSS", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
+@app_commands.describe(plattform="Plattform", kanal="Ankündigungskanal", quelle="YouTube-RSS-/Channel-URL oder Twitch-Benutzername", rolle="Optional: Rolle, die bei neuen Inhalten erwähnt wird")
+async def social_alert_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], kanal: discord.TextChannel, quelle: str, rolle: discord.Role = None):
+    source = quelle.strip()
+    if plattform.value == "youtube":
+        if "youtube.com/feeds/videos.xml" not in source and "youtube.com/channel/" not in source:
+            await interaction.response.send_message("Für YouTube bitte eine RSS-Feed-URL oder eine youtube.com/channel/CHANNEL_ID-URL verwenden.", ephemeral=True)
+            return
+        if "youtube.com/channel/" in source and "feeds/videos.xml" not in source:
+            channel_id = source.split("youtube.com/channel/", 1)[1].split("/", 1)[0].split("?", 1)[0]
+            source = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    elif not re.fullmatch(r"[A-Za-z0-9_]{1,25}", source):
+        await interaction.response.send_message("Für Twitch bitte nur den Kanalnamen angeben.", ephemeral=True)
         return
-    alerts[plattform.value]["enabled"] = False
+
+    cfg = guild_config(interaction.guild_id)
+    alerts = _normalize_social_alerts(cfg)
+    key = f"{plattform.value}:{source.casefold()}"
+    previous = alerts.get(key, {})
+    alerts[key] = {
+        **previous,
+        "platform": plattform.value,
+        "channel_id": kanal.id,
+        "source": source,
+        "role_id": rolle.id if rolle else None,
+        "enabled": True,
+    }
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"⏸️ {plattform.name}-Alerts wurden deaktiviert. Die Konfiguration bleibt gespeichert.", ephemeral=True)
+    role_text = f" · Ping-Rolle: {rolle.mention}" if rolle else " · kein Rollen-Ping"
+    await interaction.response.send_message(
+        f"✅ {plattform.name}-Alert für **{source}** gespeichert in {kanal.mention}{role_text}. Mehrere Creator pro Plattform sind möglich.",
+        ephemeral=True,
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
 
 
-@bot.tree.command(name="social-alert-test", description="Sendet eine Testnachricht in den Alert-Kanal")
+@bot.tree.command(name="social-alert-aus", description="Deaktiviert alle Alerts einer Plattform")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
-async def social_alert_test(interaction: discord.Interaction, plattform: app_commands.Choice[str]):
-    alert = guild_config(interaction.guild_id).get("social_alerts", {}).get(plattform.value)
-    if not alert:
-        await interaction.response.send_message("Für diese Plattform ist kein Alert eingerichtet.", ephemeral=True)
+async def social_alert_disable(interaction: discord.Interaction, plattform: app_commands.Choice[str]):
+    cfg = guild_config(interaction.guild_id)
+    alerts = _normalize_social_alerts(cfg)
+    matching = [alert for alert in alerts.values() if alert.get("platform") == plattform.value and alert.get("enabled")]
+    if not matching:
+        await interaction.response.send_message(f"Keine aktiven {plattform.name}-Alerts gefunden.", ephemeral=True)
         return
+    for alert in matching:
+        alert["enabled"] = False
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"⏸️ {len(matching)} {plattform.name}-Alert(s) deaktiviert. Die Einstellungen bleiben gespeichert.", ephemeral=True)
+
+
+@bot.tree.command(name="social-alert-test", description="Sendet eine Testnachricht für einen Social Alert")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
+@app_commands.describe(quelle="Optional: Creator-Quelle, wenn mehrere Alerts derselben Plattform existieren")
+async def social_alert_test(interaction: discord.Interaction, plattform: app_commands.Choice[str], quelle: str = None):
+    alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
+    matches = [(key, alert) for key, alert in alerts.items() if alert.get("platform") == plattform.value and (not quelle or str(alert.get("source", "")).casefold() == quelle.strip().casefold())]
+    if not matches:
+        await interaction.response.send_message("Für diese Plattform/Quelle ist kein Alert eingerichtet.", ephemeral=True)
+        return
+    _, alert = matches[0]
     channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
     if not isinstance(channel, discord.TextChannel):
         await interaction.response.send_message("Der konfigurierte Kanal wurde nicht gefunden.", ephemeral=True)
         return
-    embed = create_embed(title=f"🧪 Social-Alert-Test · {plattform.name}", description=f"Testnachricht für Quelle: {str(alert.get('source', 'unbekannt'))[:180]}\nStatus: {'aktiv' if alert.get('enabled') else 'pausiert'}", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+    role = _social_alert_role(interaction.guild, alert)
+    embed = create_embed(
+        title=f"🧪 Social-Alert-Test · {plattform.name}",
+        description=f"**Quelle:** {str(alert.get('source', 'unbekannt'))[:180]}\n**Status:** {'aktiv' if alert.get('enabled') else 'pausiert'}\n**Ping-Rolle:** {role.mention if role else 'Keine'}",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
     try:
-        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        await channel.send(content=role.mention if role else None, embed=embed, allowed_mentions=_social_alert_mentions(role))
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await interaction.response.send_message(f"Test konnte nicht gesendet werden ({type(exc).__name__}). Prüfe die Kanalrechte.", ephemeral=True)
+        await interaction.response.send_message(f"Test konnte nicht gesendet werden ({type(exc).__name__}). Prüfe Kanal- und Rollenrechte.", ephemeral=True)
         return
-    await interaction.response.send_message(f"Testnachricht in {channel.mention} gesendet. Externe API-Verbindung wird damit nicht getestet.", ephemeral=True)
+    await interaction.response.send_message(f"Testnachricht für **{alert.get('source')}** in {channel.mention} gesendet. Die externe API wird dabei nicht geprüft.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
-@bot.tree.command(name="social-alert-status", description="Zeigt konfigurierte Social Alerts")
+@bot.tree.command(name="social-alert-status", description="Zeigt Creator, Kanal und Alert-Status")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def social_alert_status(interaction: discord.Interaction):
-    alerts = guild_config(interaction.guild_id).get("social_alerts", {})
-    embed = create_embed(title="📡 Social-Alerts · Status", color=discord.Color.blurple())
+    alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
+    embed = create_embed(title="📡 Social-Alerts · Übersicht", color=discord.Color.blurple())
     if not alerts:
-        embed.description = "Noch keine Alerts eingerichtet. Nutze /social-alert-set."
+        embed.description = "Noch keine Alerts eingerichtet. Nutze /social-alert-set für jeden Creator."
     else:
-        for platform, alert in sorted(alerts.items()):
+        for key, alert in list(sorted(alerts.items()))[:25]:
             channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
+            role = _social_alert_role(interaction.guild, alert)
             state = "🟢 Aktiv" if alert.get("enabled") else "⏸️ Pausiert"
-            source = str(alert.get("source", "unbekannt"))
+            last_check = alert.get("last_check_at") or "Noch nie"
+            last_error = str(alert.get("last_error") or "Keiner")[:160]
             embed.add_field(
-                name=f"{platform.capitalize()} · {state}",
-                value=f"**Quelle:** {source[:150]}\n**Kanal:** {channel.mention if channel else 'Kanal nicht gefunden'}",
+                name=f"{str(alert.get('platform', key)).capitalize()} · {str(alert.get('source', 'Quelle'))[:80]} · {state}",
+                value=f"**Kanal:** {channel.mention if channel else 'Nicht gefunden'}\n**Ping:** {role.mention if role else 'Aus'}\n**Letzter Check:** {last_check}\n**Fehler:** {last_error}",
                 inline=False,
             )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+        if len(alerts) > 25:
+            embed.set_footer(text=f"Zeige 25 von {len(alerts)} Alerts. Diagnose enthält weitere Details.")
+    await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+
+@bot.tree.command(name="social-alert-diagnose", description="Prüft Alert-Checks, Fehler und Twitch-Zugangsdaten")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def social_alert_diagnose(interaction: discord.Interaction):
+    alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
+    client_ok = bool(os.getenv("TWITCH_CLIENT_ID"))
+    token_ok = bool(os.getenv("TWITCH_ACCESS_TOKEN"))
+    embed = create_embed(title="🩺 Social-Alert-Diagnose", color=discord.Color.blurple())
+    embed.add_field(name="Twitch Client ID", value="✅ Vorhanden" if client_ok else "❌ TWITCH_CLIENT_ID fehlt", inline=True)
+    embed.add_field(name="Twitch Access Token", value="✅ Vorhanden" if token_ok else "❌ TWITCH_ACCESS_TOKEN fehlt", inline=True)
+    if not alerts:
+        embed.description = "Keine Creator konfiguriert."
+    for key, alert in list(sorted(alerts.items()))[:20]:
+        last_check = alert.get("last_check_at") or "Noch kein Check"
+        last_success = alert.get("last_success_at") or "Noch kein erfolgreicher Check"
+        error = str(alert.get("last_error") or "Keiner")[:180]
+        if alert.get("platform") == "twitch" and not (client_ok and token_ok):
+            error = "Twitch-Zugangsdaten fehlen (siehe oben)."
+        embed.add_field(
+            name=f"{str(alert.get('platform', key)).capitalize()} · {str(alert.get('source', 'Quelle'))[:70]}",
+            value=f"**Aktiv:** {'Ja' if alert.get('enabled') else 'Nein'}\n**Letzter Check:** {last_check}\n**Letzter Erfolg:** {last_success}\n**Letzter Fehler:** {error}",
+            inline=False,
+        )
+    if len(alerts) > 20:
+        embed.set_footer(text=f"Zeige 20 von {len(alerts)} Alerts.")
+    await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+
+@bot.tree.command(name="social-live", description="Zeigt erkannte Live-Twitch-Creator dieses Servers")
+@app_commands.guild_only()
+async def social_live(interaction: discord.Interaction):
+    alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
+    live = [a for a in alerts.values() if a.get("platform") == "twitch" and a.get("enabled") and a.get("is_live")]
+    embed = create_embed(title="🔴 Twitch · Live-Übersicht", color=discord.Color.purple())
+    if not live:
+        embed.description = "Aktuell wird kein konfigurierter Twitch-Creator als live erkannt. Die Übersicht aktualisiert sich, sobald der nächste Check läuft."
+    else:
+        for alert in live[:25]:
+            name = str(alert.get("source", "Twitch"))
+            title = str(alert.get("live_title") or "Livestream läuft")[:180]
+            value = f"**{title}**\n[▶ Stream öffnen](https://twitch.tv/{name})"
+            if alert.get("live_game"):
+                value += f"\n**Kategorie:** {str(alert['live_game'])[:100]}"
+            if alert.get("live_viewers") is not None:
+                value += f"\n**Zuschauer:** {alert['live_viewers']}"
+            if alert.get("live_since"):
+                value += f"\n**Seit:** {alert['live_since']}"
+            embed.add_field(name=f"🔴 {name}", value=value, inline=False)
+        if len(live) > 25:
+            embed.set_footer(text=f"Zeige 25 von {len(live)} Live-Creatorn.")
+    await interaction.response.send_message(embed=embed, ephemeral=False, allowed_mentions=discord.AllowedMentions.none())
 
 
 async def social_alert_loop():
@@ -2199,26 +2331,36 @@ async def social_alert_loop():
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
                 for guild in list(bot.guilds):
                     cfg = guild_config(guild.id)
-                    for platform, alert in cfg.get("social_alerts", {}).items():
+                    alerts = _normalize_social_alerts(cfg)
+                    for alert_key, alert in list(alerts.items()):
                         if not alert.get("enabled"):
                             continue
+                        platform = alert.get("platform")
+                        source = str(alert.get("source", ""))
                         channel = guild.get_channel(int(alert.get("channel_id", 0)))
                         if not isinstance(channel, discord.TextChannel):
+                            alert["last_check_at"] = datetime.now(timezone.utc).isoformat()
+                            alert["last_error"] = "Ankündigungskanal nicht gefunden oder kein Textkanal."
+                            save_json(CONFIG_FILE, config)
                             continue
-                        key = f"{guild.id}:{platform}:{alert.get('source')}"
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        alert["last_check_at"] = now_iso
+                        key = f"{guild.id}:{platform}:{source}"
                         try:
+                            role = _social_alert_role(guild, alert)
                             if platform == "youtube":
-                                url = alert.get("source", "")
+                                url = source
                                 if "youtube.com/channel/" in url and "feeds/videos.xml" not in url:
                                     channel_id = url.split("youtube.com/channel/", 1)[1].split("/", 1)[0].split("?", 1)[0]
                                     url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
                                 async with session.get(url) as resp:
-                                    if resp.status != 200: continue
+                                    if resp.status != 200:
+                                        alert["last_error"] = f"YouTube RSS antwortete mit HTTP {resp.status}."
+                                        save_json(CONFIG_FILE, config)
+                                        continue
                                     root = ET.fromstring(await resp.text())
                                 ns = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
                                 entries = root.findall("atom:entry", ns)
-                                if not entries:
-                                    continue
                                 parsed_entries = []
                                 for entry in entries:
                                     video_id = entry.findtext("yt:videoId", default="", namespaces=ns)
@@ -2229,17 +2371,15 @@ async def social_alert_loop():
                                     link = link_el.attrib.get("href", "") if link_el is not None else f"https://www.youtube.com/watch?v={video_id}"
                                     published = entry.findtext("atom:published", default="", namespaces=ns)
                                     parsed_entries.append({"id": video_id, "title": title, "url": link, "published": published})
-                                if not parsed_entries:
-                                    continue
+                                alert["last_success_at"] = now_iso
+                                alert["last_error"] = None
                                 seen = data.setdefault("social_alert_seen", {}).get(key)
-                                # Backwards-compatible with the previous single-ID state.
                                 seen_ids = seen if isinstance(seen, list) else ([seen] if isinstance(seen, str) and seen else [])
                                 current_ids = [item["id"] for item in parsed_entries]
-                                if not seen_ids:
-                                    # Seed existing feed entries on first run instead of announcing old uploads.
+                                if current_ids and not seen_ids:
+                                    # First check seeds the feed to avoid announcing older uploads.
                                     data["social_alert_seen"][key] = current_ids[:10]
-                                    save_json(DATA_FILE, data)
-                                else:
+                                elif current_ids:
                                     new_entries = []
                                     for item in parsed_entries:
                                         if item["id"] in seen_ids:
@@ -2256,29 +2396,46 @@ async def social_alert_loop():
                                             embed.set_thumbnail(url=f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
                                         if item["published"]:
                                             try:
-                                                published_dt = datetime.fromisoformat(item["published"].replace("Z", "+00:00"))
-                                                embed.timestamp = published_dt
+                                                embed.timestamp = datetime.fromisoformat(item["published"].replace("Z", "+00:00"))
                                             except ValueError:
                                                 pass
-                                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                                        await channel.send(content=role.mention if role else None, embed=embed, allowed_mentions=_social_alert_mentions(role))
                                     data["social_alert_seen"][key] = (current_ids + seen_ids)[:10]
-                                    save_json(DATA_FILE, data)
+                                save_json(DATA_FILE, data)
                             elif platform == "twitch":
-                                client_id = os.getenv("TWITCH_CLIENT_ID"); token = os.getenv("TWITCH_ACCESS_TOKEN")
-                                if not client_id or not token: continue
-                                name = alert.get("source", "")
+                                client_id = os.getenv("TWITCH_CLIENT_ID")
+                                token = os.getenv("TWITCH_ACCESS_TOKEN")
+                                if not client_id or not token:
+                                    missing = []
+                                    if not client_id:
+                                        missing.append("TWITCH_CLIENT_ID")
+                                    if not token:
+                                        missing.append("TWITCH_ACCESS_TOKEN")
+                                    alert["last_error"] = "Fehlende Umgebungsvariablen: " + ", ".join(missing)
+                                    save_json(CONFIG_FILE, config)
+                                    continue
                                 headers = {"Client-ID": client_id, "Authorization": f"Bearer {token}"}
-                                async with session.get("https://api.twitch.tv/helix/streams", params={"user_login": name}, headers=headers) as resp:
-                                    if resp.status != 200: continue
+                                async with session.get("https://api.twitch.tv/helix/streams", params={"user_login": source}, headers=headers) as resp:
+                                    if resp.status != 200:
+                                        alert["last_error"] = f"Twitch API antwortete mit HTTP {resp.status}."
+                                        save_json(CONFIG_FILE, config)
+                                        continue
                                     body = await resp.json()
                                 stream = body.get("data", [])
-                                live_id = stream[0].get("id") if stream else None
+                                current = stream[0] if stream else None
+                                live_id = current.get("id") if current else None
+                                alert["last_success_at"] = now_iso
+                                alert["last_error"] = None
+                                alert["is_live"] = bool(current)
+                                alert["live_title"] = current.get("title") if current else None
+                                alert["live_game"] = current.get("game_name") if current else None
+                                alert["live_viewers"] = current.get("viewer_count") if current else None
+                                alert["live_since"] = current.get("started_at") if current else None
                                 seen = data.setdefault("social_alert_seen", {}).get(key)
                                 if live_id and live_id != seen:
-                                    current = stream[0]
                                     embed = create_embed(
-                                        title=f"🔴 {current.get('user_name', name)} ist jetzt live!",
-                                        description=f"**{current.get('title') or 'Livestream gestartet'}**\n[Zum Stream](https://twitch.tv/{name})",
+                                        title=f"🔴 {current.get('user_name', source)} ist jetzt live!",
+                                        description=f"**{current.get('title') or 'Livestream gestartet'}**\n[▶ Zum Stream](https://twitch.tv/{source})",
                                         color=discord.Color.purple(),
                                     )
                                     game_name = current.get("game_name")
@@ -2287,17 +2444,29 @@ async def social_alert_loop():
                                     viewers = current.get("viewer_count")
                                     if viewers is not None:
                                         embed.add_field(name="👀 Zuschauer", value=str(viewers), inline=True)
-                                    started_at = current.get("started_at")
-                                    if started_at:
+                                    thumbnail = current.get("thumbnail_url")
+                                    if thumbnail:
+                                        embed.set_image(url=thumbnail.replace("{width}", "640").replace("{height}", "360"))
+                                    if current.get("started_at"):
                                         try:
-                                            embed.timestamp = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                                            embed.timestamp = datetime.fromisoformat(current["started_at"].replace("Z", "+00:00"))
                                         except ValueError:
                                             pass
-                                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                                    await channel.send(content=role.mention if role else None, embed=embed, allowed_mentions=_social_alert_mentions(role))
                                 data["social_alert_seen"][key] = live_id
                                 save_json(DATA_FILE, data)
-                        except (aiohttp.ClientError, asyncio.TimeoutError, ET.ParseError, ValueError) as exc:
-                            print(f"[SOCIAL ALERT] {platform} check failed: {type(exc).__name__}")
+                            else:
+                                alert["last_error"] = f"Unbekannte Plattform: {platform}"
+                                save_json(CONFIG_FILE, config)
+                        except (aiohttp.ClientError, asyncio.TimeoutError, ET.ParseError, ValueError, discord.HTTPException) as exc:
+                            alert["last_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+                            save_json(CONFIG_FILE, config)
+                            print(f"[SOCIAL ALERT] {platform}:{source} check failed: {type(exc).__name__}")
+                        except Exception as exc:
+                            alert["last_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+                            save_json(CONFIG_FILE, config)
+                            print(f"[SOCIAL ALERT] {platform}:{source} unexpected failure: {type(exc).__name__}")
+                    save_json(CONFIG_FILE, config)
         except Exception as exc:
             print(f"[SOCIAL ALERT] Loop error: {type(exc).__name__}: {exc}")
         await asyncio.sleep(120)
