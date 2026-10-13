@@ -2247,9 +2247,12 @@ async def social_alert_loop():
                                         new_entries.append(item)
                                     for item in reversed(new_entries):
                                         embed = create_embed(
-                                            title=f"📺 Neues YouTube-Video",
-                                            description=f"**{item['title'][:250]}**\n[Video ansehen]({item['url']})",
+                                            title="📺 Neues YouTube-Video",
+                                            description=f"**{item['title'][:250]}**\n[▶ Video ansehen]({item['url']})",
                                             color=discord.Color.red(),
+                                        video_id = item.get("id")
+                                        if video_id:
+                                            embed.set_thumbnail(url=f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
                                         )
                                         if item["published"]:
                                             try:
