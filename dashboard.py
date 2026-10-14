@@ -746,6 +746,8 @@ def guild_tickets(guild_id):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         panel_key = request.form.get("panel_id", "").strip()
         submitted_labels = [request.form.get(f"button{i}", "").strip() for i in range(1, 6)]
+        if not any(submitted_labels):
+            abort(400, "Mindestens ein Button-Label ist erforderlich.")
         if not guild_has_feature(cfg, "ticket") and sum(bool(label) for label in submitted_labels) > 1:
             abort(403, "Mehrere Ticket-Buttons sind Premium. Im Free-Plan ist ein Button pro Panel verfügbar.")
         if panel_key == "__new__" and not guild_has_feature(cfg, "ticket") and panels:
