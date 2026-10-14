@@ -460,7 +460,7 @@ async def premium_automation_worker():
             for user_id, grant in expired_grants():
                 try:
                     user = await bot.fetch_user(int(user_id))
-                    plan_label = "Premium+" if grant.get("plan") == "premium_plus" else "Premium"
+                    plan_label = "Premium"
                     await user.send(f"Dein {plan_label}-Zugang bei IronWolf ist abgelaufen. Deine Premium-Funktionen wurden deaktiviert. Wenn du Premium erneut möchtest, wende dich bitte an das IronWolf-Team.")
                     mark_expiry_dm_sent(user_id)
                     print(f"[PREMIUM] Expiry DM sent to user {user_id}.", flush=True)
