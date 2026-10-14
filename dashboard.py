@@ -429,8 +429,8 @@ def premium_page():
         return login
     user_id = str(session.get("user_id", ""))
     plan = account_plan(user_id)
-    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
-    included_features = {"premium": {"ticket", "branding"}, "premium_plus": set(PREMIUM_FEATURES)}.get(plan, set())
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
+    included_features = set(PREMIUM_FEATURES) if plan in {"premium", "premium_plus"} else set()
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         status = "Enthalten" if feature in included_features else "Nicht enthalten"
@@ -471,7 +471,7 @@ def guild_premium(guild_id):
             _save_json(data_path("config.json"), _config)
             return redirect(url_for("guild_premium", guild_id=gid))
         if cfg.get("premium_trial_used"):
-            abort(409, "Dieser Server hat seine einmalige 15-Tage-Premium+-Testphase bereits verwendet.")
+            abort(409, "Dieser Server hat seine einmalige 15-Tage-Premium-Testphase bereits verwendet.")
         trial_started = datetime.now(timezone.utc)
         cfg["premium_trial_used"] = True
         cfg["premium_trial_started_at"] = trial_started.isoformat()
@@ -505,12 +505,13 @@ def guild_premium(guild_id):
             "branding": ("/guild/" + gid + "/tickets", "Ticket-Branding einstellen"),
             "security": ("/guild/" + gid + "/commands", "Security-Befehle verwalten"),
             "automation": ("/guild/" + gid + "/automation", "Automation einstellen"),
+            "invite_tracker": ("/guild/" + gid + "?section=general", "Invite Tracker einstellen"),
         }
         link_url, link_label = feature_links.get(feature, ("/guild/" + gid, "Serververwaltung öffnen"))
         rows.append('<div class="card"><h2>' + html.escape(label) + '</h2><p>' + html.escape(status) + '</p><p><a class="button" href="' + html.escape(link_url) + '">' + html.escape(link_label) + ' →</a></p></div>')
 
     if trial_active:
-        plan_display = "Premium+ Testphase"
+        plan_display = "Premium-Testphase"
         expiry_display = str(cfg.get("premium_trial_expires_at", ""))[:10]
     else:
         plan_display = labels[plan]
@@ -522,7 +523,7 @@ def guild_premium(guild_id):
         '<div class="notice">Aktueller Plan: <strong>' + html.escape(plan_display) + '</strong></div>'
     )
     if trial_active:
-        body += '<p>Premium+ ist auf diesem Server bis einschließlich <strong>' + html.escape(expiry_display) + '</strong> aktiv. Danach endet die Testphase automatisch.</p>'
+        body += '<p>Premium ist auf diesem Server bis einschließlich <strong>' + html.escape(expiry_display) + '</strong> aktiv. Danach endet die Testphase automatisch.</p>'
     if owner_matches:
         body += '<p>Dieser Server ist mit deinem Premium-Konto verknüpft. Dein Kontoplan wird automatisch angezeigt.</p>'
     elif trial_active:
@@ -532,9 +533,9 @@ def guild_premium(guild_id):
     elif plan != "free":
         body += '<form method="post">' + _csrf_field() + '<button type="submit">Mein Premium-Konto mit diesem Server verknüpfen</button></form>'
     elif trial_used:
-        body += '<p>Die einmalige 15-Tage-Premium+-Testphase wurde auf diesem Server bereits genutzt und kann nicht erneut gestartet werden.</p>'
+        body += '<p>Die einmalige 15-Tage-Premium-Testphase wurde auf diesem Server bereits genutzt und kann nicht erneut gestartet werden.</p>'
     else:
-        body += '<p>Teste alle Premium+-Funktionen 15 Tage kostenlos. Jeder Server kann die Testphase einmal starten.</p><form method="post">' + _csrf_field() + '<button type="submit">🎁 15 Tage Premium+ kostenlos starten</button></form>'
+        body += '<p>Teste alle Premium-Funktionen 15 Tage kostenlos. Jeder Server kann die Testphase einmal starten.</p><form method="post">' + _csrf_field() + '<button type="submit">🎁 15 Tage Premium kostenlos starten</button></form>'
     body += '</section><div class="grid">' + "".join(rows) + '</div><p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Premium", body)
 
@@ -555,7 +556,7 @@ def guild_automation(guild_id):
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         if not guild_has_feature(cfg, "automation"):
-            abort(403, "Automation Pro ist nur mit einem verknüpften Premium+-Konto verfügbar.")
+            abort(403, "Automation Pro ist nur mit einem verknüpften Premium-Konto verfügbar.")
         action = request.form.get("automation_action", "save")
         templates = cfg.setdefault("automation_templates", [])
         if not isinstance(templates, list):
@@ -602,7 +603,7 @@ def guild_automation(guild_id):
         _save_json(data_path("config.json"), _config)
         return redirect(url_for("guild_automation", guild_id=gid))
     if not guild_has_feature(cfg, "automation"):
-        body = '<section class="card"><h1>⚙️ Automation Pro</h1><p>Geplante Nachrichten sind eine Premium+-Funktion. Verknüpfe zuerst dein berechtigtes Konto auf der Premium-Seite.</p><a class="button" href="/guild/' + gid + '/premium">Premium verwalten →</a></section>'
+        body = '<section class="card"><h1>⚙️ Automation Pro</h1><p>Geplante Nachrichten sind eine Premium-Funktion. Verknüpfe zuerst dein berechtigtes Konto auf der Premium-Seite.</p><a class="button" href="/guild/' + gid + '/premium">Premium verwalten →</a></section>'
     else:
         channel_options = '<option value="">— Textkanal auswählen —</option>'
         for channel in guild.text_channels:
@@ -676,7 +677,7 @@ def guild_page(guild_id):
                         cfg[key] = request.form.get(key) == "on"
                     requested_invite_tracker = request.form.get("invite_tracker_enabled") == "on"
                     if requested_invite_tracker and not guild_has_feature(cfg, "invite_tracker"):
-                        abort(403, "Der Invite-Tracker benötigt ein aktives Premium+-Modul.")
+                        abort(403, "Der Invite-Tracker benötigt ein aktives Premium-Modul.")
                     cfg["invite_tracker_enabled"] = requested_invite_tracker
                 channel_ids = {str(item.id) for item in guild.text_channels}
                 category_ids = {str(item.id) for item in guild.categories}
