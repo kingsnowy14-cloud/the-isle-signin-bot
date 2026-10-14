@@ -257,6 +257,8 @@ data.setdefault("suggestions", {})
 data.setdefault("events", {})
 data.setdefault("social_alert_seen", {})
 data.setdefault("polls", {})
+# Invite-use snapshots are kept in memory and refreshed after each join.
+_invite_cache = {}
 # Active voice sessions are kept in memory so bot downtime is not counted.
 _active_voice_sessions = {}
 
@@ -298,6 +300,8 @@ DEFAULT_GUILD_CONFIG = {
     "welcome_channel": None,
     "welcome_message": "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.",
     "welcome_bots_enabled": False,
+    "invite_tracker_enabled": False,
+    "invite_log_channel": None,
     "social_links": {},
     "automod_enabled": False,
     "verify_channel": None,
@@ -3706,6 +3710,37 @@ async def on_guild_remove(guild: discord.Guild):
 @bot.event
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
+    # Attribute this join to an invite by comparing its use count with the last snapshot.
+    if cfg.get("invite_tracker_enabled") and cfg.get("invite_log_channel"):
+        guild_id = member.guild.id
+        previous = _invite_cache.get(guild_id, {})
+        try:
+            current_invites = await member.guild.invites()
+            used_invite = next(
+                (invite for invite in current_invites
+                 if invite.code in previous and invite.uses is not None
+                 and invite.uses > previous[invite.code]),
+                None,
+            )
+            _invite_cache[guild_id] = {
+                invite.code: (invite.uses or 0) for invite in current_invites
+            }
+            log_channel = member.guild.get_channel(int(cfg["invite_log_channel"]))
+            if isinstance(log_channel, discord.TextChannel):
+                if used_invite:
+                    inviter = used_invite.inviter.mention if used_invite.inviter else "Unbekannt"
+                    await log_channel.send(
+                        f"📨 {member.mention} ist dem Server beigetreten.\n"
+                        f"**Eingeladen von:** {inviter}\n"
+                        f"**Einladung:** `{used_invite.code}` · **Nutzungen:** {used_invite.uses}"
+                    )
+                else:
+                    await log_channel.send(
+                        f"📨 {member.mention} ist beigetreten, aber die verwendete Einladung "
+                        "konnte nicht eindeutig erkannt werden (z. B. Vanity-URL oder einmaliger Invite)."
+                    )
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[INVITE TRACKER] Could not read invites for guild {guild_id}: {type(exc).__name__}: {exc}")
     unverified_id = cfg.get("unverified_role")
     unverified_role = member.guild.get_role(int(unverified_id)) if unverified_id else None
     if unverified_role and not member.bot:
@@ -5227,6 +5262,13 @@ async def on_ready():
     # when Discord reconnects the bot.
     now = datetime.now(timezone.utc)
     for guild in bot.guilds:
+        try:
+            invites = await guild.invites()
+            _invite_cache[guild.id] = {
+                invite.code: (invite.uses or 0) for invite in invites
+            }
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[INVITE TRACKER] Could not initialize invite cache for guild {guild.id}: {type(exc).__name__}: {exc}")
         for member in guild.members:
             if not member.bot and member.voice and member.voice.channel:
                 _active_voice_sessions.setdefault((guild.id, member.id), now)
