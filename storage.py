@@ -19,13 +19,26 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 if IS_RAILWAY:
     if not os.getenv("DATA_DIR"):
         print(f"[STORAGE] WARNING: DATA_DIR is not set; using {DATA_DIR}.", flush=True)
-    if not DATA_DIR.is_mount():
+    railway_mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    mount_matches = False
+    if railway_mount:
+        try:
+            mount_matches = Path(railway_mount).expanduser().resolve() == DATA_DIR
+        except OSError:
+            mount_matches = False
+    if not mount_matches and not (not railway_mount and DATA_DIR.is_mount()):
+        detail = (
+            f" Railway reports mount path {railway_mount!r}, which does not match DATA_DIR."
+            if railway_mount else
+            " Railway did not provide RAILWAY_VOLUME_MOUNT_PATH and the path is not detected as a mount."
+        )
         print(
-            f"[STORAGE] WARNING: {DATA_DIR} is not detected as a mounted volume. "
-            "A DATA_DIR variable alone is not persistent storage. Attach a Railway Volume "
-            "and set its Mount Path to the same value as DATA_DIR.",
+            f"[STORAGE] WARNING: {DATA_DIR} is not confirmed as the Railway Volume mount.{detail} "
+            "Attach a Railway Volume to this service and set its Mount Path equal to DATA_DIR.",
             flush=True,
         )
+    elif mount_matches:
+        print(f"[STORAGE] Persistent volume path confirmed: {DATA_DIR}.", flush=True)
 
 try:
     probe = DATA_DIR / f".ironwolf-storage-check-{os.getpid()}"
