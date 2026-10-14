@@ -762,11 +762,16 @@ def guild_page(guild_id):
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "automod_enabled", "invite_tracker_enabled"):
+            for key in ("welcome_bots_enabled", "automod_enabled"):
                 label = BOOL_SETTINGS[key]
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
-            settings_html += '<label for="invite_log_channel">Invite-Tracker: Logkanal auswählen</label><small>Hier werden erkannte Einladungen und Einladungsnutzungen protokolliert.</small><select id="invite_log_channel" name="invite_log_channel">' + options(channels, cfg.get("invite_log_channel")) + '</select>'
+            if guild_has_feature(cfg, "invite_tracker"):
+                checked = " checked" if cfg.get("invite_tracker_enabled", False) else ""
+                settings_html += f'<div class="check"><input type="checkbox" id="invite_tracker_enabled" name="invite_tracker_enabled"{checked}><label for="invite_tracker_enabled">{html.escape(BOOL_SETTINGS["invite_tracker_enabled"])}</label></div>'
+                settings_html += '<label for="invite_log_channel">Invite-Tracker: Logkanal auswählen</label><small>Hier werden erkannte Einladungen und Einladungsnutzungen protokolliert.</small><select id="invite_log_channel" name="invite_log_channel">' + options(channels, cfg.get("invite_log_channel")) + '</select>'
+            else:
+                settings_html += '<div class="check"><input type="checkbox" id="invite_tracker_locked" disabled><label for="invite_tracker_locked">🔒 Invite-Tracker aktivieren (Premium erforderlich)</label></div><p class="muted">Der Invite-Tracker bleibt gesperrt, bis dieser Server aktives Premium hat. <a href="/guild/' + gid + '/premium">Premium verwalten →</a></p>'
         if section == "channels":
             for key, label in CHANNEL_SETTINGS.items():
                 if key == "ticket_category":
