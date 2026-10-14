@@ -456,14 +456,26 @@ def guild_premium(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     user_id = str(session.get("user_id", ""))
-    plan = account_plan(user_id)
+    account_level = account_plan(user_id)
+    server_override = cfg.get("premium_server_override")
+    plan = server_override if server_override in PLAN_FEATURES and server_override != "free" else account_level
     actor = guild.get_member(int(user_id)) if user_id.isdigit() else None
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
-        if plan != "free":
+        action = request.form.get("action", "link")
+        if action == "start_trial":
+            if cfg.get("premium_trial_used"):
+                abort(403, "Die kostenlose 15-Tage-Testphase wurde auf diesem Server bereits verwendet.")
+            now = datetime.now(timezone.utc)
+            cfg["premium_trial_used"] = True
+            cfg["premium_trial_started_at"] = now.isoformat()
+            cfg["premium_trial_expires_at"] = (now + timedelta(days=15)).isoformat()
+            _save_json(data_path("config.json"), _config)
+            return redirect(url_for("guild_premium", guild_id=gid))
+        if account_level != "free":
             current_owner = str(cfg.get("premium_owner_id") or "")
             if current_owner and current_owner != user_id:
                 abort(409, "Dieser Server ist bereits mit einem anderen Premium-Konto verknüpft.")
@@ -475,12 +487,12 @@ def guild_premium(guild_id):
     # Automatically attach a manually granted account plan when its owner opens Premium
     # management, unless the server is already linked to another account.
     owner_id = str(cfg.get("premium_owner_id") or "")
-    if plan != "free" and not owner_id:
+    if account_level != "free" and not owner_id:
         cfg["premium_owner_id"] = user_id
         _save_json(data_path("config.json"), _config)
         owner_id = user_id
     owner_matches = owner_id == user_id and bool(owner_id)
-    trial_active = False
+    trial_active = guild_trial_active(cfg)
     trial_used = bool(cfg.get("premium_trial_used"))
     labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
     rows = []
@@ -511,7 +523,7 @@ def guild_premium(guild_id):
 
     body = (
         '<section class="card hero"><span class="pill">SERVER PREMIUM</span><h1 style="margin-top:14px">Premium für ' + html.escape(guild.name) + '</h1>'
-        '<p>Premium wird automatisch aktiviert, sobald dein Konto freigeschaltet ist oder du die einmalige Server-Testphase startest.</p>'
+        '<p>Premium wird aktiviert, wenn dein Konto Premium hat, dein Server manuell freigeschaltet wurde oder du die kostenlose 15-Tage-Testphase hier startest.</p>'
         '<div class="notice">Aktueller Plan: <strong>' + html.escape(plan_display) + '</strong></div>'
     )
     if trial_active:
@@ -522,10 +534,15 @@ def guild_premium(guild_id):
         body += '<p>Die kostenlose Testphase ist für diesen Server aktiv. Es ist keine weitere Aktion nötig.</p>'
     elif owner_id:
         body += '<p class="notice">Dieser Server ist bereits mit einem anderen Discord-Konto verknüpft. Die Verknüpfung wird nicht automatisch überschrieben.</p>'
+    elif plan != "free" and account_level == "free":
+        body += '<p>Dieser Server wurde manuell für Premium freigeschaltet. Alle Premium-Module sind verfügbar.</p>'
     elif plan != "free":
         body += '<form method="post">' + _csrf_field() + '<button type="submit">Mein Premium-Konto mit diesem Server verknüpfen</button></form>'
+    elif not trial_used:
+        body += '<p>Alle Premium-Module sind gesperrt, bis du Premium verknüpfst oder die kostenlose Testphase startest. Die 15 Tage beginnen erst nach deinem Klick.</p>'
+        body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="start_trial"><button type="submit" onclick="return confirm(\\'Die kostenlose 15-Tage-Premium-Testphase jetzt starten?\\')">🎁 15 Tage Premium kostenlos starten</button></form>'
     else:
-        body += '<p>Für diesen Server ist kein Premium-Zugang aktiv. Premium muss für dein Discord-Konto freigeschaltet und mit diesem Server verknüpft sein.</p>'
+        body += '<p>Die kostenlose 15-Tage-Testphase wurde bereits verwendet und ist abgelaufen. Alle Premium-Module sind gesperrt. Wende dich an den Support für Premium.</p>'
     body += '</section><div class="grid">' + "".join(rows) + '</div><p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Premium", body)
 
