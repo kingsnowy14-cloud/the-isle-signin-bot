@@ -554,6 +554,28 @@ def guild_automation(guild_id):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         if not guild_has_feature(cfg, "automation"):
             abort(403, "Automation Pro ist nur mit einem verknüpften Premium+-Konto verfügbar.")
+        action = request.form.get("automation_action", "save")
+        templates = cfg.setdefault("automation_templates", [])
+        if not isinstance(templates, list):
+            templates = []
+            cfg["automation_templates"] = templates
+        if action in {"delete_template", "duplicate_template", "use_template"}:
+            template_id = request.form.get("template_id", "")
+            template = next((item for item in templates if isinstance(item, dict) and str(item.get("id")) == template_id), None)
+            if template is None:
+                abort(404, "Vorlage nicht gefunden.")
+            if action == "delete_template":
+                templates.remove(template)
+            elif action == "duplicate_template":
+                clone = dict(template)
+                clone["id"] = secrets.token_hex(4)
+                clone["title"] = (str(clone.get("title", "Vorlage")) + " (Kopie)")[:80]
+                templates.append(clone)
+                templates[:] = templates[-25:]
+            else:
+                job.update({"enabled": False, "channel_id": template.get("channel_id"), "message": template.get("message", ""), "interval_minutes": int(template.get("interval_minutes", 1440) or 1440), "next_run_at": None})
+            _save_json(data_path("config.json"), _config)
+            return redirect(url_for("guild_automation", guild_id=gid))
         channel_raw = request.form.get("channel_id", "").strip()
         message = request.form.get("message", "").strip()
         enabled = request.form.get("enabled") == "on"
@@ -569,8 +591,12 @@ def guild_automation(guild_id):
             abort(400, "Die Nachricht muss zwischen 1 und 1800 Zeichen lang sein.")
         if interval < 60 or interval > 10080:
             abort(400, "Das Intervall muss zwischen 60 Minuten und 7 Tagen liegen.")
-        job.update({"enabled": enabled, "channel_id": channel.id, "message": message, "interval_minutes": interval})
-        job["next_run_at"] = (datetime.now(timezone.utc) + timedelta(minutes=interval)).isoformat() if enabled else None
+        if action == "save_template":
+            templates.append({"id": secrets.token_hex(4), "title": request.form.get("template_title", "").strip()[:80] or "Nachrichtenvorlage", "channel_id": channel.id, "message": message, "interval_minutes": interval})
+            templates[:] = templates[-25:]
+        else:
+            job.update({"enabled": enabled, "channel_id": channel.id, "message": message, "interval_minutes": interval})
+            job["next_run_at"] = (datetime.now(timezone.utc) + timedelta(minutes=interval)).isoformat() if enabled else None
         _save_json(data_path("config.json"), _config)
         return redirect(url_for("guild_automation", guild_id=gid))
     if not guild_has_feature(cfg, "automation"):
@@ -590,8 +616,21 @@ def guild_automation(guild_id):
             '<label for="message">Nachricht</label><textarea id="message" name="message" maxlength="1800" required>' + html.escape(str(job.get("message", ""))) + '</textarea>'
             '<label for="interval_minutes">Intervall in Minuten (60–10080)</label><input id="interval_minutes" name="interval_minutes" type="number" min="60" max="10080" step="1" value="' + str(max(60, min(10080, int(job.get("interval_minutes", 1440) or 1440)))) + '" required>'
             '<div class="check"><input type="checkbox" id="enabled" name="enabled"' + checked + '><label for="enabled">Automation aktivieren</label></div>'
-            '<button type="submit">Automation speichern</button></form></section>'
+            '<label for="template_title">Vorlagenname (optional)</label><input id="template_title" name="template_title" maxlength="80" placeholder="z. B. Wöchentliche Ankündigung">'
+            '<button type="submit" name="automation_action" value="save">Automation speichern</button> <button class="secondary" type="submit" name="automation_action" value="save_template">Als Vorlage speichern</button></form></section>'
         )
+        templates = cfg.get("automation_templates", [])
+        if isinstance(templates, list) and templates:
+            body += '<section class="card"><h2>📚 Gespeicherte Nachrichtenvorlagen</h2><p class="muted">Vorlagen können in die Automation geladen oder dupliziert werden. Beim Laden bleibt die Automation zunächst deaktiviert.</p>'
+            for template in templates:
+                if not isinstance(template, dict):
+                    continue
+                tid = html.escape(str(template.get("id", "")), quote=True)
+                body += '<div class="row"><div><strong>' + html.escape(str(template.get("title", "Vorlage"))) + '</strong><p class="muted">' + html.escape(str(template.get("message", ""))[:100]) + '</p></div><div class="grid">'
+                for action_name, action_label in (("use_template", "Vorlage laden"), ("duplicate_template", "Duplizieren"), ("delete_template", "Löschen")):
+                    body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="automation_action" value="' + action_name + '"><input type="hidden" name="template_id" value="' + tid + '"><button class="secondary" type="submit">' + action_label + '</button></form>'
+                body += '</div></div>'
+            body += '</section>'
     body += '<p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Automation Pro", body)
 
