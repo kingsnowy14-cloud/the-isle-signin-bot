@@ -86,6 +86,14 @@ NUMBER_SETTINGS = {
     "raid_threshold": {"label": "Anti-Raid-Schwelle", "help": "Beitritte innerhalb des Schutzzeitfensters (3–30).", "min": 3, "max": 30, "default": 8},
 }
 
+VOICE_CHANNEL_SETTINGS = {
+    "tempvoice_trigger": "Temporärer Voice-Trigger",
+}
+
+CATEGORY_SETTINGS = {
+    "tempvoice_category": "Kategorie für temporäre Voice-Kanäle",
+}
+
 
 def _env(name):
     return (os.getenv(name) or "").strip()
@@ -641,6 +649,17 @@ def guild_page(guild_id):
                     if not meta["min"] <= value <= meta["max"]:
                         abort(400, f"{meta['label']} muss zwischen {meta['min']} und {meta['max']} liegen.")
                     cfg[key] = value
+                voice_ids = {str(item.id) for item in guild.voice_channels}
+                for key in VOICE_CHANNEL_SETTINGS:
+                    raw = request.form.get(key, "").strip()
+                    if raw and raw not in voice_ids:
+                        abort(400, "Ungültigen Sprachkanal ausgewählt.")
+                    cfg[key] = int(raw) if raw else None
+                for key in CATEGORY_SETTINGS:
+                    raw = request.form.get(key, "").strip()
+                    if raw and raw not in category_ids:
+                        abort(400, "Ungültige Kategorie ausgewählt.")
+                    cfg[key] = int(raw) if raw else None
                 for key in ROLE_SETTINGS:
                     raw = request.form.get(key, "").strip()
                     if raw and raw not in role_ids:
@@ -678,6 +697,13 @@ def guild_page(guild_id):
         settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(channels, cfg.get(key))}</select>'
     for key, label in ROLE_SETTINGS.items():
         settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+    voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
+    category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
+    settings_html += '<h3>🔊 Temporäre Voice-Kanäle</h3><p class="muted">Wenn das vorhandene Temp-Voice-Modul aktiv ist, können Nutzer über den Trigger-Sprachkanal eigene Voice-Räume erstellen.</p>'
+    for key, label in VOICE_CHANNEL_SETTINGS.items():
+        settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{voice_options}</select>'
+    for key, label in CATEGORY_SETTINGS.items():
+        settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{category_options}</select>'
     settings_html += '<h3>🛡️ Schutz & Moderation</h3><p class="muted">Stelle ein, ab welcher Aktivität die vorhandenen Schutzmodule reagieren.</p>'
     for key, meta in NUMBER_SETTINGS.items():
         value = int(cfg.get(key, meta["default"]) or meta["default"])
