@@ -926,6 +926,28 @@ def guild_tickets(guild_id):
                 abort(400, "Das Logo muss eine HTTPS-URL mit höchstens 500 Zeichen sein.")
             panel["brand_color"] = color_raw.upper()
             panel["brand_logo_url"] = logo_url
+            uploaded_logo = request.files.get("brand_logo_file")
+            if uploaded_logo and uploaded_logo.filename:
+                extension = Path(uploaded_logo.filename).suffix.lower()
+                if extension not in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
+                    abort(400, "Bitte ein Bild im PNG-, JPG-, GIF- oder WEBP-Format hochladen.")
+                raw_logo = uploaded_logo.read()
+                if not raw_logo or len(raw_logo) > 5 * 1024 * 1024:
+                    abort(400, "Das Logo darf nicht leer sein und höchstens 5 MB groß sein.")
+                logo_dir = Path(data_path("config.json")).parent / "ticket_logos"
+                logo_dir.mkdir(parents=True, exist_ok=True)
+                logo_path_saved = logo_dir / f"{guild.id}_{panel_key}{extension}"
+                logo_path_saved.write_bytes(raw_logo)
+                panel["brand_logo_file"] = str(logo_path_saved)
+                panel["brand_logo_filename"] = logo_path_saved.name
+            if request.form.get("remove_brand_logo") == "on":
+                old_logo = panel.pop("brand_logo_file", None)
+                panel.pop("brand_logo_filename", None)
+                if old_logo:
+                    try:
+                        Path(old_logo).unlink(missing_ok=True)
+                    except OSError:
+                        pass
         async def save_panel_message():
             bot_member = guild.me
             if bot_member is None or not channel.permissions_for(bot_member).send_messages or not channel.permissions_for(bot_member).embed_links:
@@ -942,7 +964,11 @@ def guild_tickets(guild_id):
                 embed_color = discord.Color.blurple()
             embed = discord.Embed(title=title, description=description or None, color=embed_color)
             logo_url = panel.get("brand_logo_url", "") if guild_has_feature(cfg, "branding") else ""
-            if isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
+            logo_path = Path(panel.get("brand_logo_file", "")) if guild_has_feature(cfg, "branding") and panel.get("brand_logo_file") else None
+            logo_path = logo_path if logo_path and logo_path.is_file() else None
+            if logo_path:
+                embed.set_thumbnail(url=f"attachment://{logo_path.name}")
+            elif isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
                 embed.set_thumbnail(url=logo_url)
             embed.set_footer(text=f"IronWolf Ticket-Panel · ID {panel_key}")
             view = view_cls(panel_key, labels)
@@ -952,11 +978,17 @@ def guild_tickets(guild_id):
             if old_message_id and old_channel_id == channel.id:
                 try:
                     old_message = await channel.fetch_message(int(old_message_id))
-                    await old_message.edit(embed=embed, view=view)
+                    if logo_path:
+                        await old_message.edit(embed=embed, view=view, attachments=[discord.File(str(logo_path), filename=logo_path.name)])
+                    else:
+                        await old_message.edit(embed=embed, view=view, attachments=[])
                     return f"Ticket-Panel {panel_key} wurde in #{channel.name} aktualisiert."
                 except discord.NotFound:
                     pass
-            message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+            if logo_path:
+                message = await channel.send(embed=embed, view=view, file=discord.File(str(logo_path), filename=logo_path.name), allowed_mentions=discord.AllowedMentions.none())
+            else:
+                message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
             panel["message_id"] = message.id
             return f"Ticket-Panel gespeichert und in #{channel.name} veröffentlicht. Nachrichten-ID: {message.id}"
         try:
@@ -994,14 +1026,14 @@ def guild_tickets(guild_id):
             button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
         body += (
             '<section class="card"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
-            '<form method="post">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '">'
+            '<form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '">'
             '<label>Titel</label><input type="text" name="title" maxlength="256" required value="' + html.escape(str(panel.get("title", "Support-Ticket")), quote=True) + '">'
             '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(panel.get("description", ""))) + '</textarea>'
             + button_fields
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
-            + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe (6-stelliger Hex-Code)</label><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")), quote=True) + '"><label>Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '">' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium-Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
+            + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color_picker.value=\'#\'+this.value" placeholder="5865F2"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><small>' + ('Aktuelles Logo: ' + html.escape(str(panel.get("brand_logo_filename", "hochgeladen")), quote=True) if panel.get("brand_logo_file") else 'Noch kein hochgeladenes Logo.') + '</small><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '"><div class="check"><input type="checkbox" name="remove_brand_logo" id="remove-logo-' + html.escape(str(panel_key), quote=True) + '"><label for="remove-logo-' + html.escape(str(panel_key), quote=True) + '">Hochgeladenes Logo entfernen</label></div>' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium-Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
             + '<button type="submit">Panel speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Dieses Ticket-Panel und seine Nachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '"><input type="hidden" name="action" value="delete_panel"><button type="submit" class="secondary">🗑️ Panel und Nachricht löschen</button></form></section>'
         )
     body += f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
