@@ -2602,7 +2602,9 @@ async def verify_command(
         color=discord.Color.green(),
     )
     try:
-        await kanal.send(embed=embed, view=VerifyView(panel_button, panel_emoji))
+        verification_message = await kanal.send(embed=embed, view=VerifyView(panel_button, panel_emoji))
+        cfg["verify_message_id"] = verification_message.id
+        save_json(CONFIG_FILE, config)
     except discord.Forbidden:
         await interaction.response.send_message(
             "Ich kann in diesem Kanal keine Nachricht senden. Prüfe meine Kanalrechte.",
@@ -2657,6 +2659,12 @@ async def verify_setup(
     cfg["verify_mode"] = mode_value
     cfg["verify_button_label"] = button_text
     cfg["verify_button_emoji"] = emoji
+    cfg["verify_embed_title"] = "✅ Server-Verifizierung"
+    cfg["verify_embed_description"] = (
+        "Lies die Serverregeln und klicke auf den Button. "
+        + ("Anschließend löst du ein Bild-Captcha, indem du den passenden Code aus drei Antworten auswählst."
+           if mode_value == "code" else "Du wirst direkt verifiziert.")
+    )
     save_json(CONFIG_FILE, config)
     embed = create_embed(
         title="✅ Server-Verifizierung",
@@ -2668,7 +2676,9 @@ async def verify_setup(
         ),
         color=discord.Color.green(),
     )
-    await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
+    verification_message = await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
+    cfg["verify_message_id"] = verification_message.id
+    save_json(CONFIG_FILE, config)
     await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
 
 
