@@ -499,7 +499,8 @@ def guild_premium(guild_id):
     for feature, label in PREMIUM_FEATURES.items():
         if feature == "branding":
             continue
-        entitled = trial_active or (feature in PLAN_FEATURES.get(plan, frozenset()) and owner_matches)
+        manual_server_premium = server_override in PLAN_FEATURES and server_override != "free"
+        entitled = trial_active or (feature in PLAN_FEATURES.get(plan, frozenset()) and (owner_matches or manual_server_premium))
         if trial_active:
             status = "Aktiv · 15-Tage-Testphase"
         else:
@@ -540,7 +541,7 @@ def guild_premium(guild_id):
         body += '<form method="post">' + _csrf_field() + '<button type="submit">Mein Premium-Konto mit diesem Server verknüpfen</button></form>'
     elif not trial_used:
         body += '<p>Alle Premium-Module sind gesperrt, bis du Premium verknüpfst oder die kostenlose Testphase startest. Die 15 Tage beginnen erst nach deinem Klick.</p>'
-        body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="start_trial"><button type="submit" onclick="return confirm(\\'Die kostenlose 15-Tage-Premium-Testphase jetzt starten?\\')">🎁 15 Tage Premium kostenlos starten</button></form>'
+        body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="start_trial"><button type="submit" >🎁 15 Tage Premium kostenlos starten</button></form>'
     else:
         body += '<p>Die kostenlose 15-Tage-Testphase wurde bereits verwendet und ist abgelaufen. Alle Premium-Module sind gesperrt. Wende dich an den Support für Premium.</p>'
     body += '</section><div class="grid">' + "".join(rows) + '</div><p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
