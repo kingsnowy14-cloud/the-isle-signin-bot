@@ -75,6 +75,7 @@ PREMIUM_FEATURES = {
     "branding": "Custom Branding",
     "security": "Security Pro",
     "automation": "Automation Pro",
+    "invite_tracker": "Invite Tracker",
 }
 
 PLAN_FEATURES = {
