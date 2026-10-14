@@ -100,7 +100,7 @@ def _csrf_field():
 def _page(title, body):
     logged_in = bool(session.get("access_token"))
     nav = (
-        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten ↗</a><span></span>'
+        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><a href="/feedback">💬 Feedback</a><a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten ↗</a><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -303,6 +303,41 @@ def index():
     body += '<p><a class="button" href="/premium">✨ Premium verwalten →</a></p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
+
+
+@app.route("/feedback", methods=["GET", "POST"])
+def anonymous_feedback():
+    feedback_file = data_path("website_feedback.json")
+    try:
+        entries = json.loads(feedback_file.read_text(encoding="utf-8"))
+        if not isinstance(entries, list):
+            entries = []
+    except (OSError, json.JSONDecodeError):
+        entries = []
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "Sicherheitsprüfung fehlgeschlagen. Bitte lade die Seite neu.")
+        rating = request.form.get("rating", "")
+        category = request.form.get("category", "Allgemein")
+        allowed_categories = ("Allgemein", "Dashboard", "Ticketsystem", "Verifizierung", "Module")
+        if rating not in ("like", "dislike"):
+            abort(400, "Bitte wähle 👍 oder 👎.")
+        if category not in allowed_categories:
+            category = "Allgemein"
+        # Intentionally do not store account IDs, IP addresses, user agents, or session data.
+        entries.append({"rating": rating, "category": category, "comment": request.form.get("comment", "").strip()[:500], "date": datetime.now(timezone.utc).date().isoformat()})
+        temp = feedback_file.with_suffix(".tmp")
+        temp.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, feedback_file)
+        return redirect(url_for("anonymous_feedback", sent="1"))
+    total = len(entries)
+    likes = sum(1 for x in entries if x.get("rating") == "like")
+    dislikes = sum(1 for x in entries if x.get("rating") == "dislike")
+    cats = ("Allgemein", "Dashboard", "Ticketsystem", "Verifizierung", "Module")
+    rows = ''.join('<div class="row"><strong>' + html.escape(cat) + '</strong><span>👍 ' + str(sum(1 for x in entries if x.get("category") == cat and x.get("rating") == "like")) + ' · 👎 ' + str(sum(1 for x in entries if x.get("category") == cat and x.get("rating") == "dislike")) + '</span></div>' for cat in cats)
+    notice = '<div class="notice">Danke! Dein Feedback wurde anonym gespeichert.</div>' if request.args.get("sent") == "1" else ""
+    body = '<section class="card"><span class="pill">ANONYMES FEEDBACK</span><h1>Wie gefällt dir IronWolf?</h1><p>Es werden keine Discord-ID, kein Name und keine IP-Adresse im Feedback-Datensatz gespeichert. Die Statistik ist zusammengefasst.</p>' + notice + '<form method="post">' + _csrf_field() + '<label>Bereich</label><select name="category"><option>Allgemein</option><option>Dashboard</option><option>Ticketsystem</option><option>Verifizierung</option><option>Module</option></select><label>Bewertung</label><p><label><input type="radio" name="rating" value="like" required> 👍 Gefällt mir</label><label><input type="radio" name="rating" value="dislike" required> 👎 Verbesserungsbedarf</label></p><label>Kommentar (optional; bitte keine persönlichen Daten eintragen)</label><textarea name="comment" maxlength="500" placeholder="Was können wir verbessern?"></textarea><button type="submit">Anonym absenden</button></form></section><section class="card"><h2>Feedback-Statistik</h2><div class="grid"><div class="notice">Alle Bewertungen<h2>' + str(total) + '</h2></div><div class="notice">👍 Gefällt<h2>' + str(likes) + '</h2></div><div class="notice">👎 Verbesserungsbedarf<h2>' + str(dislikes) + '</h2></div></div><h3>Nach Bereich</h3>' + rows + '</section>'
+    return _render("Anonymes Feedback", body)
 
 
 @app.route("/login")
@@ -684,6 +719,24 @@ def guild_verification(guild_id):
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        if request.form.get("action") == "delete_verification":
+            old_channel = guild.get_channel(int(cfg.get("verify_channel") or 0))
+            old_message_id = cfg.get("verify_message_id")
+            async def delete_verification_message():
+                if not old_message_id or not isinstance(old_channel, discord.TextChannel):
+                    return
+                try:
+                    message = await old_channel.fetch_message(int(old_message_id))
+                    await message.delete()
+                except discord.NotFound:
+                    pass
+            try:
+                asyncio.run_coroutine_threadsafe(delete_verification_message(), _bot.loop).result(timeout=20)
+                cfg.pop("verify_message_id", None)
+                _save_json(data_path("config.json"), _config)
+                return redirect(url_for("guild_verification", guild_id=gid))
+            except Exception as exc:
+                result_html = '<div class="notice">⚠️ Löschen fehlgeschlagen: ' + html.escape(str(exc)[:300]) + '</div>'
         try:
             channel_id = int(request.form.get("channel_id", ""))
             verified_role_id = int(request.form.get("verified_role_id", ""))
@@ -764,7 +817,7 @@ def guild_verification(guild_id):
         + '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
         + '<label>Button-Text</label><input name="button_label" maxlength="80" value="' + html.escape(str(cfg.get("verify_button_label", "Verifizieren")), quote=True) + '">'
         + '<label>Button-Emoji</label><input name="emoji" maxlength="100" value="' + html.escape(str(cfg.get("verify_button_emoji", "✅")), quote=True) + '">'
-        + '<button type="submit">Verifizierung speichern und veröffentlichen</button></form></section>'
+        + '<button type="submit">Verifizierung speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Verifizierungsnachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="action" value="delete_verification"><button type="submit" class="secondary">🗑️ Verifizierungsnachricht löschen</button></form></section>'
         + f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
     )
     return _render(guild.name + " · Verifizierung", body)
@@ -786,6 +839,27 @@ def guild_tickets(guild_id):
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         panel_key = request.form.get("panel_id", "").strip()
+        if request.form.get("action") == "delete_panel":
+            panel_to_delete = panels.get(panel_key)
+            if not panel_to_delete:
+                abort(404, "Ticket-Panel nicht gefunden.")
+            old_channel = guild.get_channel(int(panel_to_delete.get("channel_id") or 0))
+            old_message_id = panel_to_delete.get("message_id")
+            async def delete_ticket_message():
+                if not old_message_id or not isinstance(old_channel, discord.TextChannel):
+                    return
+                try:
+                    message = await old_channel.fetch_message(int(old_message_id))
+                    await message.delete()
+                except discord.NotFound:
+                    pass
+            try:
+                asyncio.run_coroutine_threadsafe(delete_ticket_message(), _bot.loop).result(timeout=20)
+                del panels[panel_key]
+                _save_json(data_path("config.json"), _config)
+                return redirect(url_for("guild_tickets", guild_id=gid))
+            except Exception as exc:
+                result_html = '<div class="notice">⚠️ Löschen fehlgeschlagen: ' + html.escape(str(exc)[:300]) + '</div>'
         submitted_labels = [request.form.get(f"button{i}", "").strip() for i in range(1, 6)]
         if not any(submitted_labels):
             abort(400, "Mindestens ein Button-Label ist erforderlich.")
@@ -925,7 +999,7 @@ def guild_tickets(guild_id):
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
             + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe (6-stelliger Hex-Code)</label><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")), quote=True) + '"><label>Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '">' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium-Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
-            + '<button type="submit">Panel speichern und veröffentlichen</button></form></section>'
+            + '<button type="submit">Panel speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Dieses Ticket-Panel und seine Nachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '"><input type="hidden" name="action" value="delete_panel"><button type="submit" class="secondary">🗑️ Panel und Nachricht löschen</button></form></section>'
         )
     body += f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Ticket-System", body)
