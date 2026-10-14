@@ -850,24 +850,24 @@ class TicketControlView(discord.ui.View):
     def __init__(self, claimed: bool = False):
         super().__init__(timeout=None)
 
-        if claimed:
-            release_button = discord.ui.Button(
-                label="Freigeben",
-                style=discord.ButtonStyle.secondary,
-                emoji="🔓",
-                custom_id="ticket:release",
-            )
-            release_button.callback = self.release
-            self.add_item(release_button)
-        else:
-            claim_button = discord.ui.Button(
-                label="Claim",
-                style=discord.ButtonStyle.primary,
-                emoji="🙋",
-                custom_id="ticket:claim",
-            )
-            claim_button.callback = self.claim
-            self.add_item(claim_button)
+        # Keep both actions visible at all times; callbacks validate the current state.
+        claim_button = discord.ui.Button(
+            label="Claim",
+            style=discord.ButtonStyle.primary,
+            emoji="🙋",
+            custom_id="ticket:claim",
+        )
+        claim_button.callback = self.claim
+        self.add_item(claim_button)
+
+        release_button = discord.ui.Button(
+            label="Freigeben",
+            style=discord.ButtonStyle.secondary,
+            emoji="🔓",
+            custom_id="ticket:release",
+        )
+        release_button.callback = self.release
+        self.add_item(release_button)
 
         priority_button = discord.ui.Button(
             label="Priorität umschalten",
@@ -911,8 +911,11 @@ class TicketControlView(discord.ui.View):
             pass
 
         await interaction.response.edit_message(
-            content=f"Ticket claimed by {interaction.user.mention}.",
+            content=f"🎫 **Ticket übernommen von:** {interaction.user.mention}",
             view=TicketControlView(claimed=True),
+        )
+        await interaction.channel.send(
+            f"🙋 {interaction.user.mention} hat dieses Ticket übernommen."
         )
 
     async def release(self, interaction: discord.Interaction):
@@ -937,9 +940,17 @@ class TicketControlView(discord.ui.View):
         except discord.HTTPException:
             pass
 
+        previous_claimer_mention = f"<@{previous_claimer}>" if previous_claimer else "Unbekannt"
         await interaction.response.edit_message(
-            content=f"Ticket released by {interaction.user.mention}. It can now be claimed again.",
+            content=(
+                f"🔓 **Ticket freigegeben von:** {interaction.user.mention}\n"
+                f"**Zuvor übernommen von:** {previous_claimer_mention}"
+            ),
             view=TicketControlView(claimed=False),
+        )
+        await interaction.channel.send(
+            f"🔓 {interaction.user.mention} hat das Ticket freigegeben. "
+            f"Zuvor übernommen von: {previous_claimer_mention}. Das Ticket kann jetzt erneut übernommen werden."
         )
 
     async def priority(self, interaction: discord.Interaction):
