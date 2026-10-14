@@ -669,6 +669,8 @@ def guild_verification(guild_id):
         description = request.form.get("description", "").strip()[:4000] or "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."
         button_label = request.form.get("button_label", "").strip()[:80] or "Verifizieren"
         emoji = request.form.get("emoji", "").strip()[:100] or "✅"
+        old_verify_channel_id = cfg.get("verify_channel")
+        old_verify_message_id = cfg.get("verify_message_id")
         cfg.update({
             "verify_channel": channel.id, "verified_role": verified_role.id,
             "unverified_role": unverified_role.id if unverified_role else None,
@@ -682,11 +684,9 @@ def guild_verification(guild_id):
             if view_cls is None:
                 raise RuntimeError("VerifyView wurde nicht gefunden.")
             embed = discord.Embed(title=title, description=description, color=discord.Color.green())
-            old_channel_id = cfg.get("verify_channel")
-            old_message_id = cfg.get("verify_message_id")
-            if old_message_id and str(old_channel_id) == str(channel.id):
+            if old_verify_message_id and str(old_verify_channel_id) == str(channel.id):
                 try:
-                    old_message = await channel.fetch_message(int(old_message_id))
+                    old_message = await channel.fetch_message(int(old_verify_message_id))
                     await old_message.edit(embed=embed, view=view_cls(button_label, emoji))
                     return old_message.id, "Verifizierungs-Panel wurde aktualisiert."
                 except discord.NotFound:
