@@ -58,12 +58,14 @@ TEXT_SETTINGS = {
 }
 BOOL_SETTINGS = {
     "welcome_bots_enabled": "Willkommensnachrichten für Bots",
+    "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
     "anti_nuke_enabled": "Anti-Nuke-Schutz",
     "anti_raid_enabled": "Anti-Raid-Schutz",
 }
 CHANNEL_SETTINGS = {
     "welcome_channel": "Willkommenskanal",
+    "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Sicherheits-Logkanal",
     "honeypot_channel": "Honeypot-Kanal",
     "verify_channel": "Verifizierungskanal",
@@ -670,7 +672,7 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "automod_enabled"):
+                    for key in ("welcome_bots_enabled", "automod_enabled", "invite_tracker_enabled"):
                         cfg[key] = request.form.get(key) == "on"
                 channel_ids = {str(item.id) for item in guild.text_channels}
                 category_ids = {str(item.id) for item in guild.categories}
@@ -741,7 +743,7 @@ def guild_page(guild_id):
         if section == "general":
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "automod_enabled"):
+            for key in ("welcome_bots_enabled", "automod_enabled", "invite_tracker_enabled"):
                 label = BOOL_SETTINGS[key]
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
@@ -782,7 +784,7 @@ def guild_page(guild_id):
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
     section_links = [
         ("general", "⚙️ Allgemein", "Willkommensnachricht und AutoMod"),
-        ("channels", "📡 Kanäle & Logs", "Log-, Ticket-, Vorschlags- und Verifizierungskanäle"),
+        ("channels", "📡 Kanäle & Logs", "Log-, Ticket-, Vorschlags-, Invite- und Verifizierungskanäle"),
         ("roles", "🎭 Rollen", "Support-, Verifizierungs- und Sicherheitsrollen"),
         ("voice", "🔊 Temp Voice", "Trigger und Kategorie für temporäre Räume"),
         ("security", "🛡️ Schutz", "Anti-Nuke, Anti-Raid und Schwellenwerte"),
