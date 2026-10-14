@@ -7,6 +7,7 @@ automatically by the running bot.
 import hmac
 import asyncio
 import html
+import json
 import os
 import secrets
 import threading
@@ -433,6 +434,8 @@ def guild_premium(guild_id):
     labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
+        if feature == "branding":
+            continue
         entitled = trial_active or (feature in PLAN_FEATURES.get(plan, frozenset()) and owner_matches)
         if trial_active:
             status = "Aktiv · 15-Tage-Testphase"
@@ -627,6 +630,37 @@ def guild_page(guild_id):
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
     body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="/guild/{gid}/verification">🔐 Verifizierung →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
     return _render(guild.name + " · Control Center", body)
+
+
+@app.route("/admin/premium-servers", methods=["GET", "POST"])
+def dashboard_premium_servers_admin():
+    login = _require_login()
+    if login:
+        return login
+    user_id = str(session.get("user_id", ""))
+    owners = {x.strip() for x in (os.getenv("DASHBOARD_ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
+    if not user_id.isdigit() or user_id not in owners:
+        abort(403, "Nur der Dashboard-Besitzer darf Premium-Server freischalten.")
+    premium_file = data_path("premium_guilds.json")
+    try:
+        stored = json.loads(premium_file.read_text(encoding="utf-8"))
+        selected = {str(x) for x in stored if str(x).isdigit()} if isinstance(stored, list) else set()
+    except (OSError, json.JSONDecodeError):
+        selected = set()
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen.")
+        submitted = {x for x in request.form.getlist("guild_ids") if x.isdigit() and _bot.get_guild(int(x))}
+        temp = premium_file.with_suffix(".tmp")
+        temp.write_text(json.dumps(sorted(submitted), indent=2), encoding="utf-8")
+        os.replace(temp, premium_file)
+        return redirect(url_for("dashboard_premium_servers_admin"))
+    rows = []
+    for guild in sorted(_bot.guilds, key=lambda g: g.name.lower()):
+        checked = " checked" if str(guild.id) in selected else ""
+        rows.append(f'<label style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><input type="checkbox" name="guild_ids" value="{guild.id}"{checked}><span><strong>{html.escape(guild.name)}</strong><br><small>Server-ID: {guild.id}</small></span></label>')
+    body = '<section class="card"><span class="pill">OWNER ONLY</span><h1>Premium-Server freischalten</h1><p class="muted">Nur konfigurierte Dashboard-Administratoren sehen diese Seite. Markiere die Server, die manuell Premium erhalten sollen.</p><form method="post">' + _csrf_field() + ''.join(rows) + '<button type="submit">Premium-Server speichern</button></form><p><a href="/">Zur Übersicht</a></p></section>'
+    return _render("Owner · Premium-Server", body)
 
 
 @app.route("/guild/<guild_id>/verification", methods=["GET", "POST"])
@@ -883,7 +917,7 @@ def guild_tickets(guild_id):
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
-            + ('<h3>✨ Custom Branding (Premium)</h3><label>Embed-Farbe (6-stelliger Hex-Code)</label><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")), quote=True) + '"><label>Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '">' if guild_has_feature(cfg, "branding") else '<p class="muted">Custom Branding mit eigener Embed-Farbe und Logo ist im Premium-Plan verfügbar.</p>')
+            + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe (6-stelliger Hex-Code)</label><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")), quote=True) + '"><label>Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '">' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium-Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
             + '<button type="submit">Panel speichern und veröffentlichen</button></form></section>'
         )
     body += f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
