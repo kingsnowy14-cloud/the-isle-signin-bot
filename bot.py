@@ -3711,7 +3711,7 @@ async def on_guild_remove(guild: discord.Guild):
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
     # Attribute this join to an invite by comparing its use count with the last snapshot.
-    if cfg.get("invite_tracker_enabled") and cfg.get("invite_log_channel"):
+    if cfg.get("invite_tracker_enabled") and cfg.get("invite_log_channel") and guild_has_feature(cfg, "invite_tracker"):
         guild_id = member.guild.id
         previous = _invite_cache.get(guild_id, {})
         try:
