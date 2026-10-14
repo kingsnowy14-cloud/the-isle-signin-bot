@@ -779,6 +779,15 @@ class TicketControlView(discord.ui.View):
             claim_button.callback = self.claim
             self.add_item(claim_button)
 
+        priority_button = discord.ui.Button(
+            label="Priorität umschalten",
+            style=discord.ButtonStyle.secondary,
+            emoji="🚩",
+            custom_id="ticket:priority",
+        )
+        priority_button.callback = self.priority
+        self.add_item(priority_button)
+
         close_button = discord.ui.Button(
             label="Close ticket",
             style=discord.ButtonStyle.danger,
@@ -843,6 +852,37 @@ class TicketControlView(discord.ui.View):
             view=TicketControlView(claimed=False),
         )
 
+    async def priority(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta:
+            await interaction.response.send_message("Ticket data not found.", ephemeral=True)
+            return
+        if not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Only the configured support team can change ticket priority.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild_id)
+        if not guild_has_feature(cfg, "ticket"):
+            await interaction.response.send_message(
+                "🚩 Die Prioritätsfunktion gehört zum Premium-Ticket-System. Öffne die Premium-Seite im Dashboard für Details.",
+                ephemeral=True,
+            )
+            return
+        channel = interaction.channel
+        is_priority = not bool(meta.get("priority", False))
+        meta["priority"] = is_priority
+        save_json(DATA_FILE, data)
+        current_name = channel.name
+        clean_name = current_name.removeprefix("priority-")
+        new_name = ("priority-" if is_priority else "") + clean_name
+        try:
+            await channel.edit(name=new_name[:100], reason=f"Ticket priority changed by {interaction.user}")
+        except discord.HTTPException:
+            pass
+        await interaction.response.send_message(
+            "🚩 Ticket als **Priorität** markiert." if is_priority else "Ticket-Priorität entfernt.",
+            ephemeral=True,
+        )
+
     async def close(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
         if not meta:
@@ -899,6 +939,7 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
     archive_buffer = io.BytesIO()
     with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(f"{channel.name}-transcript.html", transcript.encode("utf-8"))
+    archive_bytes = archive_buffer.getvalue()
     archive_buffer.seek(0)
     file = discord.File(archive_buffer, filename=f"{channel.name}-transcript.zip")
     log_channel_id = cfg.get("ticket_log_channel")
@@ -910,6 +951,23 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
         embed.add_field(name="Closed by", value=closed_by.mention, inline=True)
         embed.add_field(name="Claimed by", value=f"<@{meta['claimed_by']}>" if meta.get("claimed_by") else "Nobody", inline=True)
         await log_channel.send(embed=embed, file=file)
+    # Premium Ticket-System: send a second transcript copy to the ticket creator by DM.
+    if guild_has_feature(cfg, "ticket") and meta.get("owner_id"):
+        owner_user = owner or guild.get_member(int(meta["owner_id"]))
+        if owner_user is None:
+            try:
+                owner_user = await bot.fetch_user(int(meta["owner_id"]))
+            except (discord.HTTPException, ValueError, TypeError):
+                owner_user = None
+        if owner_user is not None:
+            try:
+                await owner_user.send(
+                    f"Dein Ticket **{channel.name}** auf **{guild.name}** wurde geschlossen. Hier ist dein Transcript.",
+                    file=discord.File(io.BytesIO(archive_bytes), filename=f"{channel.name}-transcript.zip"),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (discord.Forbidden, discord.HTTPException):
+                pass
     data.setdefault("tickets", {}).pop(str(channel.id), None)
     save_json(DATA_FILE, data)
     await channel.delete(reason=f"Ticket closed by {closed_by}")
