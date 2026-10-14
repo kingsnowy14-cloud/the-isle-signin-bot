@@ -290,9 +290,9 @@ DEFAULT_GUILD_CONFIG = {
     "ticket_counter": 0,
     "security_log_channel": None,
     "honeypot_channel": None,
-    "anti_nuke_enabled": True,
+    "anti_nuke_enabled": False,
     "anti_nuke_threshold": 4,
-    "anti_raid_enabled": True,
+    "anti_raid_enabled": False,
     "raid_threshold": 8,
     "trusted_security_role": None,
     "welcome_channel": None,
@@ -2434,8 +2434,8 @@ async def automod_set(interaction: discord.Interaction, aktiviert: bool):
 async def security_status(interaction: discord.Interaction):
     cfg = guild_config(interaction.guild_id)
     embed = create_embed(title="🛡️ Security Center", color=discord.Color.green())
-    embed.add_field(name="Anti-Raid", value="Aktiv" if cfg.get("anti_raid_enabled", True) else "Aus", inline=True)
-    embed.add_field(name="Anti-Nuke", value="Aktiv" if cfg.get("anti_nuke_enabled", True) else "Aus", inline=True)
+    embed.add_field(name="Anti-Raid", value="Aktiv" if cfg.get("anti_raid_enabled", False) else "Aus", inline=True)
+    embed.add_field(name="Anti-Nuke", value="Aktiv" if cfg.get("anti_nuke_enabled", False) else "Aus", inline=True)
     embed.add_field(name="AutoMod", value="Aktiv" if cfg.get("automod_enabled", False) else "Aus", inline=True)
     embed.add_field(name="Security-Log", value=f"<#{cfg['security_log_channel']}>" if cfg.get("security_log_channel") else "Nicht gesetzt", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3227,7 +3227,7 @@ async def get_audit_actor(guild: discord.Guild, action: discord.AuditLogAction, 
 async def record_nuke_action(guild: discord.Guild, action_name: str, action: discord.AuditLogAction,
                              target_id=None, target_name="unknown"):
     cfg = guild_config(guild.id)
-    if not cfg.get("anti_nuke_enabled", True):
+    if not cfg.get("anti_nuke_enabled", False):
         return
     actor, entry_id, reason = await get_audit_actor(guild, action, target_id)
     if actor is None or actor.bot:
@@ -3643,7 +3643,7 @@ async def on_member_join(member: discord.Member):
     elif should_welcome:
         print(f"[WELCOME] No welcome channel configured for guild {member.guild.id}. Run /welcome-set in Discord.")
     # Preserve the existing anti-raid behavior: bot joins do not count as member raids.
-    if member.bot or not cfg.get("anti_raid_enabled", True):
+    if member.bot or not cfg.get("anti_raid_enabled", False):
         return
 
     now = time.monotonic()
@@ -4420,7 +4420,7 @@ class SecurityTools(commands.Cog):
         self.joins[member.guild.id] = recent
         cfg = read(SECURITY, {}).get(str(member.guild.id), {})
         threshold = max(3, min(50, int(cfg.get("raid_threshold", 8))))
-        if cfg.get("anti_raid_enabled", True) and len(recent) >= threshold:
+        if cfg.get("anti_raid_enabled", False) and len(recent) >= threshold:
             await self.notify(member.guild, f"⚠️ Raid-Warnung: {len(recent)} Beitritte innerhalb von 20 Sekunden. Bitte Server-Aktivität prüfen.")
 
     @app_commands.command(name="security-konfigurieren", description="Setzt Security-Logkanal und Raid-Warnschwelle")
