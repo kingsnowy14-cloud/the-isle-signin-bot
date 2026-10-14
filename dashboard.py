@@ -703,7 +703,15 @@ def guild_tickets(guild_id):
                 view_cls = getattr(sys.modules.get("bot"), "TicketPanelView", None)
             if view_cls is None:
                 raise RuntimeError("Die vorhandene TicketPanelView-Klasse konnte nicht gefunden werden; die Panel-Konfiguration wurde noch nicht veröffentlicht.")
-            embed = discord.Embed(title=title, description=description or None, color=discord.Color.blurple())
+            panel_color = panel.get("brand_color", "5865F2") if guild_has_feature(cfg, "branding") else "5865F2"
+            try:
+                embed_color = discord.Color(int(str(panel_color).lstrip("#"), 16))
+            except (TypeError, ValueError):
+                embed_color = discord.Color.blurple()
+            embed = discord.Embed(title=title, description=description or None, color=embed_color)
+            logo_url = panel.get("brand_logo_url", "") if guild_has_feature(cfg, "branding") else ""
+            if isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
+                embed.set_thumbnail(url=logo_url)
             embed.set_footer(text=f"IronWolf Ticket-Panel · ID {panel_key}")
             view = view_cls(panel_key, labels)
             old_channel_id = panel.get("channel_id")
