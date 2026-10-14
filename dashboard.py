@@ -470,15 +470,7 @@ def guild_premium(guild_id):
             cfg["premium_owner_id"] = user_id
             _save_json(data_path("config.json"), _config)
             return redirect(url_for("guild_premium", guild_id=gid))
-        if cfg.get("premium_trial_used"):
-            abort(409, "Dieser Server hat seine einmalige 15-Tage-Premium-Testphase bereits verwendet.")
-        trial_started = datetime.now(timezone.utc)
-        cfg["premium_trial_used"] = True
-        cfg["premium_trial_started_at"] = trial_started.isoformat()
-        cfg["premium_trial_expires_at"] = (trial_started + timedelta(days=15)).isoformat()
-        cfg["premium_trial_owner_id"] = user_id
-        _save_json(data_path("config.json"), _config)
-        return redirect(url_for("guild_premium", guild_id=gid))
+        abort(403, "Premium ist für dieses Discord-Konto nicht freigeschaltet. Bitte wende dich an den Support.")
 
     # Automatically attach a manually granted account plan when its owner opens Premium
     # management, unless the server is already linked to another account.
@@ -488,7 +480,7 @@ def guild_premium(guild_id):
         _save_json(data_path("config.json"), _config)
         owner_id = user_id
     owner_matches = owner_id == user_id and bool(owner_id)
-    trial_active = guild_trial_active(cfg) and not (owner_matches and plan != "free")
+    trial_active = False
     trial_used = bool(cfg.get("premium_trial_used"))
     labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
     rows = []
@@ -532,10 +524,8 @@ def guild_premium(guild_id):
         body += '<p class="notice">Dieser Server ist bereits mit einem anderen Discord-Konto verknüpft. Die Verknüpfung wird nicht automatisch überschrieben.</p>'
     elif plan != "free":
         body += '<form method="post">' + _csrf_field() + '<button type="submit">Mein Premium-Konto mit diesem Server verknüpfen</button></form>'
-    elif trial_used:
-        body += '<p>Die einmalige 15-Tage-Premium-Testphase wurde auf diesem Server bereits genutzt und kann nicht erneut gestartet werden.</p>'
     else:
-        body += '<p>Teste alle Premium-Funktionen 15 Tage kostenlos. Jeder Server kann die Testphase einmal starten.</p><form method="post">' + _csrf_field() + '<button type="submit">🎁 15 Tage Premium kostenlos starten</button></form>'
+        body += '<p>Für diesen Server ist kein Premium-Zugang aktiv. Premium muss für dein Discord-Konto freigeschaltet und mit diesem Server verknüpft sein.</p>'
     body += '</section><div class="grid">' + "".join(rows) + '</div><p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Premium", body)
 
