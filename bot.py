@@ -381,6 +381,70 @@ def _safe_automation_interval(job):
     return max(60, min(10080, value))
 
 
+def cleanup_expired_trial_premium(guild_id):
+    """Remove trial-only Premium configuration after its 15-day trial expires."""
+    cfg = guild_config(guild_id)
+    if not isinstance(cfg, dict) or not cfg.get("premium_trial_used"):
+        return False
+    raw_expiry = cfg.get("premium_trial_expires_at")
+    try:
+        expiry = datetime.fromisoformat(str(raw_expiry or "").replace("Z", "+00:00"))
+        if expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return False
+    if expiry > datetime.now(timezone.utc):
+        return False
+    # Never remove settings belonging to a currently paid/authorized plan.
+    if cfg.get("premium_server_override") in {"premium", "premium_plus"}:
+        return False
+    if account_plan(cfg.get("premium_owner_id")) != "free":
+        return False
+
+    changed = False
+    # Stop Premium+ automation and discard its configured schedule.
+    if cfg.get("automation_announcement"):
+        cfg["automation_announcement"] = {
+            "enabled": False, "channel_id": None, "message": "",
+            "interval_minutes": 1440, "next_run_at": None,
+        }
+        changed = True
+    # Keep the basic ticket panel usable, but remove Premium branding and
+    # reduce each remaining panel to the one-button Free configuration.
+    panels = cfg.get("ticket_panels")
+    if isinstance(panels, dict):
+        for panel in panels.values():
+            if not isinstance(panel, dict):
+                continue
+            for key in ("brand_color", "brand_logo_url", "brand_logo_file", "brand_logo_filename"):
+                if key in panel:
+                    old_path = panel.pop(key, None)
+                    if key == "brand_logo_file" and old_path:
+                        try:
+                            Path(old_path).unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    changed = True
+            labels = panel.get("labels")
+            if isinstance(labels, list) and len(labels) > 1:
+                panel["labels"] = labels[:1]
+                changed = True
+        # Extra panels are a Premium feature; retain the first configured panel.
+        if len(panels) > 1:
+            first_key = next(iter(panels))
+            cfg["ticket_panels"] = {first_key: panels[first_key]}
+            changed = True
+    # Premium+ security switches default to off after the trial.
+    for key in ("anti_nuke_enabled", "anti_raid_enabled"):
+        if cfg.get(key):
+            cfg[key] = False
+            changed = True
+    if changed:
+        save_json(CONFIG_FILE, config)
+        print(f"[PREMIUM] Trial Premium settings cleaned for guild {guild_id}.", flush=True)
+    return changed
+
+
 async def premium_automation_worker():
     """Run announcements and notify users when annual manual Premium expires."""
     while not bot.is_closed():
@@ -403,6 +467,11 @@ async def premium_automation_worker():
         now = datetime.now(timezone.utc)
         for guild in list(bot.guilds):
             cfg = guild_config(guild.id)
+            try:
+                cleanup_expired_trial_premium(guild.id)
+                cfg = guild_config(guild.id)
+            except Exception as exc:
+                print(f"[PREMIUM] Trial cleanup failed for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
             if not guild_has_feature(cfg, "automation"):
                 continue
             job = cfg.get("automation_announcement", {})
