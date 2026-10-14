@@ -5296,7 +5296,6 @@ async def on_ready():
     bot.add_view(RegistrationView())
     bot.add_view(LanguageView())
     bot.add_view(TicketControlView())
-    bot.add_view(TicketControlView(claimed=True))
     bot.add_view(VerifyView())
 
     # Restore persistent ticket panel views saved in config.
