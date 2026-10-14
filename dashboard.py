@@ -669,6 +669,11 @@ def guild_page(guild_id):
                     if requested_invite_tracker and not guild_has_feature(cfg, "invite_tracker"):
                         abort(403, "Der Invite-Tracker benötigt ein aktives Premium-Modul.")
                     cfg["invite_tracker_enabled"] = requested_invite_tracker
+                    invite_channel_raw = request.form.get("invite_log_channel", "").strip()
+                    valid_text_channel_ids = {str(item.id) for item in guild.text_channels}
+                    if invite_channel_raw and invite_channel_raw not in valid_text_channel_ids:
+                        abort(400, "Bitte einen gültigen Invite-Tracker-Logkanal auswählen.")
+                    cfg["invite_log_channel"] = int(invite_channel_raw) if invite_channel_raw else None
                 channel_ids = {str(item.id) for item in guild.text_channels}
                 category_ids = {str(item.id) for item in guild.categories}
                 role_ids = {str(item.id) for item in guild.roles}
@@ -743,6 +748,7 @@ def guild_page(guild_id):
                 label = BOOL_SETTINGS[key]
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
+            settings_html += '<label for="invite_log_channel">Invite-Tracker: Logkanal auswählen</label><small>Hier werden erkannte Einladungen und Einladungsnutzungen protokolliert.</small><select id="invite_log_channel" name="invite_log_channel">' + options(channels, cfg.get("invite_log_channel")) + '</select>'
         if section == "channels":
             for key, label in CHANNEL_SETTINGS.items():
                 if key == "ticket_category":
