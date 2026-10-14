@@ -672,8 +672,12 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "automod_enabled", "invite_tracker_enabled"):
+                    for key in ("welcome_bots_enabled", "automod_enabled"):
                         cfg[key] = request.form.get(key) == "on"
+                    requested_invite_tracker = request.form.get("invite_tracker_enabled") == "on"
+                    if requested_invite_tracker and not guild_has_feature(cfg, "invite_tracker"):
+                        abort(403, "Der Invite-Tracker benötigt ein aktives Premium+-Modul.")
+                    cfg["invite_tracker_enabled"] = requested_invite_tracker
                 channel_ids = {str(item.id) for item in guild.text_channels}
                 category_ids = {str(item.id) for item in guild.categories}
                 role_ids = {str(item.id) for item in guild.roles}
@@ -741,6 +745,7 @@ def guild_page(guild_id):
     if section in ("general", "channels", "roles", "voice", "security"):
         settings_html = '<section class="card"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
+            settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium+-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
             for key in ("welcome_bots_enabled", "automod_enabled", "invite_tracker_enabled"):
