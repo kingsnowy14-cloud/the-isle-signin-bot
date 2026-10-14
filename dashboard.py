@@ -442,7 +442,7 @@ def premium_page():
         '<p>Die Zahlungsintegration ist noch nicht aktiviert. Bis ein Zahlungsanbieter festgelegt und sicher angebunden ist, werden Pläne ausschließlich manuell über Railway-Variablen freigeschaltet.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
         '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium: 5 € pro Jahr.</strong> Ticket-System Pro und Custom Branding.</p>'
-        '<p><strong>Premium+:</strong> alle Premium-Module einschließlich Security Pro, Automation Pro und Invite Tracker.</p>'
+        '<p><strong>Premium: 5 € pro Jahr.</strong> Enthält alle Module: Ticket-System Pro, Custom Branding, Security Pro, Automation Pro und Invite Tracker.</p>'
         '<p class="muted">Öffne die Premium-Verwaltung eines Servers, um deinen Plan mit ihm zu verknüpfen. Dort führen direkte Schaltflächen zu den jeweiligen Einstellungen.</p>'
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
@@ -490,7 +490,7 @@ def guild_premium(guild_id):
     owner_matches = owner_id == user_id and bool(owner_id)
     trial_active = guild_trial_active(cfg) and not (owner_matches and plan != "free")
     trial_used = bool(cfg.get("premium_trial_used"))
-    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         if feature == "branding":
@@ -746,7 +746,7 @@ def guild_page(guild_id):
     if section in ("general", "channels", "roles", "voice", "security"):
         settings_html = '<section class="card"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
-            settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium+-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
+            settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
             for key in ("welcome_bots_enabled", "automod_enabled", "invite_tracker_enabled"):
@@ -827,7 +827,7 @@ def dashboard_premium_servers_admin():
         for server in _bot.guilds:
             cfg = _guild_config(server.id)
             if str(server.id) in submitted:
-                cfg["premium_server_override"] = "premium_plus"
+                cfg["premium_server_override"] = "premium"
             else:
                 cfg.pop("premium_server_override", None)
         _save_json(data_path("config.json"), _config)
