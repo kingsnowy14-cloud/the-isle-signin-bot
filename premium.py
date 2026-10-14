@@ -148,6 +148,4 @@ def guild_has_feature(guild_config, feature):
     owner_plan = account_plan(owner_id)
     if owner_plan != "free":
         return feature in PLAN_FEATURES[owner_plan]
-    if guild_trial_active(guild_config):
-        return feature in PLAN_FEATURES["premium_plus"]
     return False
