@@ -716,14 +716,14 @@ def guild_verification(guild_id):
         + result_html +
         '<section class="card"><form method="post">' + _csrf_field() +
         '<label>Verifizierungskanal</label><select name="channel_id" required>' + options(channels, cfg.get("verify_channel"), "— Textkanal auswählen —") + '</select>'
-        '<label>Rolle nach Verifizierung vergeben</label><select name="verified_role_id" required>' + options(roles, cfg.get("verified_role"), "— Rolle auswählen —") + '</select>'
-        '<label>Rolle nach Verifizierung entfernen (optional)</label><select name="unverified_role_id">' + options(roles, cfg.get("unverified_role")) + '</select>'
-        '<label>Verifizierungsmethode</label><select name="mode"><option value="click"' + (' selected' if mode == "click" else '') + '>Button klicken</option><option value="code"' + (' selected' if mode == "code" else '') + '>Bild-Captcha</option></select>'
-        '<label>Embed-Titel</label><input name="title" maxlength="256" value="' + html.escape(str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")), quote=True) + '">'
-        '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
-        '<label>Button-Text</label><input name="button_label" maxlength="80" value="' + html.escape(str(cfg.get("verify_button_label", "Verifizieren")), quote=True) + '">'
-        '<label>Button-Emoji</label><input name="emoji" maxlength="100" value="' + html.escape(str(cfg.get("verify_button_emoji", "✅")), quote=True) + '">'
-        '<button type="submit">Verifizierung speichern und veröffentlichen</button></form></section>'
+        + '<label>Rolle nach Verifizierung vergeben</label><select name="verified_role_id" required>' + options(roles, cfg.get("verified_role"), "— Rolle auswählen —") + '</select>'
+        + '<label>Rolle nach Verifizierung entfernen (optional)</label><select name="unverified_role_id">' + options(roles, cfg.get("unverified_role")) + '</select>'
+        + '<label>Verifizierungsmethode</label><select name="mode"><option value="click"' + (' selected' if mode == "click" else '') + '>Button klicken</option><option value="code"' + (' selected' if mode == "code" else '') + '>Bild-Captcha</option></select>'
+        + '<label>Embed-Titel</label><input name="title" maxlength="256" value="' + html.escape(str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")), quote=True) + '">'
+        + '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
+        + '<label>Button-Text</label><input name="button_label" maxlength="80" value="' + html.escape(str(cfg.get("verify_button_label", "Verifizieren")), quote=True) + '">'
+        + '<label>Button-Emoji</label><input name="emoji" maxlength="100" value="' + html.escape(str(cfg.get("verify_button_emoji", "✅")), quote=True) + '">'
+        + '<button type="submit">Verifizierung speichern und veröffentlichen</button></form></section>'
         + f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
     )
     return _render(guild.name + " · Verifizierung", body)
