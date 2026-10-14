@@ -745,6 +745,8 @@ def guild_tickets(guild_id):
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         panel_key = request.form.get("panel_id", "").strip()
+        if panel_key == "__new__" and not guild_has_feature(cfg, "ticket") and panels:
+            abort(403, "Mehrere Ticket-Panels sind Premium. Im Free-Plan kannst du ein Panel mit einem Button verwenden.")
         if panel_key == "__new__":
             panel_key = secrets.token_hex(4)
             while panel_key in panels:
@@ -775,6 +777,8 @@ def guild_tickets(guild_id):
             abort(400, "Der Titel darf nicht leer sein.")
         if not labels:
             abort(400, "Mindestens ein Button-Label ist erforderlich.")
+        if not guild_has_feature(cfg, "ticket") and len(labels) > 1:
+            abort(403, "Mehrere Ticket-Buttons sind Premium. Im Free-Plan ist ein Button pro Panel verfügbar.")
         if not isinstance(channel, discord.TextChannel):
             abort(400, "Bitte wähle einen gültigen Textkanal.")
         if category_id and not isinstance(category, discord.CategoryChannel):
@@ -858,7 +862,7 @@ def guild_tickets(guild_id):
     )
     body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Beschreibung</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support"><label>Button 2 (optional)</label><input name="button2" maxlength="80"><label>Button 3 (optional)</label><input name="button3" maxlength="80"><label>Button 4 (optional)</label><input name="button4" maxlength="80"><label>Button 5 (optional)</label><input name="button5" maxlength="80"><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select><button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     if not panels:
-        body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Erstelle zuerst ein Panel mit dem vorhandenen Ticket-Befehl in Discord; danach kannst du es hier bearbeiten.</div>'
+        body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Nutze das Formular „Neues Ticket-Panel erstellen“ oben, um eines direkt hier anzulegen.</div>'
     for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
         labels = list(panel.get("labels", []))[:5]
         button_fields = ""
