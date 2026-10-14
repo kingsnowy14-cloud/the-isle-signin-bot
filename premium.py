@@ -31,7 +31,7 @@ def sync_manual_grants():
     """Track Railway allowlist grants with a persistent 365-day term."""
     now = _now()
     active = {}
-    for plan, variable in (("premium", "PREMIUM_USER_IDS"), ("premium_plus", "PREMIUM_PLUS_USER_IDS")):
+    for plan, variable in (("premium", "PREMIUM_USER_IDS"), ("premium", "PREMIUM_PLUS_USER_IDS")):
         for raw_id in (os.getenv(variable) or "").split(","):
             uid = raw_id.strip()
             if uid.isdigit():
@@ -80,7 +80,7 @@ PREMIUM_FEATURES = {
 
 PLAN_FEATURES = {
     "free": frozenset(),
-    "premium": frozenset({"ticket", "branding"}),
+    "premium": frozenset(PREMIUM_FEATURES),
     "premium_plus": frozenset(PREMIUM_FEATURES),
 }
 
@@ -109,7 +109,7 @@ def account_plan(user_id):
         return "free"
     if expiry <= _now():
         return "free"
-    return grant.get("plan", "free") if grant.get("plan") in {"premium", "premium_plus"} else "free"
+    return "premium" if grant.get("plan") in {"premium", "premium_plus"} else "free"
 
 
 def has_feature(user_id, feature):
@@ -124,7 +124,7 @@ def feature_label(feature):
 
 
 def guild_trial_active(guild_config):
-    """Return whether this server's one-time 15-day Premium+ trial is active."""
+    """Return whether this server's one-time 15-day Premium trial is active."""
     if not isinstance(guild_config, dict) or not guild_config.get("premium_trial_used"):
         return False
     raw_expiry = guild_config.get("premium_trial_expires_at")
