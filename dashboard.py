@@ -673,9 +673,9 @@ def dashboard_premium_servers_admin():
     if login:
         return login
     user_id = str(session.get("user_id", ""))
-    owners = {x.strip() for x in (os.getenv("DASHBOARD_ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
-    if not user_id.isdigit() or user_id not in owners:
-        abort(403, "Nur der Dashboard-Besitzer darf Premium-Server freischalten.")
+    # Hard allowlist: only this Discord account may manage manual server Premium grants.
+    if user_id != "1493110334280564807":
+        abort(403, "Nur der autorisierte Dashboard-Besitzer darf Premium-Server freischalten.")
     premium_file = data_path("premium_guilds.json")
     try:
         stored = json.loads(premium_file.read_text(encoding="utf-8"))
