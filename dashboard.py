@@ -69,12 +69,21 @@ CHANNEL_SETTINGS = {
     "verify_channel": "Verifizierungskanal",
     "registration_channel": "Anmeldekanal",
     "ticket_log_channel": "Ticket-Logkanal",
+    "activity_log_channel": "Aktivitäts-Logkanal",
+    "suggestion_channel": "Vorschlagskanal",
+    "ticket_category": "Ticket-Kategorie",
+    "log_channel_id": "Moderations-Logkanal",
 }
 ROLE_SETTINGS = {
     "support_role": "Support-Rolle",
     "verified_role": "Verifizierte Rolle",
     "unverified_role": "Unverifizierte Rolle",
     "trusted_security_role": "Vertrauenswürdige Sicherheitsrolle",
+}
+
+NUMBER_SETTINGS = {
+    "anti_nuke_threshold": {"label": "Anti-Nuke-Schwelle", "help": "Verdächtige Aktionen pro 60 Sekunden (2–10).", "min": 2, "max": 10, "default": 4},
+    "raid_threshold": {"label": "Anti-Raid-Schwelle", "help": "Beitritte innerhalb des Schutzzeitfensters (3–30).", "min": 3, "max": 30, "default": 8},
 }
 
 
@@ -615,12 +624,23 @@ def guild_page(guild_id):
                 for key in BOOL_SETTINGS:
                     cfg[key] = request.form.get(key) == "on"
                 channel_ids = {str(item.id) for item in guild.text_channels}
+                category_ids = {str(item.id) for item in guild.categories}
                 role_ids = {str(item.id) for item in guild.roles}
                 for key in CHANNEL_SETTINGS:
                     raw = request.form.get(key, "").strip()
-                    if raw and raw not in channel_ids:
-                        abort(400, "Ungültiger Kanal ausgewählt.")
+                    allowed_ids = category_ids if key == "ticket_category" else channel_ids
+                    if raw and raw not in allowed_ids:
+                        abort(400, "Ungültiger Kanal oder ungültige Kategorie ausgewählt.")
                     cfg[key] = int(raw) if raw else None
+                for key, meta in NUMBER_SETTINGS.items():
+                    raw = request.form.get(key, str(meta["default"])).strip()
+                    try:
+                        value = int(raw)
+                    except (TypeError, ValueError):
+                        abort(400, f"{meta['label']}: Bitte eine ganze Zahl eingeben.")
+                    if not meta["min"] <= value <= meta["max"]:
+                        abort(400, f"{meta['label']} muss zwischen {meta['min']} und {meta['max']} liegen.")
+                    cfg[key] = value
                 for key in ROLE_SETTINGS:
                     raw = request.form.get(key, "").strip()
                     if raw and raw not in role_ids:
@@ -658,6 +678,11 @@ def guild_page(guild_id):
         settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(channels, cfg.get(key))}</select>'
     for key, label in ROLE_SETTINGS.items():
         settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+    settings_html += '<h3>🛡️ Schutz & Moderation</h3><p class="muted">Stelle ein, ab welcher Aktivität die vorhandenen Schutzmodule reagieren.</p>'
+    for key, meta in NUMBER_SETTINGS.items():
+        value = int(cfg.get(key, meta["default"]) or meta["default"])
+        value = max(meta["min"], min(meta["max"], value))
+        settings_html += f'<label for="{key}">{html.escape(meta["label"])}</label><small>{html.escape(meta["help"])}</small><input id="{key}" name="{key}" type="number" min="{meta["min"]}" max="{meta["max"]}" step="1" value="{value}" required>'
     settings_html += '<button type="submit">Einstellungen speichern</button></form></section>'
     module_records = _module_records(guild.id)
     modules_html = '<section class="card" id="modules"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
