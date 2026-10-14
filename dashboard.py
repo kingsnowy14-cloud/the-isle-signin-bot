@@ -442,7 +442,7 @@ def premium_page():
         '<p>Die Zahlungsintegration ist noch nicht aktiviert. Bis ein Zahlungsanbieter festgelegt und sicher angebunden ist, werden Pläne ausschließlich manuell über Railway-Variablen freigeschaltet.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
         '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium: 5 € pro Jahr.</strong> Ticket-System Pro und Custom Branding.</p>'
-        '<p><strong>Premium+:</strong> alle vier Module einschließlich Security Pro und Automation Pro.</p>'
+        '<p><strong>Premium+:</strong> alle Premium-Module einschließlich Security Pro, Automation Pro und Invite Tracker.</p>'
         '<p class="muted">Öffne die Premium-Verwaltung eines Servers, um deinen Plan mit ihm zu verknüpfen. Dort führen direkte Schaltflächen zu den jeweiligen Einstellungen.</p>'
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
