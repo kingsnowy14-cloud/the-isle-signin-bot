@@ -138,12 +138,14 @@ def guild_trial_active(guild_config):
 
 
 def guild_has_feature(guild_config, feature):
-    """Resolve a feature from a linked account or an active server trial."""
+    """Resolve a feature from a manual server grant, linked account, or active trial."""
     if not isinstance(guild_config, dict) or feature not in PREMIUM_FEATURES:
         return False
     override_plan = guild_config.get("premium_server_override")
     if override_plan in PLAN_FEATURES and override_plan != "free":
         return feature in PLAN_FEATURES[override_plan]
+    if guild_trial_active(guild_config):
+        return True
     owner_id = guild_config.get("premium_owner_id")
     owner_plan = account_plan(owner_id)
     if owner_plan != "free":
