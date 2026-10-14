@@ -745,6 +745,9 @@ def guild_tickets(guild_id):
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         panel_key = request.form.get("panel_id", "").strip()
+        submitted_labels = [request.form.get(f"button{i}", "").strip() for i in range(1, 6)]
+        if not guild_has_feature(cfg, "ticket") and sum(bool(label) for label in submitted_labels) > 1:
+            abort(403, "Mehrere Ticket-Buttons sind Premium. Im Free-Plan ist ein Button pro Panel verfügbar.")
         if panel_key == "__new__" and not guild_has_feature(cfg, "ticket") and panels:
             abort(403, "Mehrere Ticket-Panels sind Premium. Im Free-Plan kannst du ein Panel mit einem Button verwenden.")
         if panel_key == "__new__":
