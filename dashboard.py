@@ -654,6 +654,13 @@ def dashboard_premium_servers_admin():
         temp = premium_file.with_suffix(".tmp")
         temp.write_text(json.dumps(sorted(submitted), indent=2), encoding="utf-8")
         os.replace(temp, premium_file)
+        for server in _bot.guilds:
+            cfg = _guild_config(server.id)
+            if str(server.id) in submitted:
+                cfg["premium_server_override"] = "premium_plus"
+            else:
+                cfg.pop("premium_server_override", None)
+        _save_json(data_path("config.json"), _config)
         return redirect(url_for("dashboard_premium_servers_admin"))
     rows = []
     for guild in sorted(_bot.guilds, key=lambda g: g.name.lower()):
