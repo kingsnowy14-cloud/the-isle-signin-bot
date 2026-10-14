@@ -409,6 +409,9 @@ def cleanup_expired_trial_premium(guild_id):
             "interval_minutes": 1440, "next_run_at": None,
         }
         changed = True
+    if cfg.get("automation_templates"):
+        cfg["automation_templates"] = []
+        changed = True
     # Keep the basic ticket panel usable, but remove Premium branding and
     # reduce each remaining panel to the one-button Free configuration.
     panels = cfg.get("ticket_panels")
