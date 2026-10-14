@@ -724,7 +724,8 @@ class TicketCreateModal(discord.ui.Modal):
         if guild is None:
             await interaction.followup.send("Use this inside a server.", ephemeral=True)
             return
-        creation_key = (guild.id, interaction.user.id, self.panel_key)
+        # Limit ticket creation per user across all ticket panels in this server.
+        creation_key = (guild.id, interaction.user.id)
         if creation_key in _ticket_creations_in_progress:
             await interaction.followup.send("Dein Ticket wird bereits erstellt. Bitte warte kurz.", ephemeral=True)
             return
@@ -736,6 +737,23 @@ class TicketCreateModal(discord.ui.Modal):
             _ticket_creations_in_progress.discard(creation_key)
             await interaction.followup.send("This ticket panel is no longer configured.", ephemeral=True)
             return
+        # Count only tickets that are still open (their channels still exist).
+        user_open_tickets = 0
+        for ticket_channel_id, ticket_meta in data.get("tickets", {}).items():
+            if str(ticket_meta.get("owner_id")) != str(interaction.user.id):
+                continue
+            ticket_channel = guild.get_channel(int(ticket_channel_id))
+            if ticket_channel is not None:
+                user_open_tickets += 1
+
+        if user_open_tickets >= 5:
+            _ticket_creations_in_progress.discard(creation_key)
+            await interaction.followup.send(
+                "Du kannst maximal 5 offene Tickets gleichzeitig haben. Bitte schließe zuerst ein bestehendes Ticket.",
+                ephemeral=True,
+            )
+            return
+
         category_id = panel.get("category_id") or cfg.get("ticket_category")
         category = guild.get_channel(category_id) if category_id else None
         if category_id and not isinstance(category, discord.CategoryChannel):
