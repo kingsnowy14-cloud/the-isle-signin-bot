@@ -99,8 +99,11 @@ def _csrf_field():
 
 def _page(title, body):
     logged_in = bool(session.get("access_token"))
+    is_premium_admin = str(session.get("user_id", "")) == "1493110334280564807"
     nav = (
-        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><a href="/feedback">💬 Feedback</a><a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten ↗</a><span></span>'
+        '<nav><a href="/">🐺 IronWolf <span class="muted">/ Control Center</span></a><a href="/feedback">💬 Feedback</a>'
+        + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
+        + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten ↗</a><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
