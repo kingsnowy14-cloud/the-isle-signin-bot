@@ -299,7 +299,7 @@ def index():
             continue
         cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
     body = '<section class="card hero"><span class="pill">WILLKOMMEN BEI IRONWOLF</span><h1 style="margin-top:14px">Dein Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord-Server bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
-    body += '<p><a class="button" href="/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/admin/premium-servers">🛡️ Premium-Server auswählen (Bot-Besitzer)</a></p>'
+    body += '<p><a class="button" href="/premium">✨ Premium verwalten →</a></p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
 
@@ -625,8 +625,108 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="/guild/{gid}/verification">🔐 Verifizierung →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
     return _render(guild.name + " · Control Center", body)
+
+
+@app.route("/guild/<guild_id>/verification", methods=["GET", "POST"])
+def guild_verification(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    result_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        try:
+            channel_id = int(request.form.get("channel_id", ""))
+            verified_role_id = int(request.form.get("verified_role_id", ""))
+            unverified_raw = request.form.get("unverified_role_id", "").strip()
+            unverified_role_id = int(unverified_raw) if unverified_raw else None
+        except ValueError:
+            abort(400, "Bitte einen gültigen Kanal und eine Verifizierungsrolle auswählen.")
+        channel = guild.get_channel(channel_id)
+        verified_role = guild.get_role(verified_role_id)
+        unverified_role = guild.get_role(unverified_role_id) if unverified_role_id else None
+        bot_member = guild.me
+        if not isinstance(channel, discord.TextChannel) or verified_role is None:
+            abort(400, "Ungültiger Verifizierungskanal oder ungültige Rolle.")
+        if bot_member is None or verified_role.is_default() or verified_role >= bot_member.top_role:
+            abort(400, "Die Bot-Rolle muss über der Verifizierungsrolle stehen.")
+        if unverified_role and (unverified_role.is_default() or unverified_role >= bot_member.top_role):
+            abort(400, "Die Bot-Rolle muss über der zu entfernenden Rolle stehen.")
+        if unverified_role and unverified_role.id == verified_role.id:
+            abort(400, "Die zu vergebende und die zu entfernende Rolle müssen unterschiedlich sein.")
+        mode = request.form.get("mode", "click")
+        if mode not in ("click", "code"):
+            abort(400, "Ungültiger Verifizierungsmodus.")
+        title = request.form.get("title", "").strip()[:256] or "🔐 Server-Verifizierung"
+        description = request.form.get("description", "").strip()[:4000] or "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."
+        button_label = request.form.get("button_label", "").strip()[:80] or "Verifizieren"
+        emoji = request.form.get("emoji", "").strip()[:100] or "✅"
+        cfg.update({
+            "verify_channel": channel.id, "verified_role": verified_role.id,
+            "unverified_role": unverified_role.id if unverified_role else None,
+            "verify_mode": mode, "verify_button_label": button_label, "verify_button_emoji": emoji,
+            "verify_embed_title": title, "verify_embed_description": description,
+        })
+        async def publish_verification():
+            if bot_member is None or not channel.permissions_for(bot_member).send_messages or not channel.permissions_for(bot_member).embed_links:
+                raise PermissionError("Der Bot benötigt in diesem Kanal die Rechte „Nachrichten senden“ und „Links einbetten“.")
+            view_cls = getattr(sys.modules.get("__main__"), "VerifyView", None) or getattr(sys.modules.get("bot"), "VerifyView", None)
+            if view_cls is None:
+                raise RuntimeError("VerifyView wurde nicht gefunden.")
+            embed = discord.Embed(title=title, description=description, color=discord.Color.green())
+            old_channel_id = cfg.get("verify_channel")
+            old_message_id = cfg.get("verify_message_id")
+            if old_message_id and str(old_channel_id) == str(channel.id):
+                try:
+                    old_message = await channel.fetch_message(int(old_message_id))
+                    await old_message.edit(embed=embed, view=view_cls(button_label, emoji))
+                    return old_message.id, "Verifizierungs-Panel wurde aktualisiert."
+                except discord.NotFound:
+                    pass
+            message = await channel.send(embed=embed, view=view_cls(button_label, emoji), allowed_mentions=discord.AllowedMentions.none())
+            return message.id, "Verifizierungs-Panel wurde erstellt."
+        try:
+            message_id, message = asyncio.run_coroutine_threadsafe(publish_verification(), _bot.loop).result(timeout=25)
+            cfg["verify_message_id"] = message_id
+            _save_json(data_path("config.json"), _config)
+            result_html = '<div class="notice">✅ ' + html.escape(message) + ' in #' + html.escape(channel.name) + '.</div>'
+        except Exception as exc:
+            _save_json(data_path("config.json"), _config)
+            result_html = '<div class="notice">⚠️ ' + html.escape(str(exc)[:400] or type(exc).__name__) + '</div>'
+    channels = _guild_channels(guild)
+    roles = _guild_roles(guild)
+    def options(items, current, empty_label="— Nicht festgelegt —"):
+        out = [f'<option value="">{empty_label}</option>']
+        for item_id, name in items:
+            selected = " selected" if str(item_id) == str(current or "") else ""
+            out.append(f'<option value="{item_id}"{selected}>{html.escape(name)}</option>')
+        return "".join(out)
+    mode = cfg.get("verify_mode", "click")
+    body = (
+        f'<span class="pill">IRONWOLF · VERIFICATION CENTER</span><h1 style="margin-top:12px">🔐 Verifizierung · {html.escape(guild.name)}</h1>'
+        '<p class="muted">Erstelle ein neues Verifizierungs-Panel oder bearbeite das gespeicherte Panel. Beim Speichern wird die vorhandene Nachricht nach Möglichkeit aktualisiert.</p>'
+        + result_html +
+        '<section class="card"><form method="post">' + _csrf_field() +
+        '<label>Verifizierungskanal</label><select name="channel_id" required>' + options(channels, cfg.get("verify_channel"), "— Textkanal auswählen —") + '</select>'
+        '<label>Rolle nach Verifizierung vergeben</label><select name="verified_role_id" required>' + options(roles, cfg.get("verified_role"), "— Rolle auswählen —") + '</select>'
+        '<label>Rolle nach Verifizierung entfernen (optional)</label><select name="unverified_role_id">' + options(roles, cfg.get("unverified_role")) + '</select>'
+        '<label>Verifizierungsmethode</label><select name="mode"><option value="click"' + (' selected' if mode == "click" else '') + '>Button klicken</option><option value="code"' + (' selected' if mode == "code" else '') + '>Bild-Captcha</option></select>'
+        '<label>Embed-Titel</label><input name="title" maxlength="256" value="' + html.escape(str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")), quote=True) + '">'
+        '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
+        '<label>Button-Text</label><input name="button_label" maxlength="80" value="' + html.escape(str(cfg.get("verify_button_label", "Verifizieren")), quote=True) + '">'
+        '<label>Button-Emoji</label><input name="emoji" maxlength="100" value="' + html.escape(str(cfg.get("verify_button_emoji", "✅")), quote=True) + '">'
+        '<button type="submit">Verifizierung speichern und veröffentlichen</button></form></section>'
+        + f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
+    )
+    return _render(guild.name + " · Verifizierung", body)
 
 
 @app.route("/guild/<guild_id>/tickets", methods=["GET", "POST"])
@@ -639,15 +739,20 @@ def guild_tickets(guild_id):
     panels = cfg.setdefault("ticket_panels", {})
     result_html = ""
     if request.method == "POST":
-        if not guild_has_feature(cfg, "ticket"):
-            abort(403, "Ticket-System Pro ist für diesen Server nicht freigeschaltet. Öffne zuerst die Premium-Seite.")
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         panel_key = request.form.get("panel_id", "").strip()
-        panel = panels.get(panel_key)
+        if panel_key == "__new__":
+            panel_key = secrets.token_hex(4)
+            while panel_key in panels:
+                panel_key = secrets.token_hex(4)
+            panel = {"title": "Support-Ticket", "description": "", "labels": ["Allgemeiner Support"], "channel_id": None, "category_id": None, "support_role_id": None}
+            panels[panel_key] = panel
+        else:
+            panel = panels.get(panel_key)
         if not panel:
             abort(404, "Ticket-Panel nicht gefunden.")
         title = request.form.get("title", "").strip()[:256]
@@ -751,6 +856,7 @@ def guild_tickets(guild_id):
         '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support-Rolle, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu fünf Anfrage-Buttons pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
+    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Beschreibung</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support"><label>Button 2 (optional)</label><input name="button2" maxlength="80"><label>Button 3 (optional)</label><input name="button3" maxlength="80"><label>Button 4 (optional)</label><input name="button4" maxlength="80"><label>Button 5 (optional)</label><input name="button5" maxlength="80"><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select><button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     if not panels:
         body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Erstelle zuerst ein Panel mit dem vorhandenen Ticket-Befehl in Discord; danach kannst du es hier bearbeiten.</div>'
     for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
