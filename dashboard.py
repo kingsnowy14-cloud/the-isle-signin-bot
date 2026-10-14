@@ -623,48 +623,56 @@ def guild_page(guild_id):
             import copy
             original_cfg = copy.deepcopy(cfg)
             try:
-                for key, meta in TEXT_SETTINGS.items():
-                    if key in request.form:
-                        value = request.form.get(key, "").strip()
-                        if len(value) > meta["max_length"]:
-                            abort(400, f"{meta['label']} ist zu lang.")
-                        cfg[key] = value
-                for key in BOOL_SETTINGS:
-                    cfg[key] = request.form.get(key) == "on"
+                settings_section = request.form.get("settings_section", "general")
+                if settings_section == "general":
+                    for key, meta in TEXT_SETTINGS.items():
+                        if key in request.form:
+                            value = request.form.get(key, "").strip()
+                            if len(value) > meta["max_length"]:
+                                abort(400, f"{meta['label']} ist zu lang.")
+                            cfg[key] = value
+                    for key in ("welcome_bots_enabled", "automod_enabled"):
+                        cfg[key] = request.form.get(key) == "on"
                 channel_ids = {str(item.id) for item in guild.text_channels}
                 category_ids = {str(item.id) for item in guild.categories}
                 role_ids = {str(item.id) for item in guild.roles}
-                for key in CHANNEL_SETTINGS:
-                    raw = request.form.get(key, "").strip()
-                    allowed_ids = category_ids if key == "ticket_category" else channel_ids
-                    if raw and raw not in allowed_ids:
-                        abort(400, "Ungültiger Kanal oder ungültige Kategorie ausgewählt.")
-                    cfg[key] = int(raw) if raw else None
-                for key, meta in NUMBER_SETTINGS.items():
-                    raw = request.form.get(key, str(meta["default"])).strip()
-                    try:
-                        value = int(raw)
-                    except (TypeError, ValueError):
-                        abort(400, f"{meta['label']}: Bitte eine ganze Zahl eingeben.")
-                    if not meta["min"] <= value <= meta["max"]:
-                        abort(400, f"{meta['label']} muss zwischen {meta['min']} und {meta['max']} liegen.")
-                    cfg[key] = value
-                voice_ids = {str(item.id) for item in guild.voice_channels}
-                for key in VOICE_CHANNEL_SETTINGS:
-                    raw = request.form.get(key, "").strip()
+                if settings_section == "channels":
+                    for key in CHANNEL_SETTINGS:
+                        if key not in request.form:
+                            continue
+                        raw = request.form.get(key, "").strip()
+                        allowed_ids = category_ids if key == "ticket_category" else channel_ids
+                        if raw and raw not in allowed_ids:
+                            abort(400, "Ungültiger Kanal oder ungültige Kategorie ausgewählt.")
+                        cfg[key] = int(raw) if raw else None
+                if settings_section == "security":
+                    for key in ("anti_nuke_enabled", "anti_raid_enabled"):
+                        cfg[key] = request.form.get(key) == "on"
+                    for key, meta in NUMBER_SETTINGS.items():
+                        raw = request.form.get(key, str(meta["default"])).strip()
+                        try:
+                            value = int(raw)
+                        except (TypeError, ValueError):
+                            abort(400, f"{meta['label']}: Bitte eine ganze Zahl eingeben.")
+                        if not meta["min"] <= value <= meta["max"]:
+                            abort(400, f"{meta['label']} muss zwischen {meta['min']} und {meta['max']} liegen.")
+                        cfg[key] = value
+                if settings_section == "voice":
+                    voice_ids = {str(item.id) for item in guild.voice_channels}
+                    raw = request.form.get("tempvoice_trigger", "").strip()
                     if raw and raw not in voice_ids:
                         abort(400, "Ungültigen Sprachkanal ausgewählt.")
-                    cfg[key] = int(raw) if raw else None
-                for key in CATEGORY_SETTINGS:
-                    raw = request.form.get(key, "").strip()
+                    cfg["tempvoice_trigger"] = int(raw) if raw else None
+                    raw = request.form.get("tempvoice_category", "").strip()
                     if raw and raw not in category_ids:
                         abort(400, "Ungültige Kategorie ausgewählt.")
-                    cfg[key] = int(raw) if raw else None
-                for key in ROLE_SETTINGS:
-                    raw = request.form.get(key, "").strip()
-                    if raw and raw not in role_ids:
-                        abort(400, "Ungültige Rolle ausgewählt.")
-                    cfg[key] = int(raw) if raw else None
+                    cfg["tempvoice_category"] = int(raw) if raw else None
+                if settings_section == "roles":
+                    for key in ROLE_SETTINGS:
+                        raw = request.form.get(key, "").strip()
+                        if raw and raw not in role_ids:
+                            abort(400, "Ungültige Rolle ausgewählt.")
+                        cfg[key] = int(raw) if raw else None
                 _save_json(data_path("config.json"), _config)
             except Exception as exc:
                 from werkzeug.exceptions import HTTPException
@@ -687,29 +695,43 @@ def guild_page(guild_id):
             selected = " selected" if str(item_id) == str(current or "") else ""
             out.append(f'<option value="{item_id}"{selected}>{html.escape(name)}</option>')
         return "".join(out)
-    settings_html = '<section class="card" id="settings"><h2>⚙️ Server-Einstellungen</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings">'
-    for key, label in TEXT_SETTINGS.items():
-        settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-    for key, label in BOOL_SETTINGS.items():
-        checked = " checked" if cfg.get(key, False) else ""
-        settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
-    for key, label in CHANNEL_SETTINGS.items():
-        settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(channels, cfg.get(key))}</select>'
-    for key, label in ROLE_SETTINGS.items():
-        settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
-    voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
-    category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
-    settings_html += '<h3>🔊 Temporäre Voice-Kanäle</h3><p class="muted">Wenn das vorhandene Temp-Voice-Modul aktiv ist, können Nutzer über den Trigger-Sprachkanal eigene Voice-Räume erstellen.</p>'
-    for key, label in VOICE_CHANNEL_SETTINGS.items():
-        settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{voice_options}</select>'
-    for key, label in CATEGORY_SETTINGS.items():
-        settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{category_options}</select>'
-    settings_html += '<h3>🛡️ Schutz & Moderation</h3><p class="muted">Stelle ein, ab welcher Aktivität die vorhandenen Schutzmodule reagieren.</p>'
-    for key, meta in NUMBER_SETTINGS.items():
-        value = int(cfg.get(key, meta["default"]) or meta["default"])
-        value = max(meta["min"], min(meta["max"], value))
-        settings_html += f'<label for="{key}">{html.escape(meta["label"])}</label><small>{html.escape(meta["help"])}</small><input id="{key}" name="{key}" type="number" min="{meta["min"]}" max="{meta["max"]}" step="1" value="{value}" required>'
-    settings_html += '<button type="submit">Einstellungen speichern</button></form></section>'
+    section = request.args.get("section", "overview")
+    settings_html = ""
+    if section in ("general", "channels", "roles", "voice", "security"):
+        settings_html = '<section class="card"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
+        if section == "general":
+            for key, label in TEXT_SETTINGS.items():
+                settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
+            for key in ("welcome_bots_enabled", "automod_enabled"):
+                label = BOOL_SETTINGS[key]
+                checked = " checked" if cfg.get(key, False) else ""
+                settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
+        if section == "channels":
+            for key, label in CHANNEL_SETTINGS.items():
+                if key == "ticket_category":
+                    continue
+                settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(channels, cfg.get(key))}</select>'
+        if section == "roles":
+            for key, label in ROLE_SETTINGS.items():
+                settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+        if section == "voice":
+            voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
+            category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
+            settings_html += '<p class="muted">Wähle den Sprachkanal, über den Nutzer temporäre Räume erstellen, und die Zielkategorie.</p>'
+            settings_html += f'<label for="tempvoice_trigger">{VOICE_CHANNEL_SETTINGS["tempvoice_trigger"]}</label><select id="tempvoice_trigger" name="tempvoice_trigger">{voice_options}</select>'
+            settings_html += f'<label for="tempvoice_category">{CATEGORY_SETTINGS["tempvoice_category"]}</label><select id="tempvoice_category" name="tempvoice_category">{category_options}</select>'
+        if section == "security":
+            for key in ("anti_nuke_enabled", "anti_raid_enabled"):
+                label = BOOL_SETTINGS[key]
+                checked = " checked" if cfg.get(key, False) else ""
+                settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
+            for key, meta in NUMBER_SETTINGS.items():
+                value = int(cfg.get(key, meta["default"]) or meta["default"])
+                value = max(meta["min"], min(meta["max"], value))
+                settings_html += f'<label for="{key}">{html.escape(meta["label"])}</label><small>{html.escape(meta["help"])}</small><input id="{key}" name="{key}" type="number" min="{meta["min"]}" max="{meta["max"]}" step="1" value="{value}" required>'
+        if section == "channels":
+            settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
+        settings_html += '<button type="submit">Änderungen speichern</button></form></section>'
     module_records = _module_records(guild.id)
     modules_html = '<section class="card" id="modules"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
     for item in module_records:
@@ -719,7 +741,17 @@ def guild_page(guild_id):
         modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="#settings">⚙️ Einstellungen</a><a href="#modules">🧩 Module</a><a href="/guild/{gid}/commands">⌘ Befehle verwalten →</a><a href="/guild/{gid}/tickets">🎟️ Ticket-System →</a><a href="/guild/{gid}/verification">🔐 Verifizierung →</a><a href="#module-template">＋ Modul-Vorlage</a></div><div class="grid"><div>{settings_html}</div><div>{modules_html}{module_form}</div></div><div class="card"><h2>⌘ Befehle separat verwalten</h2><p class="muted">Alle Prefix- und Slash-Befehle findest du jetzt auf einer eigenen Seite mit Gruppen und Filtern.</p><a class="button" href="/guild/{gid}/commands">Befehlsübersicht öffnen →</a></div>'
+    section_links = [
+        ("general", "⚙️ Allgemein", "Willkommensnachricht und AutoMod"),
+        ("channels", "📡 Kanäle & Logs", "Log-, Ticket-, Vorschlags- und Verifizierungskanäle"),
+        ("roles", "🎭 Rollen", "Support-, Verifizierungs- und Sicherheitsrollen"),
+        ("voice", "🔊 Temp Voice", "Trigger und Kategorie für temporäre Räume"),
+        ("security", "🛡️ Schutz", "Anti-Nuke, Anti-Raid und Schwellenwerte"),
+    ]
+    settings_cards = ''.join('<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><strong>Seite öffnen →</strong></a>' for key, title, desc in section_links)
+    if section != "overview" and section not in {"general", "channels", "roles", "voice", "security"}:
+        section = "overview"
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general">⚙️ Allgemein</a><a href="/guild/{gid}?section=channels">📡 Kanäle</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Temp Voice</a><a href="/guild/{gid}?section=security">🛡️ Schutz</a><a href="/guild/{gid}/modules">🧩 Module</a><a href="/guild/{gid}/module-template">＋ Modul-Vorlage</a><a href="/guild/{gid}/commands">⌘ Befehle</a></div>{settings_html if section != "overview" else '<h2>🧩 Einstellungsbereiche</h2><div class="grid">' + settings_cards + '</div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div><div class="card"><h2>Weitere eigene Verwaltungsseiten</h2><div class="grid"><a class="card" href="/guild/{gid}/tickets"><h2>🎟️ Tickets</h2><p>Panels, Branding und Ticketoptionen</p></a><a class="card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost und Rollen</p></a><a class="card" href="/guild/{gid}/automation"><h2>⚙️ Automation</h2><p>Geplante Ankündigungen</p></a><a class="card" href="/guild/{gid}/commands"><h2>⌘ Befehle</h2><p>Prefix- und Slash-Befehle</p></a><a class="card" href="/guild/{gid}/actions"><h2>🎮 Aktionszentrale</h2><p>Serveraktionen</p></a></div></div>'
     return _render(guild.name + " · Control Center", body)
 
 
