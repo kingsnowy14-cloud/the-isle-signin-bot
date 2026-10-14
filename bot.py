@@ -15,7 +15,7 @@ from typing import Optional
 from urllib.parse import parse_qs, urlparse
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
-from premium import guild_has_feature, expired_grants, mark_expiry_dm_sent
+from premium import guild_has_feature, account_plan, expired_grants, mark_expiry_dm_sent
 from collections import defaultdict, deque
 import discord
 from discord import app_commands
