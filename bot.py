@@ -5382,6 +5382,70 @@ async def weihnachten_info(interaction: discord.Interaction):
     await interaction.response.send_message(embed=seasonal_embed("weihnachten", active), ephemeral=True)
 
 
+
+# Prefix aliases for seasonal events, alongside the existing slash commands.
+@bot.group(name="halloween", invoke_without_command=True)
+@commands.guild_only()
+async def halloween_prefix(ctx):
+    await ctx.reply(embed=seasonal_embed("halloween", bool(guild_config(ctx.guild.id).get("seasonal_events", {}).get("halloween", {}).get("enabled", False))), mention_author=False)
+
+
+@halloween_prefix.command(name="aktivieren")
+@commands.has_guild_permissions(manage_guild=True)
+async def halloween_prefix_aktivieren(ctx):
+    cfg = guild_config(ctx.guild.id)
+    cfg.setdefault("seasonal_events", {})["halloween"] = {"enabled": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+    save_json(CONFIG_FILE, config)
+    await ctx.reply("🎃 Halloween wurde aktiviert!", embed=seasonal_embed("halloween", True), mention_author=False)
+
+
+@halloween_prefix.command(name="deaktivieren")
+@commands.has_guild_permissions(manage_guild=True)
+async def halloween_prefix_deaktivieren(ctx):
+    cfg = guild_config(ctx.guild.id)
+    cfg.setdefault("seasonal_events", {})["halloween"] = {"enabled": False, "updated_at": datetime.now(timezone.utc).isoformat()}
+    save_json(CONFIG_FILE, config)
+    await ctx.reply("👻 Halloween wurde deaktiviert.", embed=seasonal_embed("halloween", False), mention_author=False)
+
+
+@halloween_prefix.command(name="gruss")
+async def halloween_prefix_gruss(ctx):
+    embed = discord.Embed(title="👻 Süßes oder Saures!", description="🐺 IronWolf wünscht euch eine schaurig-schöne Halloween-Nacht!\n\nPasst auf euch auf – und sammelt ordentlich Süßigkeiten! 🎃🦇", color=discord.Color.from_rgb(255, 119, 0))
+    embed.set_footer(text="IronWolf · Halloween")
+    await ctx.reply(embed=embed, mention_author=False)
+
+
+@bot.group(name="weihnachten", invoke_without_command=True)
+@commands.guild_only()
+async def weihnachten_prefix(ctx):
+    await ctx.reply(embed=seasonal_embed("weihnachten", bool(guild_config(ctx.guild.id).get("seasonal_events", {}).get("weihnachten", {}).get("enabled", False))), mention_author=False)
+
+
+@weihnachten_prefix.command(name="aktivieren")
+@commands.has_guild_permissions(manage_guild=True)
+async def weihnachten_prefix_aktivieren(ctx):
+    cfg = guild_config(ctx.guild.id)
+    cfg.setdefault("seasonal_events", {})["weihnachten"] = {"enabled": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+    save_json(CONFIG_FILE, config)
+    await ctx.reply("🎄 Weihnachten wurde aktiviert!", embed=seasonal_embed("weihnachten", True), mention_author=False)
+
+
+@weihnachten_prefix.command(name="deaktivieren")
+@commands.has_guild_permissions(manage_guild=True)
+async def weihnachten_prefix_deaktivieren(ctx):
+    cfg = guild_config(ctx.guild.id)
+    cfg.setdefault("seasonal_events", {})["weihnachten"] = {"enabled": False, "updated_at": datetime.now(timezone.utc).isoformat()}
+    save_json(CONFIG_FILE, config)
+    await ctx.reply("❄️ Weihnachten wurde deaktiviert.", embed=seasonal_embed("weihnachten", False), mention_author=False)
+
+
+@weihnachten_prefix.command(name="gruss")
+async def weihnachten_prefix_gruss(ctx):
+    embed = discord.Embed(title="🎄 Frohe Weihnachten!", description="🐺❄️ IronWolf wünscht euch und euren Liebsten wunderschöne Feiertage, viel Freude und einen guten Start ins neue Jahr! 🎁✨", color=discord.Color.from_rgb(70, 195, 255))
+    embed.set_footer(text="IronWolf · Weihnachtszeit")
+    await ctx.reply(embed=embed, mention_author=False)
+
+
 @bot.event
 async def on_ready():
     migrate_all_guild_configs()
