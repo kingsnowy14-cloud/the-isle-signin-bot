@@ -112,6 +112,74 @@ class ShopBuyButton(discord.ui.Button):
         )
 
 
+class CandyShopPurchaseView(discord.ui.View):
+    """Öffentlicher Dashboard-Candyshop; bezahlt wird mit Halloween-Süßigkeiten."""
+    def __init__(self, guild_id: int, items: dict):
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+        self.items = dict(items)
+        self.selected_name = None
+        options = [
+            discord.SelectOption(
+                label=name[:100],
+                description=f"{sweets_amount(item['price'])} · {(item.get('description') or 'Keine Beschreibung')[:70]}",
+                value=name
+            )
+            for name, item in list(items.items())[:25]
+        ]
+        self.add_item(CandyShopSelect(options, self))
+        self.add_item(CandyShopBuyButton(self))
+
+
+class CandyShopSelect(discord.ui.Select):
+    def __init__(self, options, parent_view):
+        super().__init__(placeholder="Candyshop-Artikel auswählen …", min_values=1, max_values=1, options=options)
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        self.parent_view.selected_name = self.values[0]
+        item = self.parent_view.items.get(self.values[0])
+        if item:
+            await interaction.response.send_message(
+                f"Ausgewählt: **{self.values[0]}** für **{sweets_amount(item['price'])}**. Klicke auf „Mit 🍬 kaufen“.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message("Dieser Artikel ist nicht mehr verfügbar.", ephemeral=True)
+
+
+class CandyShopBuyButton(discord.ui.Button):
+    def __init__(self, parent_view):
+        super().__init__(label="Mit 🍬 kaufen", style=discord.ButtonStyle.success, emoji="🛍️")
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.guild_id != self.parent_view.guild_id:
+            await interaction.response.send_message("Dieser Shop gehört zu einem anderen Server.", ephemeral=True)
+            return
+        name = self.parent_view.selected_name
+        item = self.parent_view.items.get(name) if name else None
+        if not item:
+            await interaction.response.send_message("Wähle zuerst einen Artikel aus.", ephemeral=True)
+            return
+        u = halloween_user(interaction.guild_id, interaction.user.id)
+        price = int(item["price"])
+        if int(u.get("sweets", 0)) < price:
+            await interaction.response.send_message(
+                f"Du hast nicht genug 🍬. Preis: **{sweets_amount(price)}**, dein Vorrat: **{sweets_amount(u.get('sweets', 0))}**.",
+                ephemeral=True
+            )
+            return
+        u["sweets"] -= price
+        u.setdefault("halloween_items", []).append(name)
+        u["candyshop_purchases"] = int(u.get("candyshop_purchases", 0)) + 1
+        save()
+        await interaction.response.send_message(
+            f"🎉 Gekauft: **{name}** für **{sweets_amount(price)}**! Du hast noch **{sweets_amount(u['sweets'])}**.",
+            ephemeral=True
+        )
+
+
 class ShopView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -167,12 +235,12 @@ class Economy(commands.Cog):
         if not shop_items:
             await interaction.response.send_message("Im Dashboard sind keine gültigen Artikel hinterlegt.", ephemeral=True)
             return
-        embed = discord.Embed(title="🍬 IronWolf · Candyshop", description="Wähle einen Artikel aus und kaufe ihn direkt. Bezahlt wird mit deinem Bankguthaben.", color=discord.Color.from_rgb(255, 105, 180))
+        embed = discord.Embed(title="🍬 IronWolf · Candyshop", description="Wähle einen Artikel aus und kaufe ihn mit deinen gesammelten Halloween-Süßigkeiten.", color=discord.Color.from_rgb(255, 105, 180))
         for name, item in shop_items.items():
             desc = item.get("description") or "Ein exklusiver Shop-Artikel."
-            embed.add_field(name=f"{name} · {money(item['price'])}", value=desc, inline=False)
+            embed.add_field(name=f"{name} · {sweets_amount(item['price'])}", value=desc, inline=False)
         embed.set_footer(text="Artikel und Preise werden vom Server-Team im Dashboard verwaltet.")
-        await interaction.response.send_message(embed=embed, view=ShopPurchaseView(interaction.guild_id, shop_items), ephemeral=False)
+        await interaction.response.send_message(embed=embed, view=CandyShopPurchaseView(interaction.guild_id, shop_items), ephemeral=False)
 
     @commands.command(name="work")
     @commands.guild_only()
@@ -330,12 +398,13 @@ class HalloweenEconomy(commands.Cog):
     @commands.guild_only()
     async def farm_sweets(self, ctx):
         u = halloween_user(ctx.guild.id, ctx.author.id)
-        wait = 60 - (time.time() - float(u.get("sweets_at", 0)))
+        wait = 86400 - (time.time() - float(u.get("sweets_at", 0)))
         if wait > 0:
             await ctx.reply(f"🎃 Du kannst in {int(wait)} Sekunden wieder Süßigkeiten sammeln.", mention_author=False)
             return
         amount = random.randint(8, 24)
         u["sweets"] += amount
+        u["sweets_earned_total"] = int(u.get("sweets_earned_total", 0)) + amount
         u["sweets_at"] = time.time()
         save()
         await ctx.reply(f"🍬 Du hast {sweets_amount(amount)} gesammelt! Vorrat: **{sweets_amount(u['sweets'])}**.", mention_author=False)
