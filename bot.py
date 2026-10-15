@@ -305,7 +305,11 @@ DEFAULT_GUILD_CONFIG = {
     "trusted_security_role": None,
     "welcome_channel": None,
     "welcome_message": "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.",
+    "welcome_embed": False,
     "welcome_bots_enabled": False,
+    "leave_enabled": True,
+    "leave_message": "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!",
+    "leave_embed": False,
     "invite_tracker_enabled": False,
     "invite_log_channel": None,
     "social_links": {},
@@ -3789,10 +3793,21 @@ async def on_member_join(member: discord.Member):
                             .replace("{server}", discord.utils.escape_markdown(member.guild.name))
                             .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
             try:
-                await welcome_channel.send(
-                    welcome_text[:1900],
-                    allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                )
+                if cfg.get("welcome_embed", False):
+                    welcome_embed = discord.Embed(
+                        title="👋 Willkommen!",
+                        description=welcome_text[:4000],
+                        color=discord.Color.from_rgb(70, 195, 255),
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                    welcome_embed.set_thumbnail(url=member.display_avatar.url)
+                    welcome_embed.set_footer(text=f"{member.guild.name} · Willkommen")
+                    await welcome_channel.send(embed=welcome_embed, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
+                else:
+                    await welcome_channel.send(
+                        welcome_text[:1900],
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                    )
                 print(f"[WELCOME] Sent welcome for {member} ({member.id}) in #{welcome_channel.name} ({member.guild.id}).")
             except (discord.Forbidden, discord.HTTPException) as exc:
                 print(f"[WELCOME] Sending failed in guild {member.guild.id}, channel {welcome_channel_id}: {type(exc).__name__}: {exc}")
@@ -3871,6 +3886,31 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
 
 @bot.event
 async def on_member_remove(member: discord.Member):
+    # Send the configured goodbye message when a member leaves or is removed.
+    cfg = guild_config(member.guild.id)
+    leave_channel_id = cfg.get("welcome_channel")
+    if cfg.get("leave_enabled", True) and leave_channel_id:
+        channel = member.guild.get_channel(int(leave_channel_id))
+        if isinstance(channel, discord.TextChannel):
+            template = cfg.get("leave_message") or "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!"
+            leave_text = (template.replace("{user}", discord.utils.escape_markdown(member.display_name))
+                          .replace("{server}", discord.utils.escape_markdown(member.guild.name))
+                          .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
+            try:
+                if cfg.get("leave_embed", False):
+                    goodbye_embed = discord.Embed(
+                        title="👋 Auf Wiedersehen",
+                        description=leave_text[:4000],
+                        color=discord.Color.from_rgb(130, 150, 175),
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                    goodbye_embed.set_thumbnail(url=member.display_avatar.url)
+                    goodbye_embed.set_footer(text=f"{member.guild.name} · Auf Wiedersehen")
+                    await channel.send(embed=goodbye_embed, allowed_mentions=discord.AllowedMentions.none())
+                else:
+                    await channel.send(leave_text[:1900], allowed_mentions=discord.AllowedMentions.none())
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[GOODBYE] Sending failed in guild {member.guild.id}: {type(exc).__name__}: {exc}")
     # Fires for both voluntary leaves and kicks; only a matching kick audit entry is counted.
     await record_nuke_action(member.guild, "Mitglied gekickt", discord.AuditLogAction.kick,
                              member.id, str(member))
