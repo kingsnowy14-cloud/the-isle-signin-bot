@@ -677,6 +677,50 @@ def guild_automation(guild_id):
     return _render(guild.name + " · Automation Pro", body)
 
 
+
+@app.route("/guild/<guild_id>/seasonal", methods=["GET", "POST"])
+def seasonal_dashboard(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    if not guild_has_feature(cfg, "seasonal_events"):
+        body = '<section class="card"><span class="pill">👑 PREMIUM</span><h1>🎃🎄 Saison-Events</h1><p>Halloween, Weihnachten und Adventskalender gemeinsam verwalten. Diese Kategorie benötigt ein aktives Premium-Modul.</p><a class="button" href="/guild/' + gid + '/premium">Premium verwalten →</a></section>'
+        return _render("Saison-Events · Premium", body, 403)
+    events = cfg.setdefault("seasonal_events", {})
+    halloween = events.setdefault("halloween", {})
+    christmas = events.setdefault("weihnachten", {})
+    advent = cfg.setdefault("advent_calendar", {})
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        halloween["enabled"] = request.form.get("halloween_enabled") == "on"
+        christmas["enabled"] = request.form.get("christmas_enabled") == "on"
+        advent["enabled"] = request.form.get("advent_enabled") == "on"
+        halloween["message"] = request.form.get("halloween_message", "").strip()[:1000]
+        christmas["message"] = request.form.get("christmas_message", "").strip()[:1000]
+        advent["reward"] = max(1, min(10000, int(request.form.get("advent_reward", "25"))))
+        advent["message"] = request.form.get("advent_message", "").strip()[:500]
+        advent["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _save_json(data_path("config.json"), _config)
+        return redirect(url_for("seasonal_dashboard", guild_id=gid))
+    def check(name, value):
+        return ' checked' if value else ''
+    body = '<section class="card hero"><span class="pill">👑 PREMIUM-MODUL</span><h1>🎃🎄 Saison-Events</h1><p>Eine eigene Kategorie für Halloween und Weihnachten inklusive Adventskalender. Einstellungen gelten nur für diesen Server.</p></section>'
+    body += '<section class="card"><h2>🎃 Halloween</h2><form method="post">' + _csrf_field()
+    body += '<div class="check"><input type="checkbox" id="halloween_enabled" name="halloween_enabled"' + check("halloween_enabled", halloween.get("enabled", False)) + '><label for="halloween_enabled">Halloween-Event aktiv</label></div>'
+    body += '<label for="halloween_message">Eigener Halloween-Text</label><textarea id="halloween_message" name="halloween_message" maxlength="1000">' + html.escape(str(halloween.get("message", ""))) + '</textarea>'
+    body += '<h2>🎄 Weihnachten</h2><div class="check"><input type="checkbox" id="christmas_enabled" name="christmas_enabled"' + check("christmas_enabled", christmas.get("enabled", False)) + '><label for="christmas_enabled">Weihnachts-Event aktiv</label></div>'
+    body += '<label for="christmas_message">Eigener Weihnachts-Text</label><textarea id="christmas_message" name="christmas_message" maxlength="1000">' + html.escape(str(christmas.get("message", ""))) + '</textarea>'
+    body += '<h2>🎁 Adventskalender (1.–24. Dezember)</h2><div class="check"><input type="checkbox" id="advent_enabled" name="advent_enabled"' + check("advent_enabled", advent.get("enabled", False)) + '><label for="advent_enabled">Adventskalender aktiv</label></div>'
+    reward = max(1, min(10000, int(advent.get("reward", 25) or 25)))
+    body += '<label for="advent_reward">Punkte pro Türchen</label><input type="number" id="advent_reward" name="advent_reward" min="1" max="10000" value="' + str(reward) + '" required>'
+    body += '<label for="advent_message">Adventskalender-Nachricht</label><textarea id="advent_message" name="advent_message" maxlength="500">' + html.escape(str(advent.get("message", "Frohe Adventszeit! Hier ist deine tägliche Belohnung."))) + '</textarea>'
+    body += '<button type="submit">Saison-Einstellungen speichern</button></form></section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
+    return _render("Saison-Events · IronWolf", body)
+
+
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
 def guild_page(guild_id):
     guild, response = _authorized_guild(guild_id)
@@ -845,10 +889,10 @@ def guild_page(guild_id):
         ("voice", "🔊 Temp Voice", "Trigger und Kategorie für temporäre Räume"),
         ("security", "🛡️ Schutz", "Anti-Nuke, Anti-Raid und Schwellenwerte"),
     ]
-    settings_cards = ''.join('<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><strong>Seite öffnen →</strong></a>' for key, title, desc in section_links)
+    settings_cards = ''.join('<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><strong>Seite öffnen →</strong></a>' for key, title, desc in section_links) + '<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '/seasonal"><h2>🎃🎄 Saison-Events</h2><p>Halloween, Weihnachten und Adventskalender · Premium</p><strong>Events verwalten →</strong></a>'
     if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general">⚙️ Allgemein</a><a href="/guild/{gid}?section=channels">📡 Kanäle</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Temp Voice</a><a href="/guild/{gid}?section=security">🛡️ Schutz</a><a href="/guild/{gid}?section=modules">🧩 Module</a><a href="/guild/{gid}?section=template">＋ Modul-Vorlage</a><a href="/guild/{gid}/commands">⌘ Befehle</a></div>{settings_html if section != "overview" else '<h2>🧩 Einstellungsbereiche</h2><div class="grid">' + settings_cards + '</div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div><div class="card"><h2>Weitere eigene Verwaltungsseiten</h2><div class="grid"><a class="card" href="/guild/{gid}/tickets"><h2>🎟️ Tickets</h2><p>Panels, Branding und Ticketoptionen</p></a><a class="card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost und Rollen</p></a><a class="card" href="/guild/{gid}/automation"><h2>⚙️ Automation</h2><p>Geplante Ankündigungen</p></a><a class="card" href="/guild/{gid}/commands"><h2>⌘ Befehle</h2><p>Prefix- und Slash-Befehle</p></a><a class="card" href="/guild/{gid}/actions"><h2>🎮 Aktionszentrale</h2><p>Serveraktionen</p></a></div></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general">⚙️ Allgemein</a><a href="/guild/{gid}?section=channels">📡 Kanäle</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Temp Voice</a><a href="/guild/{gid}?section=security">🛡️ Schutz</a><a href="/guild/{gid}/seasonal">🎃🎄 Saison-Events</a><a href="/guild/{gid}?section=modules">🧩 Module</a><a href="/guild/{gid}?section=template">＋ Modul-Vorlage</a><a href="/guild/{gid}/commands">⌘ Befehle</a></div>{settings_html if section != "overview" else '<h2>🧩 Einstellungsbereiche</h2><div class="grid">' + settings_cards + '</div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div><div class="card"><h2>Weitere eigene Verwaltungsseiten</h2><div class="grid"><a class="card" href="/guild/{gid}/tickets"><h2>🎟️ Tickets</h2><p>Panels, Branding und Ticketoptionen</p></a><a class="card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost und Rollen</p></a><a class="card" href="/guild/{gid}/automation"><h2>⚙️ Automation</h2><p>Geplante Ankündigungen</p></a><a class="card" href="/guild/{gid}/commands"><h2>⌘ Befehle</h2><p>Prefix- und Slash-Befehle</p></a><a class="card" href="/guild/{gid}/actions"><h2>🎮 Aktionszentrale</h2><p>Serveraktionen</p></a></div></div>'
     return _render(guild.name + " · Control Center", body)
 
 
