@@ -2415,8 +2415,13 @@ async def birthday_register(interaction: discord.Interaction, monat: app_command
 @bot.tree.command(name="geburtstag-loeschen", description="Lösche deinen gespeicherten Geburtstag")
 @app_commands.guild_only()
 async def birthday_delete(interaction: discord.Interaction):
-    guild_config(interaction.guild_id).setdefault("birthdays", {}).pop(str(interaction.user.id), None)
+    cfg = guild_config(interaction.guild_id)
+    cfg.setdefault("birthdays", {}).pop(str(interaction.user.id), None)
     save_json(CONFIG_FILE, config)
+    try:
+        await refresh_birthday_calendar(interaction.guild, cfg)
+    except Exception as exc:
+        print(f"[BIRTHDAY] Calendar refresh after delete failed: {type(exc).__name__}: {exc}", flush=True)
     await interaction.response.send_message("Dein gespeicherter Geburtstag wurde gelöscht.", ephemeral=True)
 
 async def birthday_worker():
