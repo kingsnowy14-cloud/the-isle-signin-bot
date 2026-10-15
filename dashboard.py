@@ -890,10 +890,6 @@ def guild_page(guild_id):
                         if raw and raw not in role_ids:
                             abort(400, "Ungültige Rolle ausgewählt.")
                         cfg[key] = int(raw) if raw else None
-                    selected_self_roles = request.form.getlist("self_roles")
-                    if any(raw not in role_ids for raw in selected_self_roles if raw):
-                        abort(400, "Ungültige Selbstrolle ausgewählt.")
-                    cfg["self_roles"] = sorted({int(raw) for raw in selected_self_roles if raw})
                 _save_json(data_path("config.json"), _config)
                 changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
                 _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
@@ -948,12 +944,6 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
-            selected_self_roles = {str(item) for item in cfg.get("self_roles", [])}
-            self_role_options = []
-            for role_id, role_name in roles:
-                selected = " selected" if str(role_id) in selected_self_roles else ""
-                self_role_options.append(f'<option value="{role_id}"{selected}>{html.escape(role_name)}</option>')
-            settings_html += '<label for="self_roles">Freigegebene Selbstrollen</label><small>Mitglieder können nur diese Rollen über /selbstrolle selbst vergeben oder entfernen. Keine Admin- oder Sicherheitsrollen freigeben.</small><select id="self_roles" name="self_roles" multiple size="8">' + "".join(self_role_options) + "</select>"
         if section == "voice":
             voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
             category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
@@ -990,8 +980,97 @@ def guild_page(guild_id):
     settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Einstellungen öffnen →</span></a>' for key, title, desc in section_links)
     if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=security">🛡️ Sicherheit</a><a href="/guild/{gid}?section=channels">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/seasonal">🎃 Saison-Events</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}/audit-log">📜 Audit-Log</a><a href="/guild/{gid}/stats">📊 Live-Statistiken</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/seasonal"><h2>🎃🎄 Saison-Events</h2><p>Halloween, Weihnachten, Adventskalender und Candyshop-Artikel.</p><span class="card-link">Saison-Events öffnen →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a> <a class="button secondary" href="/guild/{gid}/messages">✉️ Bot-Nachrichten →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=security">🛡️ Sicherheit</a><a href="/guild/{gid}?section=channels">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/seasonal">🎃 Saison-Events</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/messages">✉️ Bot-Nachrichten</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}/audit-log">📜 Audit-Log</a><a href="/guild/{gid}/stats">📊 Live-Statistiken</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/seasonal"><h2>🎃🎄 Saison-Events</h2><p>Halloween, Weihnachten, Adventskalender und Candyshop-Artikel.</p><span class="card-link">Saison-Events öffnen →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
     return _render(guild.name + " · Control Center", body)
+
+
+
+@app.route("/guild/<guild_id>/messages", methods=["GET", "POST"])
+def guild_message_builder(guild_id):
+    """Compose and immediately send a bot message with link and role buttons."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    error_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        try:
+            channel_id = int(request.form.get("channel_id", "0"))
+        except (TypeError, ValueError):
+            abort(400, "Bitte einen gültigen Kanal auswählen.")
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            abort(400, "Bitte einen Textkanal auswählen.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        bot_member = guild.me
+        if bot_member is None or not channel.permissions_for(bot_member).send_messages:
+            abort(403, "Der Bot darf in diesem Kanal keine Nachrichten senden.")
+        content = request.form.get("message", "").strip()
+        title = request.form.get("embed_title", "").strip()[:256]
+        description = request.form.get("embed_description", "").strip()[:4000]
+        if len(content) > 2000:
+            abort(400, "Die Nachricht darf höchstens 2000 Zeichen haben.")
+        if not content and not title and not description:
+            abort(400, "Bitte gib Nachrichtentext oder Embed-Inhalt ein.")
+        button_records = []
+        labels = request.form.getlist("button_label")
+        types = request.form.getlist("button_type")
+        urls = request.form.getlist("button_url")
+        role_ids = request.form.getlist("button_role")
+        if len(types) > 5:
+            abort(400, "Pro Nachricht sind maximal 5 Buttons erlaubt.")
+        for idx, kind in enumerate(types):
+            label = labels[idx].strip()[:80] if idx < len(labels) else ""
+            if not label:
+                abort(400, "Jeder Button braucht einen Namen.")
+            if kind == "link":
+                url = urls[idx].strip() if idx < len(urls) else ""
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                if parsed.scheme != "https" or not parsed.netloc:
+                    abort(400, "Link-Buttons benötigen eine gültige HTTPS-URL.")
+                button_records.append({"type": "link", "label": label, "url": url})
+            elif kind == "role":
+                raw_role = role_ids[idx] if idx < len(role_ids) else ""
+                role = guild.get_role(int(raw_role)) if raw_role.isdigit() else None
+                if role is None or role.is_default() or role.managed or role >= bot_member.top_role:
+                    abort(400, "Die ausgewählte Rolle kann vom Bot nicht verwaltet werden.")
+                button_records.append({"type": "role", "label": label, "role_id": role.id})
+            else:
+                abort(400, "Unbekannter Button-Typ.")
+        embed = None
+        if title or description:
+            embed = discord.Embed(title=title or None, description=description or None, color=discord.Color.blurple())
+        view = _bot.build_dashboard_message_view(guild.id, button_records) if _bot and hasattr(_bot, "build_dashboard_message_view") else None
+        async def _send():
+            return await channel.send(content=content or None, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+        try:
+            future = asyncio.run_coroutine_threadsafe(_send(), _bot.loop)
+            sent = future.result(timeout=20)
+        except Exception as exc:
+            print(f"[DASHBOARD] Message builder send failed in guild {gid}: {type(exc).__name__}: {exc}", flush=True)
+            abort(502, "Die Bot-Nachricht konnte nicht gesendet werden. Prüfe Bot-Rechte und Railway-Logs.")
+        cfg.setdefault("message_panels", {})[str(sent.id)] = {
+            "channel_id": channel.id,
+            "buttons": button_records,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Bot-Nachricht gesendet", session.get("user_id"), f"Kanal {channel.name}; {len(button_records)} Buttons")
+        return redirect(url_for("guild_message_builder", guild_id=gid, sent="1"))
+    channels = ''.join(f'<option value="{ch.id}">{html.escape(ch.name)}</option>' for ch in guild.text_channels)
+    roles = ''.join(f'<option value="{role.id}">{html.escape(role.name)}</option>' for role in guild.roles if not role.is_default() and not role.managed)
+    button_fields = ''
+    for index in range(1, 6):
+        button_fields += f'<div class="notice"><strong>Button {index}</strong><label>Typ</label><select name="button_type"><option value="link">HTTPS-Link-Button</option><option value="role">Rollen-Button</option></select><label>Button-Name</label><input name="button_label" maxlength="80" placeholder="z. B. Website oder Mitglied werden"><label>HTTPS-Link (nur für Link-Button)</label><input name="button_url" type="text" placeholder="https://example.com"><label>Rolle (nur für Rollen-Button)</label><select name="button_role"><option value="">— Rolle auswählen —</option>{roles}</select></div>'
+    success = '<div class="notice">✅ Nachricht wurde vom Bot gesendet.</div>' if request.args.get("sent") == "1" else ''
+    body = '<section class="card"><span class="pill">BOT MESSAGE BUILDER</span><h1>✉️ Bot-Nachricht erstellen</h1><p>Der Bot sendet die Nachricht direkt in den gewählten Kanal. Du kannst bis zu fünf HTTPS-Link- oder Rollen-Buttons hinzufügen. Rollen-Buttons geben die ausgewählte Rolle oder entfernen sie wieder.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<label for="channel_id">Zielkanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" placeholder="Deine Nachricht …"></textarea><h3>Optionaler Embed</h3><label for="embed_title">Embed-Titel</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="Titel"><label for="embed_description">Embed-Beschreibung</label><textarea id="embed_description" name="embed_description" maxlength="4000" placeholder="Beschreibung im Embed …"></textarea><h3>Buttons (optional)</h3><p class="muted">Fülle nur die Buttons aus, die du verwenden möchtest. Maximal fünf Buttons pro Nachricht.</p>' + button_fields + '<button type="submit">🚀 Nachricht senden</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
+    return _render(guild.name + " · Bot-Nachricht", body)
 
 
 @app.route("/guild/<guild_id>/audit-log", methods=["GET"])
