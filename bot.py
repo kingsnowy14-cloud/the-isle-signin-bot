@@ -3727,18 +3727,34 @@ async def on_member_join(member: discord.Member):
             }
             log_channel = member.guild.get_channel(int(cfg["invite_log_channel"]))
             if isinstance(log_channel, discord.TextChannel):
+                embed = discord.Embed(
+                    title="🐺 IronWolf · Invite Tracker",
+                    description=f"**{discord.utils.escape_markdown(member.display_name)}** ist dem Server beigetreten.",
+                    color=discord.Color.from_rgb(70, 195, 255),
+                    timestamp=datetime.now(timezone.utc),
+                )
+                embed.add_field(name="👤 Neues Mitglied", value=f"{member.mention}\\n`{member}`", inline=False)
                 if used_invite:
-                    inviter = used_invite.inviter.mention if used_invite.inviter else "Unbekannt"
-                    await log_channel.send(
-                        f"📨 {member.mention} ist dem Server beigetreten.\n"
-                        f"**Eingeladen von:** {inviter}\n"
-                        f"**Einladung:** `{used_invite.code}` · **Nutzungen:** {used_invite.uses}"
+                    inviter = used_invite.inviter
+                    embed.add_field(
+                        name="🤝 Eingeladen von",
+                        value=inviter.mention if inviter else "Unbekannt",
+                        inline=True,
                     )
+                    embed.add_field(name="🔗 Invite-Code", value=f"`{used_invite.code}`", inline=True)
+                    embed.add_field(name="📊 Verwendungen", value=str(used_invite.uses or 0), inline=True)
                 else:
-                    await log_channel.send(
-                        f"📨 {member.mention} ist beigetreten, aber die verwendete Einladung "
-                        "konnte nicht eindeutig erkannt werden (z. B. Vanity-URL oder einmaliger Invite)."
+                    embed.add_field(
+                        name="🔎 Einladung",
+                        value="Die verwendete Einladung konnte nicht eindeutig erkannt werden (z. B. Vanity-URL oder einmaliger Invite).",
+                        inline=False,
                     )
+                embed.set_thumbnail(url=member.display_avatar.url)
+                embed.set_footer(text=f"IronWolf Invite Tracker · {member.guild.name}")
+                await log_channel.send(
+                    embed=embed,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[INVITE TRACKER] Could not read invites for guild {guild_id}: {type(exc).__name__}: {exc}")
     unverified_id = cfg.get("unverified_role")
