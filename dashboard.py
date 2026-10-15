@@ -793,7 +793,7 @@ def birthday_dashboard(guild_id):
     bot_member = guild.get_member(_bot.user.id) if _bot and _bot.user else None
     can_manage_roles = bool(bot_member and bot_member.guild_permissions.manage_roles)
     for role in reversed(guild.roles):
-        if role.is_default or role.managed:
+        if role.is_default() or role.managed:
             continue
         selected = " selected" if str(role.id) == selected_role else ""
         can_assign = bool(can_manage_roles and bot_member and role < bot_member.top_role)
