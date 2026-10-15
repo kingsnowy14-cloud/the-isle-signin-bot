@@ -1080,11 +1080,19 @@ def guild_message_builder(guild_id):
         for idx, kind in enumerate(types):
             label = labels[idx].strip()[:80] if idx < len(labels) else ""
             url = urls[idx].strip() if idx < len(urls) else ""
-            raw_role = role_ids[idx] if idx < len(role_ids) else ""
+            raw_role = role_ids[idx].strip() if idx < len(role_ids) else ""
+            # A row is optional unless the user has entered any of its fields.
             if not label and not url and not raw_role:
                 continue
+            # If only the type selector has its default value, ignore the untouched row.
+            if kind == "link" and not label and not url:
+                continue
+            if kind == "role" and not label and not raw_role:
+                continue
+            if kind not in {"link", "role"}:
+                abort(400, "Unbekannter Button-Typ.")
             if not label:
-                abort(400, "Jeder verwendete Button braucht einen Namen.")
+                label = "Rolle erhalten" if kind == "role" else "Link öffnen"
             if kind == "link":
                 from urllib.parse import urlparse
                 parsed = urlparse(url)
@@ -1094,10 +1102,8 @@ def guild_message_builder(guild_id):
             elif kind == "role":
                 role = guild.get_role(int(raw_role)) if raw_role.isdigit() else None
                 if role is None or role.is_default() or role.managed or role >= bot_member.top_role:
-                    abort(400, "Die ausgewählte Rolle kann vom Bot nicht verwaltet werden.")
+                    abort(400, "Wähle eine gültige Rolle aus, die unter der höchsten Bot-Rolle liegt.")
                 button_records.append({"type": "role", "label": label, "role_id": role.id})
-            else:
-                abort(400, "Unbekannter Button-Typ.")
         embed = None
         if title or description:
             embed = discord.Embed(title=title or None, description=description or None, color=discord.Color.blurple())
@@ -1120,12 +1126,14 @@ def guild_message_builder(guild_id):
         return redirect(url_for("guild_message_builder", guild_id=gid, sent="1"))
     channels = ''.join(f'<option value="{ch.id}">{html.escape(ch.name)}</option>' for ch in guild.text_channels)
     roles = ''.join(f'<option value="{role.id}">{html.escape(role.name)}</option>' for role in guild.roles if not role.is_default() and not role.managed)
-    button_fields = ''
+    button_fields = '<div id="button-fields">'
     for index in range(1, 6):
         default_type = "role" if index == 1 else "link"
-        button_fields += f'<div class="notice"><strong>Button {index} {"(Basis-Button)" if index == 1 else "(optional)"}</strong><label>Typ</label><select name="button_type"><option value="role" {"selected" if default_type == "role" else ""}>Rollen-Button</option><option value="link" {"selected" if default_type == "link" else ""}>HTTPS-Link-Button</option></select><label>Button-Name</label><input name="button_label" maxlength="80" placeholder="z. B. Rolle erhalten (leer lassen = kein Button)"><label>HTTPS-Link (nur für Link-Button)</label><input name="button_url" type="text" placeholder="https://example.com (nur bei Link-Button)"><label>Rolle (nur für Rollen-Button)</label><select name="button_role"><option value="">— Rolle auswählen —</option>{roles}</select></div>'
+        hidden = "" if index == 1 else ' hidden'
+        button_fields += f'<div class="notice manual-button-row" data-button-row="{index}"{hidden}><strong>Button {index}</strong><button type="button" class="secondary remove-button" onclick="removeManualButton({index})" style="float:right">Entfernen</button><label>Typ</label><select name="button_type"><option value="role" {"selected" if default_type == "role" else ""}>Rollen-Button</option><option value="link" {"selected" if default_type == "link" else ""}>HTTPS-Link-Button</option></select><label>Button-Name (optional)</label><input name="button_label" maxlength="80" placeholder="Leer = automatischer Name"><label>HTTPS-Link (nur für Link-Button)</label><input name="button_url" type="url" placeholder="https://example.com"><label>Rolle (nur für Rollen-Button)</label><select name="button_role"><option value="">— Rolle auswählen —</option>{roles}</select></div>'
+    button_fields += '</div><button type="button" id="add-button-row" class="secondary" onclick="addManualButton()">＋ Button hinzufügen</button><script>function addManualButton(){const rows=[...document.querySelectorAll(".manual-button-row")];const row=rows.find(r=>r.hidden);if(!row){alert("Maximal fünf Buttons pro Nachricht.");return;}row.hidden=false;}function removeManualButton(n){const row=document.querySelector('[data-button-row="'+n+'"]');if(!row)return;row.querySelectorAll("input").forEach(i=>i.value="");row.querySelectorAll("select").forEach(s=>s.selectedIndex=0);row.hidden=true;}document.querySelector("form").addEventListener("submit",function(){document.querySelectorAll(".manual-button-row[hidden]").forEach(row=>row.querySelectorAll("input,select").forEach(el=>el.disabled=true));});</script>'
     success = '<div class="notice">✅ Nachricht wurde vom Bot gesendet.</div>' if request.args.get("sent") == "1" else ''
-    body = '<section class="card"><span class="pill">BOT MESSAGE BUILDER</span><h1>✉️ Bot-Nachricht erstellen</h1><p>Der Bot sendet die Nachricht direkt in den gewählten Kanal. Du kannst bis zu fünf HTTPS-Link- oder Rollen-Buttons hinzufügen. Rollen-Buttons geben die ausgewählte Rolle oder entfernen sie wieder.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<label for="channel_id">Zielkanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" placeholder="Deine Nachricht …"></textarea><h3>Optionaler Embed</h3><label for="embed_title">Embed-Titel</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="Titel"><label for="embed_description">Embed-Beschreibung</label><textarea id="embed_description" name="embed_description" maxlength="4000" placeholder="Beschreibung im Embed …"></textarea><h3>Buttons (optional)</h3><p class="muted">Es reicht, einen Rollen-Button auszufüllen. Die vier weiteren Buttons sind optional. Leere Button-Felder werden ignoriert. Du kannst pro Nachricht bis zu fünf Rollen- und/oder HTTPS-Link-Buttons kombinieren.</p>' + button_fields + '<button type="submit">🚀 Nachricht senden</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
+    body = '<section class="card"><span class="pill">BOT MESSAGE BUILDER</span><h1>✉️ Bot-Nachricht erstellen</h1><p>Der Bot sendet die Nachricht direkt in den gewählten Kanal. Füge nur die Buttons hinzu, die du wirklich brauchst. Jeder Button kann manuell ergänzt oder entfernt werden. Namen sind optional; ohne Namen setzt der Bot einen passenden Standardtext. Rollen-Buttons geben die ausgewählte Rolle oder entfernen sie wieder.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<label for="channel_id">Zielkanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" placeholder="Deine Nachricht …"></textarea><h3>Optionaler Embed</h3><label for="embed_title">Embed-Titel</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="Titel"><label for="embed_description">Embed-Beschreibung</label><textarea id="embed_description" name="embed_description" maxlength="4000" placeholder="Beschreibung im Embed …"></textarea><h3>Buttons (optional)</h3><p class="muted">Mit „Button hinzufügen“ fügst du weitere Felder bei Bedarf hinzu. Unbenutzte Felder werden ignoriert. Du kannst bis zu fünf Rollen- und/oder HTTPS-Link-Buttons kombinieren.</p>' + button_fields + '<button type="submit">🚀 Nachricht senden</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     return _render(guild.name + " · Bot-Nachricht", body)
 
 
