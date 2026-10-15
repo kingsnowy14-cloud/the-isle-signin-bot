@@ -55,6 +55,11 @@ TEXT_SETTINGS = {
         "help": "Platzhalter: {mention}, {server}, {count}",
         "max_length": 1000,
     },
+    "leave_message": {
+        "label": "Auf-Wiedersehen-Nachricht",
+        "help": "Platzhalter: {user}, {server}, {count}",
+        "max_length": 1000,
+    },
 }
 BOOL_SETTINGS = {
     "welcome_bots_enabled": "Willkommensnachrichten für Bots",
@@ -792,7 +797,7 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "automod_enabled"):
+                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled"):
                         cfg[key] = request.form.get(key) == "on"
                     requested_invite_tracker = request.form.get("invite_tracker_enabled") == "on"
                     if requested_invite_tracker and not guild_has_feature(cfg, "invite_tracker"):
@@ -873,8 +878,8 @@ def guild_page(guild_id):
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "automod_enabled"):
-                label = BOOL_SETTINGS[key]
+            for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled"):
+                label = {"welcome_embed": "Willkommensnachricht als Embed senden", "leave_enabled": "Auf-Wiedersehen-Nachricht aktivieren", "leave_embed": "Auf-Wiedersehen-Nachricht als Embed senden"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
             if guild_has_feature(cfg, "invite_tracker"):
