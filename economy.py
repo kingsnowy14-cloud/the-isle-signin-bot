@@ -409,7 +409,7 @@ class HalloweenEconomy(commands.Cog):
         save()
         await ctx.reply(f"🍬 Du hast {sweets_amount(amount)} gesammelt! Vorrat: **{sweets_amount(u['sweets'])}**.", mention_author=False)
 
-    @app_commands.command(name="süßes", description="Sammle Halloween-Süßigkeiten")
+    @app_commands.command(name="suesses", description="Sammle Halloween-Süßigkeiten")
     @app_commands.guild_only()
     async def farm_sweets_slash(self, interaction: discord.Interaction):
         u = halloween_user(interaction.guild_id, interaction.user.id)
