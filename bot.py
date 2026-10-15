@@ -5672,7 +5672,9 @@ async def halloween_prefix(ctx):
 @commands.has_guild_permissions(manage_guild=True)
 async def halloween_prefix_aktivieren(ctx):
     cfg = guild_config(ctx.guild.id)
-    cfg.setdefault("seasonal_events", {})["halloween"] = {"enabled": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+    event = cfg.setdefault("seasonal_events", {}).setdefault("halloween", {})
+    event["enabled"] = True
+    event["updated_at"] = datetime.now(timezone.utc).isoformat()
     save_json(CONFIG_FILE, config)
     await ctx.reply("🎃 Halloween wurde aktiviert!", embed=seasonal_embed("halloween", True), mention_author=False)
 
@@ -5681,7 +5683,9 @@ async def halloween_prefix_aktivieren(ctx):
 @commands.has_guild_permissions(manage_guild=True)
 async def halloween_prefix_deaktivieren(ctx):
     cfg = guild_config(ctx.guild.id)
-    cfg.setdefault("seasonal_events", {})["halloween"] = {"enabled": False, "updated_at": datetime.now(timezone.utc).isoformat()}
+    event = cfg.setdefault("seasonal_events", {}).setdefault("halloween", {})
+    event["enabled"] = False
+    event["updated_at"] = datetime.now(timezone.utc).isoformat()
     save_json(CONFIG_FILE, config)
     await ctx.reply("👻 Halloween wurde deaktiviert.", embed=seasonal_embed("halloween", False), mention_author=False)
 
@@ -5703,7 +5707,9 @@ async def weihnachten_prefix(ctx):
 @commands.has_guild_permissions(manage_guild=True)
 async def weihnachten_prefix_aktivieren(ctx):
     cfg = guild_config(ctx.guild.id)
-    cfg.setdefault("seasonal_events", {})["weihnachten"] = {"enabled": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+    event = cfg.setdefault("seasonal_events", {}).setdefault("weihnachten", {})
+    event["enabled"] = True
+    event["updated_at"] = datetime.now(timezone.utc).isoformat()
     save_json(CONFIG_FILE, config)
     await ctx.reply("🎄 Weihnachten wurde aktiviert!", embed=seasonal_embed("weihnachten", True), mention_author=False)
 
@@ -5712,7 +5718,9 @@ async def weihnachten_prefix_aktivieren(ctx):
 @commands.has_guild_permissions(manage_guild=True)
 async def weihnachten_prefix_deaktivieren(ctx):
     cfg = guild_config(ctx.guild.id)
-    cfg.setdefault("seasonal_events", {})["weihnachten"] = {"enabled": False, "updated_at": datetime.now(timezone.utc).isoformat()}
+    event = cfg.setdefault("seasonal_events", {}).setdefault("weihnachten", {})
+    event["enabled"] = False
+    event["updated_at"] = datetime.now(timezone.utc).isoformat()
     save_json(CONFIG_FILE, config)
     await ctx.reply("❄️ Weihnachten wurde deaktiviert.", embed=seasonal_embed("weihnachten", False), mention_author=False)
 
