@@ -641,6 +641,7 @@ def guild_automation(guild_id):
             else:
                 job.update({"enabled": False, "channel_id": template.get("channel_id"), "message": template.get("message", ""), "interval_minutes": int(template.get("interval_minutes", 1440) or 1440), "next_run_at": None})
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Nachrichtenplaner", session.get("user_id"), "Änderung gespeichert")
             return redirect(url_for("guild_automation", guild_id=gid))
         channel_raw = request.form.get("channel_id", "").strip()
         message = request.form.get("message", "").strip()
@@ -664,6 +665,7 @@ def guild_automation(guild_id):
             job.update({"enabled": enabled, "channel_id": channel.id, "message": message, "interval_minutes": interval})
             job["next_run_at"] = (datetime.now(timezone.utc) + timedelta(minutes=interval)).isoformat() if enabled else None
         _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Nachrichtenplaner", session.get("user_id"), "Änderung gespeichert")
         return redirect(url_for("guild_automation", guild_id=gid))
     if not guild_has_feature(cfg, "automation"):
         body = '<section class="card"><h1>⚙️ Automation Pro</h1><p>Geplante Nachrichten sind eine Premium-Funktion. Verknüpfe zuerst dein berechtigtes Konto auf der Premium-Seite.</p><a class="button" href="/guild/' + gid + '/premium">Premium verwalten →</a></section>'
@@ -735,11 +737,13 @@ def seasonal_dashboard(guild_id):
                 abort(400, "Ein Artikel mit diesem Namen existiert bereits.")
             candyshop["items"].append({"name": name, "description": description, "price": price})
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Saison-Events", session.get("user_id"), "Änderung gespeichert")
             return redirect(url_for("seasonal_dashboard", guild_id=gid))
         if action == "delete_shop_item":
             name = request.form.get("item_name", "")
             candyshop["items"] = [item for item in candyshop["items"] if item.get("name") != name]
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Saison-Events", session.get("user_id"), "Änderung gespeichert")
             return redirect(url_for("seasonal_dashboard", guild_id=gid))
         halloween["enabled"] = request.form.get("halloween_enabled") == "on"
         christmas["enabled"] = request.form.get("christmas_enabled") == "on"
@@ -750,6 +754,7 @@ def seasonal_dashboard(guild_id):
         advent["message"] = request.form.get("advent_message", "").strip()[:500]
         advent["updated_at"] = datetime.now(timezone.utc).isoformat()
         _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Saison-Events", session.get("user_id"), "Änderung gespeichert")
         return redirect(url_for("seasonal_dashboard", guild_id=gid))
     def check(name, value):
         return ' checked' if value else ''
@@ -1085,6 +1090,7 @@ def guild_economy(guild_id):
         economy_cfg["currency_name"] = currency_name
         economy_cfg["enabled"] = request.form.get("enabled") == "on"
         _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Wirtschaft & Shops", session.get("user_id"), "Änderung gespeichert")
         return redirect(url_for("guild_economy", guild_id=gid))
     enabled = economy_cfg.get("enabled", True)
     checked = " checked" if enabled else ""
@@ -1137,6 +1143,7 @@ def guild_verification(guild_id):
                 asyncio.run_coroutine_threadsafe(delete_verification_message(), _bot.loop).result(timeout=20)
                 cfg.pop("verify_message_id", None)
                 _save_json(data_path("config.json"), _config)
+                _audit_dashboard_change(guild.id, "Verifizierung", session.get("user_id"), "Änderung gespeichert")
                 return redirect(url_for("guild_verification", guild_id=gid))
             except Exception as exc:
                 result_html = '<div class="notice">⚠️ Löschen fehlgeschlagen: ' + html.escape(str(exc)[:300]) + '</div>'
@@ -1194,9 +1201,11 @@ def guild_verification(guild_id):
             message_id, message = asyncio.run_coroutine_threadsafe(publish_verification(), _bot.loop).result(timeout=25)
             cfg["verify_message_id"] = message_id
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Verifizierung", session.get("user_id"), "Änderung gespeichert")
             result_html = '<div class="notice">✅ ' + html.escape(message) + ' in #' + html.escape(channel.name) + '.</div>'
         except Exception as exc:
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Verifizierung", session.get("user_id"), "Änderung gespeichert")
             result_html = '<div class="notice">⚠️ ' + html.escape(str(exc)[:400] or type(exc).__name__) + '</div>'
     channels = _guild_channels(guild)
     roles = _guild_roles(guild)
@@ -1260,6 +1269,7 @@ def guild_tickets(guild_id):
                 asyncio.run_coroutine_threadsafe(delete_ticket_message(), _bot.loop).result(timeout=20)
                 del panels[panel_key]
                 _save_json(data_path("config.json"), _config)
+                _audit_dashboard_change(guild.id, "Tickets", session.get("user_id"), "Änderung gespeichert")
                 return redirect(url_for("guild_tickets", guild_id=gid))
             except Exception as exc:
                 result_html = '<div class="notice">⚠️ Löschen fehlgeschlagen: ' + html.escape(str(exc)[:300]) + '</div>'
@@ -1394,12 +1404,14 @@ def guild_tickets(guild_id):
         try:
             result = asyncio.run_coroutine_threadsafe(save_panel_message(), _bot.loop).result(timeout=25)
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Tickets", session.get("user_id"), "Änderung gespeichert")
             result_html = '<div class="notice">✅ ' + html.escape(result) + '</div>'
         except Exception as exc:
             # Keep configuration only if the panel was successfully published/edited.
             detail = str(exc) or type(exc).__name__
             result_html = '<div class="notice">⚠️ ' + html.escape(detail[:500]) + '</div>'
         _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Tickets", session.get("user_id"), "Änderung gespeichert")
     channels = _guild_channels(guild)
     categories = [(item.id, item.name) for item in guild.categories]
     roles = _guild_roles(guild)
