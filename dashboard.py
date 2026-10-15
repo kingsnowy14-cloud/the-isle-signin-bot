@@ -804,7 +804,7 @@ def birthday_dashboard(guild_id):
     for month_index, month_name in enumerate(month_names):
         entries = sorted(month_entries[month_index], key=lambda entry: (entry[0], entry[1].casefold()))
         if entries:
-            items = ''.join('<li><strong>' + f'{day:02d}.' + '</strong> ' + html.escape(name) + '</li>' for day, name, _ in entries)
+            items = ''.join('<li><strong>' + f'{day:02d}.' + '</strong> ' + html.escape(name) + '<form method="post" style="display:inline;margin-left:8px">' + _csrf_field() + '<input type="hidden" name="action" value="delete_birthday"><input type="hidden" name="user_id" value="' + html.escape(user_id) + '"><button class="secondary" style="margin:0;padding:3px 8px;font-size:12px" type="submit">Entfernen</button></form></li>' for day, name, user_id in entries)
         else:
             items = '<li class="muted">Noch keine Geburtstage</li>'
         month_cards.append('<section class="card" style="margin:0"><h2>' + month_name + '</h2><ul style="margin:0;padding-left:22px">' + items + '</ul></section>')
