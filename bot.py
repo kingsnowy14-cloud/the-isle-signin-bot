@@ -2329,6 +2329,10 @@ class BirthdayRegisterView(discord.ui.View):
         await interaction.response.send_modal(BirthdayRegisterModal())
 
 
+# Expose the view to the dashboard module, which publishes the registration panel.
+bot.BirthdayRegisterView = BirthdayRegisterView
+
+
 @bot.tree.command(name="geburtstag-kanal", description="Lege den Kanal für automatische Geburtstagsgrüße fest")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
