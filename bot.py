@@ -5266,6 +5266,122 @@ async def module_status_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+
+# Seasonal IronWolf commands: Halloween and Christmas.
+SEASONAL_EVENTS = {
+    "halloween": {
+        "title": "🎃 IronWolf · Halloween",
+        "color": discord.Color.from_rgb(255, 119, 0),
+        "description": "Die gruseligste Zeit des Jahres ist da! 👻",
+        "details": "Freut euch auf schaurige Stimmung, Community-Aktionen und Halloween-Spaß. Süßes oder Saures! 🦇",
+    },
+    "weihnachten": {
+        "title": "🎄 IronWolf · Weihnachts-Update",
+        "color": discord.Color.from_rgb(70, 195, 255),
+        "description": "Der Winterzauber ist bei IronWolf angekommen! ❄️",
+        "details": "Zeit für festliche Grüße, gemütliche Community-Momente und weihnachtliche Stimmung. Frohe Weihnachten! 🎁",
+    },
+}
+
+
+def seasonal_embed(event_key, active=None):
+    event = SEASONAL_EVENTS[event_key]
+    embed = discord.Embed(
+        title=event["title"],
+        description=event["description"],
+        color=event["color"],
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="✨ Saison-Update", value=event["details"], inline=False)
+    if active is not None:
+        embed.add_field(name="Event-Status", value="🟢 Aktiviert" if active else "🔴 Deaktiviert", inline=True)
+    embed.set_footer(text="IronWolf · Gemeinsam stark durchs ganze Jahr")
+    return embed
+
+
+async def set_seasonal_event(interaction: discord.Interaction, event_key: str, active: bool):
+    if interaction.guild_id is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild_id)
+    seasonal = cfg.setdefault("seasonal_events", {})
+    seasonal[event_key] = {"enabled": active, "updated_at": datetime.now(timezone.utc).isoformat()}
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        content=("🎉 Das Saison-Event wurde aktiviert!" if active else "Das Saison-Event wurde deaktiviert."),
+        embed=seasonal_embed(event_key, active),
+        allowed_mentions=discord.AllowedMentions.none(),
+    )
+
+
+@bot.tree.command(name="halloween-aktivieren", description="Aktiviert das IronWolf-Halloween-Event")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def halloween_aktivieren(interaction: discord.Interaction):
+    await set_seasonal_event(interaction, "halloween", True)
+
+
+@bot.tree.command(name="halloween-deaktivieren", description="Deaktiviert das IronWolf-Halloween-Event")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def halloween_deaktivieren(interaction: discord.Interaction):
+    await set_seasonal_event(interaction, "halloween", False)
+
+
+@bot.tree.command(name="halloween-gruss", description="Sendet einen gruseligen IronWolf-Halloween-Gruß")
+@app_commands.guild_only()
+async def halloween_gruss(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="👻 Süßes oder Saures!",
+        description="🐺 IronWolf wünscht euch eine schaurig-schöne Halloween-Nacht!\n\nPasst auf euch auf – und sammelt ordentlich Süßigkeiten! 🎃🦇",
+        color=discord.Color.from_rgb(255, 119, 0),
+    )
+    embed.set_footer(text="IronWolf · Halloween")
+    await interaction.response.send_message(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+
+
+@bot.tree.command(name="halloween-info", description="Zeigt Informationen zum IronWolf-Halloween-Event")
+@app_commands.guild_only()
+async def halloween_info(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    active = bool(cfg.get("seasonal_events", {}).get("halloween", {}).get("enabled", False))
+    await interaction.response.send_message(embed=seasonal_embed("halloween", active), ephemeral=True)
+
+
+@bot.tree.command(name="weihnachten-aktivieren", description="Aktiviert das IronWolf-Weihnachts-Event")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def weihnachten_aktivieren(interaction: discord.Interaction):
+    await set_seasonal_event(interaction, "weihnachten", True)
+
+
+@bot.tree.command(name="weihnachten-deaktivieren", description="Deaktiviert das IronWolf-Weihnachts-Event")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def weihnachten_deaktivieren(interaction: discord.Interaction):
+    await set_seasonal_event(interaction, "weihnachten", False)
+
+
+@bot.tree.command(name="weihnachts-gruss", description="Sendet einen festlichen IronWolf-Weihnachtsgruß")
+@app_commands.guild_only()
+async def weihnachts_gruss(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🎄 Frohe Weihnachten!",
+        description="🐺❄️ IronWolf wünscht euch und euren Liebsten wunderschöne Feiertage, viel Freude und einen guten Start ins neue Jahr! 🎁✨",
+        color=discord.Color.from_rgb(70, 195, 255),
+    )
+    embed.set_footer(text="IronWolf · Weihnachtszeit")
+    await interaction.response.send_message(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+
+
+@bot.tree.command(name="weihnachten-info", description="Zeigt Informationen zum IronWolf-Weihnachts-Event")
+@app_commands.guild_only()
+async def weihnachten_info(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    active = bool(cfg.get("seasonal_events", {}).get("weihnachten", {}).get("enabled", False))
+    await interaction.response.send_message(embed=seasonal_embed("weihnachten", active), ephemeral=True)
+
+
 @bot.event
 async def on_ready():
     migrate_all_guild_configs()
