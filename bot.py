@@ -64,6 +64,10 @@ async def dashboard_prefix_command_check(ctx):
         return False
     cog = getattr(ctx, "cog", None)
     module_name = cog.__class__.__name__ if cog is not None else None
+    if ctx.command and ctx.command.qualified_name.split(" ")[0].lower() in {"halloween", "weihnachten", "advent", "adventskalender"}:
+        if not guild_has_feature(guild_config(guild_id), "seasonal_events"):
+            await ctx.reply("👑 Dieses Saison-Event ist ein Premium-Modul. Bitte aktiviere Premium im Dashboard.", mention_author=False)
+            return False
     return await dashboard_module_enabled(guild_id, module_name)
 
 
@@ -82,6 +86,8 @@ async def dashboard_slash_command_check(interaction):
     cog = getattr(command, "binding", None)
     module_name = cog.__class__.__name__ if cog is not None else None
     premium_feature = {"SecurityTools": "security", "EventTools": "automation"}.get(module_name)
+    if command.qualified_name in {"halloween-aktivieren", "halloween-deaktivieren", "halloween-gruss", "halloween-info", "weihnachten-aktivieren", "weihnachten-deaktivieren", "weihnachts-gruss", "weihnachten-info", "advent", "adventskalender"}:
+        premium_feature = "seasonal_events"
     if premium_feature and not guild_has_feature(guild_config(interaction.guild_id), premium_feature):
         message = "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto."
         if interaction.response.is_done():
@@ -5331,9 +5337,11 @@ async def halloween_deaktivieren(interaction: discord.Interaction):
 @bot.tree.command(name="halloween-gruss", description="Sendet einen gruseligen IronWolf-Halloween-Gruß")
 @app_commands.guild_only()
 async def halloween_gruss(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    message = cfg.get("seasonal_events", {}).get("halloween", {}).get("message") or "🐺 IronWolf wünscht euch eine schaurig-schöne Halloween-Nacht!\n\nPasst auf euch auf – und sammelt ordentlich Süßigkeiten! 🎃🦇"
     embed = discord.Embed(
         title="👻 Süßes oder Saures!",
-        description="🐺 IronWolf wünscht euch eine schaurig-schöne Halloween-Nacht!\n\nPasst auf euch auf – und sammelt ordentlich Süßigkeiten! 🎃🦇",
+        description=message,
         color=discord.Color.from_rgb(255, 119, 0),
     )
     embed.set_footer(text="IronWolf · Halloween")
@@ -5365,9 +5373,11 @@ async def weihnachten_deaktivieren(interaction: discord.Interaction):
 @bot.tree.command(name="weihnachts-gruss", description="Sendet einen festlichen IronWolf-Weihnachtsgruß")
 @app_commands.guild_only()
 async def weihnachts_gruss(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    message = cfg.get("seasonal_events", {}).get("weihnachten", {}).get("message") or "🐺❄️ IronWolf wünscht euch und euren Liebsten wunderschöne Feiertage, viel Freude und einen guten Start ins neue Jahr! 🎁✨"
     embed = discord.Embed(
         title="🎄 Frohe Weihnachten!",
-        description="🐺❄️ IronWolf wünscht euch und euren Liebsten wunderschöne Feiertage, viel Freude und einen guten Start ins neue Jahr! 🎁✨",
+        description=message,
         color=discord.Color.from_rgb(70, 195, 255),
     )
     embed.set_footer(text="IronWolf · Weihnachtszeit")
@@ -5381,6 +5391,79 @@ async def weihnachten_info(interaction: discord.Interaction):
     active = bool(cfg.get("seasonal_events", {}).get("weihnachten", {}).get("enabled", False))
     await interaction.response.send_message(embed=seasonal_embed("weihnachten", active), ephemeral=True)
 
+
+
+
+# Premium Adventskalender: einmal täglich vom 1. bis 24. Dezember.
+def advent_embed(guild_id, user_id, reward=None, message=None):
+    cfg = guild_config(guild_id)
+    settings = cfg.get("advent_calendar", {})
+    embed = discord.Embed(
+        title="🎄 IronWolf · Adventskalender",
+        description=str(message or settings.get("message") or "Öffne dein tägliches Türchen und sammle Weihnachts-Punkte!"),
+        color=discord.Color.from_rgb(70, 195, 255),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="📅 Zeitraum", value="1.–24. Dezember", inline=True)
+    embed.add_field(name="🎁 Tagesbelohnung", value=f"{int(reward if reward is not None else settings.get('reward', 25))} Weihnachts-Punkte", inline=True)
+    embed.set_footer(text="Ein Türchen pro Tag · IronWolf")
+    return embed
+
+
+@bot.command(name="advent", aliases=["adventskalender"])
+@commands.guild_only()
+async def advent_prefix(ctx):
+    cfg = guild_config(ctx.guild.id)
+    if not cfg.get("advent_calendar", {}).get("enabled", False):
+        await ctx.reply("🎄 Der Adventskalender ist derzeit deaktiviert.", mention_author=False)
+        return
+    now = datetime.now(timezone.utc)
+    if now.month != 12 or not 1 <= now.day <= 24:
+        await ctx.reply("🎁 Der Adventskalender ist vom 1. bis 24. Dezember geöffnet.", mention_author=False)
+        return
+    day_key = now.date().isoformat()
+    claims = data.setdefault("advent_claims", {}).setdefault(str(ctx.guild.id), {})
+    uid = str(ctx.author.id)
+    user_claims = claims.setdefault(uid, [])
+    if day_key in user_claims:
+        await ctx.reply("🎄 Du hast dein Türchen heute bereits geöffnet. Morgen wartet das nächste!", mention_author=False)
+        return
+    reward = max(1, min(10000, int(cfg.get("advent_calendar", {}).get("reward", 25) or 25)))
+    user_claims.append(day_key)
+    balances = data.setdefault("advent_points", {}).setdefault(str(ctx.guild.id), {})
+    balances[uid] = int(balances.get(uid, 0)) + reward
+    save_json(DATA_FILE, data)
+    message = cfg.get("advent_calendar", {}).get("message") or "Frohe Adventszeit! Hier ist deine tägliche Belohnung."
+    await ctx.reply(embed=advent_embed(ctx.guild.id, ctx.author.id, reward, message), mention_author=False)
+    await ctx.send(f"🎁 {ctx.author.mention} erhält **{reward} Weihnachts-Punkte**! Gesamt: **{balances[uid]} Punkte**.", allowed_mentions=discord.AllowedMentions.none())
+
+
+@bot.tree.command(name="advent", description="Öffne dein tägliches Türchen im IronWolf-Adventskalender")
+@app_commands.guild_only()
+async def advent_slash(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    if not cfg.get("advent_calendar", {}).get("enabled", False):
+        await interaction.response.send_message("🎄 Der Adventskalender ist derzeit deaktiviert.", ephemeral=True)
+        return
+    now = datetime.now(timezone.utc)
+    if now.month != 12 or not 1 <= now.day <= 24:
+        await interaction.response.send_message("🎁 Der Adventskalender ist vom 1. bis 24. Dezember geöffnet.", ephemeral=True)
+        return
+    day_key = now.date().isoformat()
+    claims = data.setdefault("advent_claims", {}).setdefault(str(interaction.guild_id), {})
+    uid = str(interaction.user.id)
+    user_claims = claims.setdefault(uid, [])
+    if day_key in user_claims:
+        await interaction.response.send_message("🎄 Du hast dein Türchen heute bereits geöffnet. Morgen wartet das nächste!", ephemeral=True)
+        return
+    reward = max(1, min(10000, int(cfg.get("advent_calendar", {}).get("reward", 25) or 25)))
+    user_claims.append(day_key)
+    balances = data.setdefault("advent_points", {}).setdefault(str(interaction.guild_id), {})
+    balances[uid] = int(balances.get(uid, 0)) + reward
+    save_json(DATA_FILE, data)
+    message = cfg.get("advent_calendar", {}).get("message") or "Frohe Adventszeit! Hier ist deine tägliche Belohnung."
+    await interaction.response.send_message(embed=advent_embed(interaction.guild_id, interaction.user.id, reward, message))
+    await interaction.followup.send(f"🎁 Du erhältst **{reward} Weihnachts-Punkte**! Gesamt: **{balances[uid]} Punkte**.", ephemeral=True)
 
 
 # Prefix aliases for seasonal events, alongside the existing slash commands.
