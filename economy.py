@@ -265,6 +265,178 @@ class Economy(commands.Cog):
         u["bank"] -= item["price"]; u["items"].append(name.lower()); save()
         await interaction.response.send_message(f"🛍️ **{name}** für **{money(item['price'])}** gekauft.", ephemeral=True)
 
+
+# Halloween-Spezialwirtschaft: Süßigkeiten als eigene, dauerhaft gespeicherte Währung.
+HALLOWEEN_SHOP = {
+    "geistermaske": {"price": 35, "description": "Eine gruselige Geistermaske 👻"},
+    "kuerbis": {"price": 60, "description": "Ein leuchtender Halloween-Kürbis 🎃"},
+    "fledermaus": {"price": 100, "description": "Ein kleiner Fledermaus-Begleiter 🦇"},
+    "spukumhang": {"price": 180, "description": "Ein geheimnisvoller Spukumhang 🧛"},
+    "verfluchter-kristall": {"price": 300, "description": "Ein seltener verfluchter Kristall 🔮"},
+}
+
+def halloween_user(gid, uid):
+    record = user(gid, uid)
+    record.setdefault("sweets", 0)
+    record.setdefault("sweets_at", 0)
+    record.setdefault("spook_at", 0)
+    record.setdefault("halloween_items", [])
+    return record
+
+def sweets_amount(value):
+    return f"{int(value):,}".replace(",", ".") + " 🍬"
+
+class HalloweenEconomy(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="süßes", aliases=["suesses", "susses"])
+    @commands.guild_only()
+    async def farm_sweets(self, ctx):
+        u = halloween_user(ctx.guild.id, ctx.author.id)
+        wait = 60 - (time.time() - float(u.get("sweets_at", 0)))
+        if wait > 0:
+            await ctx.reply(f"🎃 Du kannst in {int(wait)} Sekunden wieder Süßigkeiten sammeln.", mention_author=False)
+            return
+        amount = random.randint(8, 24)
+        u["sweets"] += amount
+        u["sweets_at"] = time.time()
+        save()
+        await ctx.reply(f"🍬 Du hast {sweets_amount(amount)} gesammelt! Vorrat: **{sweets_amount(u['sweets'])}**.", mention_author=False)
+
+    @app_commands.command(name="süßes", description="Sammle Halloween-Süßigkeiten")
+    @app_commands.guild_only()
+    async def farm_sweets_slash(self, interaction: discord.Interaction):
+        u = halloween_user(interaction.guild_id, interaction.user.id)
+        wait = 60 - (time.time() - float(u.get("sweets_at", 0)))
+        if wait > 0:
+            await interaction.response.send_message(f"🎃 Du kannst in {int(wait)} Sekunden wieder sammeln.", ephemeral=True)
+            return
+        amount = random.randint(8, 24)
+        u["sweets"] += amount
+        u["sweets_at"] = time.time()
+        save()
+        await interaction.response.send_message(f"🍬 Du hast {sweets_amount(amount)} gesammelt! Vorrat: **{sweets_amount(u['sweets'])}**.")
+
+    @commands.command(name="spook")
+    @commands.guild_only()
+    async def spook(self, ctx, member: discord.Member = None):
+        if member is None:
+            await ctx.reply("Verwendung: !spook @Mitglied — versuche, Süßigkeiten zu stibitzen!", mention_author=False)
+            return
+        if member.bot or member.id == ctx.author.id:
+            await ctx.reply("👻 Du kannst nur bei einem anderen echten Mitglied spooken.", mention_author=False)
+            return
+        thief = halloween_user(ctx.guild.id, ctx.author.id)
+        victim = halloween_user(ctx.guild.id, member.id)
+        wait = 300 - (time.time() - float(thief.get("spook_at", 0)))
+        if wait > 0:
+            await ctx.reply(f"🦇 Spook ist in {int(wait)} Sekunden wieder verfügbar.", mention_author=False)
+            return
+        thief["spook_at"] = time.time()
+        if random.random() < 0.65 and victim["sweets"] > 0:
+            stolen = min(victim["sweets"], random.randint(5, 20))
+            victim["sweets"] -= stolen
+            thief["sweets"] += stolen
+            result = f"👻 {ctx.author.mention} hat {sweets_amount(stolen)} von {member.mention} geklaut!"
+        else:
+            fine = min(thief["sweets"], random.randint(2, 8))
+            thief["sweets"] -= fine
+            result = f"🎃 Erwischt! Die Geister haben {sweets_amount(fine)} einkassiert."
+        save()
+        await ctx.reply(result, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
+
+    @app_commands.command(name="spook", description="Versuche, einem Mitglied Halloween-Süßigkeiten zu klauen")
+    @app_commands.guild_only()
+    async def spook_slash(self, interaction: discord.Interaction, mitglied: discord.Member):
+        if mitglied.bot or mitglied.id == interaction.user.id:
+            await interaction.response.send_message("👻 Du kannst nur bei einem anderen echten Mitglied spooken.", ephemeral=True)
+            return
+        thief = halloween_user(interaction.guild_id, interaction.user.id)
+        victim = halloween_user(interaction.guild_id, mitglied.id)
+        wait = 300 - (time.time() - float(thief.get("spook_at", 0)))
+        if wait > 0:
+            await interaction.response.send_message(f"🦇 Spook ist in {int(wait)} Sekunden wieder verfügbar.", ephemeral=True)
+            return
+        thief["spook_at"] = time.time()
+        if random.random() < 0.65 and victim["sweets"] > 0:
+            stolen = min(victim["sweets"], random.randint(5, 20))
+            victim["sweets"] -= stolen
+            thief["sweets"] += stolen
+            result = f"👻 Du hast {sweets_amount(stolen)} von {mitglied.display_name} geklaut!"
+        else:
+            fine = min(thief["sweets"], random.randint(2, 8))
+            thief["sweets"] -= fine
+            result = f"🎃 Erwischt! Die Geister haben dir {sweets_amount(fine)} abgenommen."
+        save()
+        await interaction.response.send_message(result, allowed_mentions=discord.AllowedMentions.none())
+
+    @commands.command(name="halloween-shop", aliases=["hshop"])
+    @commands.guild_only()
+    async def halloween_shop_prefix(self, ctx):
+        embed = discord.Embed(title="🎃 IronWolf · Halloween-Shop", description="Kaufe gruselige Sammlerstücke mit deinen gesammelten Süßigkeiten 🍬.", color=discord.Color.from_rgb(255, 119, 0))
+        for name, item in HALLOWEEN_SHOP.items():
+            embed.add_field(name=f"{item['description']} · {name}", value=f"Preis: **{sweets_amount(item['price'])}**", inline=False)
+        embed.set_footer(text="Kaufen: !halloween-kaufen artikelname")
+        await ctx.reply(embed=embed, mention_author=False)
+
+    @app_commands.command(name="halloween-shop", description="Zeigt den Halloween-Shop für Süßigkeiten")
+    @app_commands.guild_only()
+    async def halloween_shop_slash(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="🎃 IronWolf · Halloween-Shop", description="Gruselige Sammlerstücke, bezahlt mit Süßigkeiten 🍬.", color=discord.Color.from_rgb(255, 119, 0))
+        for name, item in HALLOWEEN_SHOP.items():
+            embed.add_field(name=f"{item['description']} · {name}", value=f"Preis: **{sweets_amount(item['price'])}**", inline=False)
+        embed.set_footer(text="Kaufen: /halloween-kaufen")
+        await interaction.response.send_message(embed=embed)
+
+    @commands.command(name="halloween-kaufen", aliases=["hkauf"])
+    @commands.guild_only()
+    async def halloween_buy_prefix(self, ctx, *, artikel: str):
+        name = artikel.strip().lower().replace(" ", "-")
+        item = HALLOWEEN_SHOP.get(name)
+        if not item:
+            await ctx.reply("❌ Artikel nicht gefunden. Nutze !halloween-shop, z. B. !halloween-kaufen geistermaske.", mention_author=False)
+            return
+        u = halloween_user(ctx.guild.id, ctx.author.id)
+        if u["sweets"] < item["price"]:
+            await ctx.reply(f"🍬 Du brauchst {sweets_amount(item['price'])}, hast aber nur {sweets_amount(u['sweets'])}.", mention_author=False)
+            return
+        u["sweets"] -= item["price"]
+        u["halloween_items"].append(name)
+        save()
+        await ctx.reply(f"🛍️ Gekauft: {item['description']} für {sweets_amount(item['price'])}! Übrig: {sweets_amount(u['sweets'])}.", mention_author=False)
+
+    @app_commands.command(name="halloween-kaufen", description="Kaufe einen Artikel mit Halloween-Süßigkeiten")
+    @app_commands.guild_only()
+    async def halloween_buy_slash(self, interaction: discord.Interaction, artikel: str):
+        name = artikel.strip().lower().replace(" ", "-")
+        item = HALLOWEEN_SHOP.get(name)
+        if not item:
+            await interaction.response.send_message("❌ Artikel nicht gefunden. Nutze /halloween-shop.", ephemeral=True)
+            return
+        u = halloween_user(interaction.guild_id, interaction.user.id)
+        if u["sweets"] < item["price"]:
+            await interaction.response.send_message(f"🍬 Du brauchst {sweets_amount(item['price'])}, hast aber nur {sweets_amount(u['sweets'])}.", ephemeral=True)
+            return
+        u["sweets"] -= item["price"]
+        u["halloween_items"].append(name)
+        save()
+        await interaction.response.send_message(f"🛍️ Gekauft: {item['description']} für {sweets_amount(item['price'])}! Übrig: {sweets_amount(u['sweets'])}.")
+
+    @commands.command(name="halloween-guthaben", aliases=["sweets"])
+    @commands.guild_only()
+    async def halloween_balance_prefix(self, ctx):
+        u = halloween_user(ctx.guild.id, ctx.author.id)
+        items = ", ".join(u["halloween_items"]) if u["halloween_items"] else "Noch keine Halloween-Artikel"
+        await ctx.reply(f"🍬 Süßigkeiten: **{sweets_amount(u['sweets'])}**\\n🎒 Halloween-Inventar: {items}", mention_author=False)
+
+    @app_commands.command(name="halloween-guthaben", description="Zeigt Süßigkeiten und Halloween-Inventar")
+    @app_commands.guild_only()
+    async def halloween_balance_slash(self, interaction: discord.Interaction):
+        u = halloween_user(interaction.guild_id, interaction.user.id)
+        items = ", ".join(u["halloween_items"]) if u["halloween_items"] else "Noch keine Halloween-Artikel"
+        await interaction.response.send_message(f"🍬 Süßigkeiten: **{sweets_amount(u['sweets'])}**\\n🎒 Halloween-Inventar: {items}", ephemeral=True)
+
 async def setup(bot):
     await bot.add_cog(Economy(bot))
     # Persistent views: these buttons continue working after bot restarts.
