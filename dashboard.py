@@ -692,9 +692,31 @@ def seasonal_dashboard(guild_id):
     halloween = events.setdefault("halloween", {})
     christmas = events.setdefault("weihnachten", {})
     advent = cfg.setdefault("advent_calendar", {})
+    candyshop = events.setdefault("candyshop", {"items": []})
+    candyshop.setdefault("items", [])
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        action = request.form.get("action", "save")
+        if action == "add_shop_item":
+            name = request.form.get("item_name", "").strip()[:80]
+            description = request.form.get("item_description", "").strip()[:200]
+            try:
+                price = int(request.form.get("item_price", "0"))
+            except (TypeError, ValueError):
+                price = 0
+            if not name or price < 1 or price > 100000000:
+                abort(400, "Bitte einen Artikelnamen und einen gültigen Preis angeben.")
+            if any(str(item.get("name", "")).casefold() == name.casefold() for item in candyshop["items"]):
+                abort(400, "Ein Artikel mit diesem Namen existiert bereits.")
+            candyshop["items"].append({"name": name, "description": description, "price": price})
+            _save_json(data_path("config.json"), _config)
+            return redirect(url_for("seasonal_dashboard", guild_id=gid))
+        if action == "delete_shop_item":
+            name = request.form.get("item_name", "")
+            candyshop["items"] = [item for item in candyshop["items"] if item.get("name") != name]
+            _save_json(data_path("config.json"), _config)
+            return redirect(url_for("seasonal_dashboard", guild_id=gid))
         halloween["enabled"] = request.form.get("halloween_enabled") == "on"
         christmas["enabled"] = request.form.get("christmas_enabled") == "on"
         advent["enabled"] = request.form.get("advent_enabled") == "on"
@@ -717,7 +739,20 @@ def seasonal_dashboard(guild_id):
     reward = max(1, min(10000, int(advent.get("reward", 25) or 25)))
     body += '<label for="advent_reward">Punkte pro Türchen</label><input type="number" id="advent_reward" name="advent_reward" min="1" max="10000" value="' + str(reward) + '" required>'
     body += '<label for="advent_message">Adventskalender-Nachricht</label><textarea id="advent_message" name="advent_message" maxlength="500">' + html.escape(str(advent.get("message", "Frohe Adventszeit! Hier ist deine tägliche Belohnung."))) + '</textarea>'
-    body += '<button type="submit">Saison-Einstellungen speichern</button></form></section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
+    body += '<button type="submit" name="action" value="save">Saison-Einstellungen speichern</button></form></section>'
+    body += '<section class="card"><h2>🍬 Candyshop-Artikel</h2><p>Artikel und Preise hier anlegen. Nutzer können sie anschließend über <code>/candyshop</code> in einem öffentlichen Kanal ansehen und kaufen.</p>'
+    body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add_shop_item">'
+    body += '<label for="item_name">Artikelname</label><input id="item_name" name="item_name" maxlength="80" required>'
+    body += '<label for="item_description">Beschreibung (optional)</label><input id="item_description" name="item_description" maxlength="200">'
+    body += '<label for="item_price">Preis in Euro-Spielgeld</label><input type="number" id="item_price" name="item_price" min="1" max="100000000" required>'
+    body += '<button type="submit">Artikel hinzufügen</button></form><h3>Vorhandene Artikel</h3>'
+    if candyshop["items"]:
+        for item in candyshop["items"]:
+            item_name = str(item.get("name", ""))
+            body += '<div class="notice"><strong>' + html.escape(item_name) + '</strong> · ' + html.escape(str(item.get("price", 0))) + ' €<p>' + html.escape(str(item.get("description", ""))) + '</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="delete_shop_item"><input type="hidden" name="item_name" value="' + html.escape(item_name, quote=True) + '"><button class="secondary" type="submit">Artikel löschen</button></form></div>'
+    else:
+        body += '<p>Noch keine Artikel angelegt.</p>'
+    body += '</section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
     return _render("Saison-Events · IronWolf", body)
 
 
