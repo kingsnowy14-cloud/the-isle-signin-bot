@@ -3733,7 +3733,7 @@ async def on_member_join(member: discord.Member):
                     color=discord.Color.from_rgb(70, 195, 255),
                     timestamp=datetime.now(timezone.utc),
                 )
-                embed.add_field(name="👤 Neues Mitglied", value=f"{member.mention}\\n`{member}`", inline=False)
+                embed.add_field(name="👤 Neues Mitglied", value=f"{member.mention}\n`{member}`", inline=False)
                 if used_invite:
                     inviter = used_invite.inviter
                     embed.add_field(
