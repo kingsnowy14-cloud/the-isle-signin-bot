@@ -775,27 +775,48 @@ def birthday_dashboard(guild_id):
         signup_selected = " selected" if str(channel.id) == selected_signup_channel else ""
         signup_channel_options.append(f'<option value="{channel.id}"{signup_selected}>{html.escape(channel.name)}</option>')
     role_options = ['<option value="">— Keine Geburtstagsrolle —</option>']
-    for role in guild.roles:
+    bot_member = guild.get_member(_bot.user.id) if _bot and _bot.user else None
+    can_manage_roles = bool(bot_member and bot_member.guild_permissions.manage_roles)
+    for role in reversed(guild.roles):
         if role.is_default or role.managed:
             continue
         selected = " selected" if str(role.id) == selected_role else ""
-        role_options.append(f'<option value="{role.id}"{selected}>{html.escape(role.name)}</option>')
-    rows = []
+        can_assign = bool(can_manage_roles and bot_member and role < bot_member.top_role)
+        suffix = "" if can_assign else " (Bot kann diese Rolle nicht vergeben)"
+        disabled = "" if can_assign else " disabled"
+        role_options.append(f'<option value="{role.id}"{selected}{disabled}>{html.escape(role.name + suffix)}</option>')
+    month_names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+    month_entries = [[] for _ in range(12)]
     for user_id, birthday in birthdays.items():
         if not isinstance(birthday, dict):
             continue
         try:
+            month = int(birthday.get("month", 0))
+            day = int(birthday.get("day", 0))
+            if not 1 <= month <= 12 or not 1 <= day <= 31:
+                continue
             member = guild.get_member(int(user_id))
-            display_name = member.display_name if member else "Unbekanntes / nicht mehr vorhandenes Mitglied"
-            date_label = f'{int(birthday.get("day", 0)):02d}.{int(birthday.get("month", 0)):02d}.'
+            display_name = member.display_name if member else "Unbekanntes Mitglied"
+            month_entries[month - 1].append((day, display_name, str(user_id)))
         except (TypeError, ValueError):
             continue
-        rows.append('<tr><td>' + html.escape(display_name) + '</td><td>' + date_label + '</td><td><form method="post" style="margin:0">' + _csrf_field() + '<input type="hidden" name="action" value="delete_birthday"><input type="hidden" name="user_id" value="' + html.escape(str(user_id)) + '"><button class="secondary" type="submit">Entfernen</button></form></td></tr>')
+    month_cards = []
+    for month_index, month_name in enumerate(month_names):
+        entries = sorted(month_entries[month_index], key=lambda entry: (entry[0], entry[1].casefold()))
+        if entries:
+            items = ''.join('<li><strong>' + f'{day:02d}.' + '</strong> ' + html.escape(name) + '</li>' for day, name, _ in entries)
+        else:
+            items = '<li class="muted">Noch keine Geburtstage</li>'
+        month_cards.append('<section class="card" style="margin:0"><h2>' + month_name + '</h2><ul style="margin:0;padding-left:22px">' + items + '</ul></section>')
+    rows = []
+    for month_index, entries in enumerate(month_entries):
+        for day, display_name, user_id in entries:
+            rows.append('<tr><td>' + html.escape(display_name) + '</td><td>' + f'{day:02d}.{month_index + 1:02d}.' + '</td><td><form method="post" style="margin:0">' + _csrf_field() + '<input type="hidden" name="action" value="delete_birthday"><input type="hidden" name="user_id" value="' + html.escape(user_id) + '"><button class="secondary" type="submit">Entfernen</button></form></td></tr>')
     if not rows:
         rows.append('<tr><td colspan="3" class="muted">Noch keine Geburtstage gespeichert. Mitglieder können den Button unten verwenden oder /geburtstag nutzen.</td></tr>')
     body = '<section class="card hero"><span class="pill">🎂 COMMUNITY-MODUL</span><h1>Geburtstagskalender</h1><p>Stelle einen Eintragen-Button bereit, verwalte Geburtstagsgrüße und optional eine Tagesrolle.</p><p>Es wird nur Tag und Monat gespeichert – kein Geburtsjahr.</p></section>'
     body += '<section class="card"><h2>⚙️ Geburtstags-Einstellungen</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="save"><label for="birthday_channel">Kanal für automatische Geburtstagsgrüße</label><select id="birthday_channel" name="birthday_channel">' + ''.join(channel_options) + '</select><label for="birthday_signup_channel">Kanal für den Geburtstag-eintragen-Button</label><select id="birthday_signup_channel" name="birthday_signup_channel">' + ''.join(signup_channel_options) + '</select><label for="birthday_role_id">Optionale Geburtstagsrolle (wird am Geburtstag vergeben und danach entfernt)</label><select id="birthday_role_id" name="birthday_role_id">' + ''.join(role_options) + '</select><label for="birthday_message">Nachricht</label><small>Platzhalter: {mention}, {user}, {server}</small><textarea id="birthday_message" name="birthday_message" maxlength="1000">' + html.escape(str(cfg.get("birthday_message") or "🎂 Alles Gute zum Geburtstag, {mention}! Wir wünschen dir einen tollen Tag! 🎉")) + '</textarea><button type="submit">Einstellungen speichern</button></form><p class="muted">Der Bot braucht im Zielkanal die Berechtigung, Nachrichten und Embeds zu senden. Für die Rolle muss seine höchste Rolle über der Geburtstagsrolle liegen und „Rollen verwalten“ erlaubt sein.</p></section>'
-    body += '<section class="card"><h2>🎉 Gespeicherte Geburtstage (' + str(len(birthdays)) + ')</h2><div style="overflow-x:auto"><table><thead><tr><th>Mitglied</th><th>Geburtstag</th><th>Aktion</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div></section>'
+    body += '<section class="card"><h2>🗓️ Geburtstage nach Monat (' + str(len(birthdays)) + ')</h2><p class="muted">Sobald ein Mitglied seinen Geburtstag einträgt, erscheint sein Name automatisch unter dem passenden Monat.</p><div class="grid">' + ''.join(month_cards) + '</div></section>'
     body += '<section class="card"><h2>🧭 Schnellzugriff</h2><a class="button secondary" href="/guild/' + gid + '/commands">Befehle & Slash-Commands ansehen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht →</a></section>'
     return _render("Geburtstagskalender", body)
 
