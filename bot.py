@@ -39,6 +39,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, case_insensitive=True)
 _automation_worker_task = None
+_birthday_worker_task = None
 
 
 async def dashboard_command_enabled(guild_id, key):
@@ -307,6 +308,10 @@ DEFAULT_GUILD_CONFIG = {
     "welcome_message": "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.",
     "welcome_embed": False,
     "welcome_bots_enabled": False,
+    "self_roles": [],
+    "birthday_channel": None,
+    "birthdays": {},
+    "birthday_greeted_year": {},
     "leave_enabled": True,
     "leave_message": "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!",
     "leave_embed": False,
@@ -2215,6 +2220,107 @@ async def welcome_bots(interaction: discord.Interaction, aktiv: bool):
         f"Begrüßungsnachrichten für Bots sind jetzt **{status}**.", ephemeral=True
     )
 
+
+# ----------------------------- SELF ROLES & BIRTHDAYS -----------------------------
+
+@bot.tree.command(name="selbstrolle-freigeben", description="Erlaube oder sperre eine Rolle für Selbstrollen")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_roles=True)
+async def self_role_allow(interaction: discord.Interaction, rolle: discord.Role, aktiv: bool):
+    cfg = guild_config(interaction.guild_id)
+    allowed = {int(x) for x in cfg.get("self_roles", []) if str(x).isdigit()}
+    if rolle.is_default() or rolle.managed or rolle >= interaction.guild.me.top_role:
+        await interaction.response.send_message("Diese Rolle kann nicht freigegeben werden. Prüfe die Rollenreihenfolge.", ephemeral=True)
+        return
+    if aktiv:
+        allowed.add(rolle.id)
+    else:
+        allowed.discard(rolle.id)
+    cfg["self_roles"] = sorted(allowed)
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"{rolle.mention} ist jetzt " + ("freigegeben." if aktiv else "gesperrt."), ephemeral=True)
+
+@bot.tree.command(name="selbstrolle", description="Gib dir eine freigegebene Rolle oder entferne sie")
+@app_commands.guild_only()
+async def self_role_toggle(interaction: discord.Interaction, rolle: discord.Role):
+    cfg = guild_config(interaction.guild_id)
+    allowed = {int(x) for x in cfg.get("self_roles", []) if str(x).isdigit()}
+    if rolle.id not in allowed or rolle.is_default() or rolle.managed or rolle >= interaction.guild.me.top_role:
+        await interaction.response.send_message("Diese Rolle ist nicht freigegeben oder kann vom Bot nicht verwaltet werden.", ephemeral=True)
+        return
+    try:
+        if rolle in interaction.user.roles:
+            await interaction.user.remove_roles(rolle, reason="Selbstrolle durch Mitglied entfernt")
+            text = f"Die Rolle {rolle.mention} wurde entfernt."
+        else:
+            await interaction.user.add_roles(rolle, reason="Freigegebene Selbstrolle")
+            text = f"Die Rolle {rolle.mention} wurde dir gegeben."
+        await interaction.response.send_message(text, ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("Mir fehlen Rechte, diese Rolle zu verwalten. Prüfe die Bot-Rollenposition.", ephemeral=True)
+    except discord.HTTPException as exc:
+        await interaction.response.send_message(f"Discord konnte die Rolle nicht ändern ({type(exc).__name__}).", ephemeral=True)
+
+@bot.tree.command(name="geburtstag-kanal", description="Lege den Kanal für automatische Geburtstagsgrüße fest")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def birthday_channel_set(interaction: discord.Interaction, kanal: discord.TextChannel | None = None):
+    cfg = guild_config(interaction.guild_id)
+    cfg["birthday_channel"] = kanal.id if kanal else None
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message("Geburtstagsgrüße " + (f"aktiviert in {kanal.mention}." if kanal else "deaktiviert."), ephemeral=True)
+
+@bot.tree.command(name="geburtstag", description="Speichere deinen Geburtstag für Server-Grüße")
+@app_commands.guild_only()
+@app_commands.describe(monat="Geburtsmonat (1–12)", tag="Tag (1–31)")
+async def birthday_register(interaction: discord.Interaction, monat: app_commands.Range[int, 1, 12], tag: app_commands.Range[int, 1, 31]):
+    import calendar
+    if tag > calendar.monthrange(2000, monat)[1]:
+        await interaction.response.send_message("Dieses Datum gibt es nicht. Bitte Monat und Tag prüfen.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild_id)
+    cfg.setdefault("birthdays", {})[str(interaction.user.id)] = {"month": int(monat), "day": int(tag)}
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(f"Dein Geburtstag wurde als {tag:02d}.{monat:02d} gespeichert. Es wird nur Tag und Monat gespeichert.", ephemeral=True)
+
+@bot.tree.command(name="geburtstag-loeschen", description="Lösche deinen gespeicherten Geburtstag")
+@app_commands.guild_only()
+async def birthday_delete(interaction: discord.Interaction):
+    guild_config(interaction.guild_id).setdefault("birthdays", {}).pop(str(interaction.user.id), None)
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message("Dein gespeicherter Geburtstag wurde gelöscht.", ephemeral=True)
+
+async def birthday_worker():
+    """Send each configured birthday greeting at most once per calendar year."""
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        now = datetime.now(timezone.utc)
+        year_key = str(now.year)
+        for guild in list(bot.guilds):
+            cfg = guild_config(guild.id)
+            channel_id = cfg.get("birthday_channel")
+            if not channel_id:
+                continue
+            channel = guild.get_channel(int(channel_id))
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            greeted = cfg.setdefault("birthday_greeted_year", {})
+            changed = False
+            for user_id, date in list(cfg.get("birthdays", {}).items()):
+                if not isinstance(date, dict) or date.get("month") != now.month or date.get("day") != now.day or greeted.get(user_id) == year_key:
+                    continue
+                member = guild.get_member(int(user_id))
+                if member is None:
+                    continue
+                try:
+                    await channel.send(f"🎂 Alles Gute zum Geburtstag, {member.mention}! Wir wünschen dir einen tollen Tag! 🎉", allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
+                    greeted[user_id] = year_key
+                    changed = True
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(f"[BIRTHDAY] Could not greet member {user_id} in guild {guild.id}: {type(exc).__name__}: {exc}")
+            if changed:
+                save_json(CONFIG_FILE, config)
+        await asyncio.sleep(3600)
 
 # ----------------------------- BACKUP -----------------------------
 
@@ -5573,9 +5679,12 @@ async def weihnachten_prefix_gruss(ctx):
 async def on_ready():
     migrate_all_guild_configs()
     global _automation_worker_task
+    global _birthday_worker_task
     record_module_changes()
     if _automation_worker_task is None or _automation_worker_task.done():
         _automation_worker_task = asyncio.create_task(premium_automation_worker(), name="premium-automation-worker")
+    if _birthday_worker_task is None or _birthday_worker_task.done():
+        _birthday_worker_task = asyncio.create_task(birthday_worker(), name="birthday-worker")
     # Start tracking members already in voice after a bot start/reconnect.
     # Only seed sessions that are not already tracked to avoid resetting time
     # when Discord reconnects the bot.
