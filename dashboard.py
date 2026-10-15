@@ -1021,17 +1021,23 @@ def guild_live_stats(guild_id):
         return response
     commands = _command_records(guild.id)
     modules = _module_records(guild.id)
+    stats_root = getattr(_bot, "dashboard_data", {}).get("stats", {}).get(str(guild.id), {})
+    message_total = sum(max(0, int(item.get("messages", 0) or 0)) for item in stats_root.values() if isinstance(item, dict))
+    voice_seconds = sum(max(0, int(item.get("voice_seconds", 0) or 0)) for item in stats_root.values() if isinstance(item, dict))
+    active_users = sum(1 for item in stats_root.values() if isinstance(item, dict) and item.get("last_activity_at"))
     body = (
         '<section class="card"><h1>📊 Live-Statistiken</h1><p class="muted">Werte aus dem aktuellen Bot-Prozess; Aktualisierung beim Neuladen.</p>'
         '<div class="grid"><div class="notice"><small>Mitglieder (Discord-Cache)</small><h2>' + str(guild.member_count or len(guild.members)) + '</h2></div>'
         '<div class="notice"><small>Textkanäle</small><h2>' + str(len(guild.text_channels)) + '</h2></div>'
         '<div class="notice"><small>Rollen</small><h2>' + str(len(guild.roles)) + '</h2></div>'
         '<div class="notice"><small>Aktive Befehle</small><h2>' + str(sum(1 for item in commands if item["enabled"])) + '</h2></div>'
-        '<div class="notice"><small>Erkannte Module</small><h2>' + str(len(modules)) + '</h2></div></div>'
-        '<p class="muted">Nachrichten- und Voice-Aktivität werden noch nicht als Zeitreihe visualisiert.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
+        '<div class="notice"><small>Erkannte Module</small><h2>' + str(len(modules)) + '</h2></div>'
+        '<div class="notice"><small>Erfasste Nachrichten</small><h2>' + str(message_total) + '</h2></div>'
+        '<div class="notice"><small>Mitglieder mit Aktivitätsdaten</small><h2>' + str(active_users) + '</h2></div>'
+        '<div class="notice"><small>Erfasste Voice-Zeit</small><h2>' + str(voice_seconds // 3600) + ' Std.</h2></div></div>'
+        '<p class="muted">Aktivitätswerte stammen aus gespeicherten Bot-Statistiken und sind keine Echtzeit-Zeitreihe.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
     )
     return _render(guild.name + " · Live-Statistiken", body)
-
 
 @app.route("/admin/premium-servers", methods=["GET", "POST"])
 def dashboard_premium_servers_admin():
