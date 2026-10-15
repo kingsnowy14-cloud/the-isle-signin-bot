@@ -305,6 +305,7 @@ DEFAULT_GUILD_CONFIG = {
     "raid_threshold": 8,
     "trusted_security_role": None,
     "welcome_channel": None,
+    "goodbye_channel": None,
     "welcome_message": "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.",
     "welcome_embed": False,
     "welcome_bots_enabled": False,
@@ -3994,7 +3995,7 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
 async def on_member_remove(member: discord.Member):
     # Send the configured goodbye message when a member leaves or is removed.
     cfg = guild_config(member.guild.id)
-    leave_channel_id = cfg.get("welcome_channel")
+    leave_channel_id = cfg.get("goodbye_channel")
     if cfg.get("leave_enabled", True) and leave_channel_id:
         channel = member.guild.get_channel(int(leave_channel_id))
         if isinstance(channel, discord.TextChannel):
