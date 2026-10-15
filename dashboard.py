@@ -70,6 +70,7 @@ BOOL_SETTINGS = {
 }
 CHANNEL_SETTINGS = {
     "welcome_channel": "Willkommenskanal",
+    "goodbye_channel": "Auf-Wiedersehen-Kanal",
     "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Sicherheits-Logkanal",
     "honeypot_channel": "Honeypot-Kanal",
