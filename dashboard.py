@@ -65,12 +65,15 @@ BOOL_SETTINGS = {
     "welcome_bots_enabled": "Willkommensnachrichten für Bots",
     "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
+    "xp_enabled": "Level- und XP-System aktivieren",
     "anti_nuke_enabled": "Anti-Nuke-Schutz",
     "anti_raid_enabled": "Anti-Raid-Schutz",
 }
 CHANNEL_SETTINGS = {
     "welcome_channel": "Willkommenskanal",
     "goodbye_channel": "Auf-Wiedersehen-Kanal",
+    "birthday_channel": "Geburtstagskanal",
+    "levelup_channel": "Level-Up-Kanal",
     "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Sicherheits-Logkanal",
     "honeypot_channel": "Honeypot-Kanal",
@@ -284,6 +287,20 @@ def _command_records(guild_id):
         module_name = cog.__class__.__name__ if cog is not None else None
         records.append({"key": key, "name": "/" + command.qualified_name, "kind": "Slash", "enabled": key not in disabled and module_name not in disabled_modules, "cog": module_name or "Allgemein"})
     return sorted(records, key=lambda item: (item["cog"].lower(), item["name"].lower()))
+
+
+def _audit_dashboard_change(guild_id, action, actor_id, details):
+    """Store a bounded, server-local audit trail of dashboard configuration changes."""
+    cfg = _guild_config(guild_id)
+    records = cfg.setdefault("dashboard_audit_log", [])
+    records.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "actor_id": str(actor_id or "unknown"),
+        "action": str(action)[:100],
+        "details": str(details)[:500],
+    })
+    del records[:-200]
+    _save_json(data_path("config.json"), _config)
 
 
 def _guild_channels(guild):
@@ -784,6 +801,7 @@ def guild_page(guild_id):
                     disabled.add(name)
             cfg["disabled_modules"] = sorted(disabled)
             _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Modul-Manager", session.get("user_id"), "Aktive Module: " + ", ".join(sorted(valid_modules - disabled)))
             return redirect(url_for("guild_page", guild_id=gid, section="modules"))
         if action == "settings":
             # Keep the in-memory configuration unchanged if persistence fails.
@@ -798,8 +816,26 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled"):
+                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                         cfg[key] = request.form.get(key) == "on"
+                    numeric_settings = {
+                        "automod_threshold": (3, 20, 6),
+                        "automod_window_seconds": (3, 30, 8),
+                        "automod_timeout_minutes": (1, 60, 2),
+                        "xp_cooldown_seconds": (10, 600, 60),
+                        "xp_min": (1, 100, 5),
+                        "xp_max": (1, 100, 15),
+                    }
+                    for key, (minimum, maximum, default) in numeric_settings.items():
+                        try:
+                            value = int(request.form.get(key, str(cfg.get(key, default))).strip())
+                        except (TypeError, ValueError):
+                            abort(400, f"{key}: Bitte eine ganze Zahl eingeben.")
+                        if not minimum <= value <= maximum:
+                            abort(400, f"{key} muss zwischen {minimum} und {maximum} liegen.")
+                        cfg[key] = value
+                    if cfg["xp_min"] > cfg["xp_max"]:
+                        abort(400, "Die minimale XP-Zahl darf nicht größer als die maximale XP-Zahl sein.")
                     requested_invite_tracker = request.form.get("invite_tracker_enabled") == "on"
                     if requested_invite_tracker and not guild_has_feature(cfg, "invite_tracker"):
                         abort(403, "Der Invite-Tracker benötigt ein aktives Premium-Modul.")
@@ -849,7 +885,13 @@ def guild_page(guild_id):
                         if raw and raw not in role_ids:
                             abort(400, "Ungültige Rolle ausgewählt.")
                         cfg[key] = int(raw) if raw else None
+                    selected_self_roles = request.form.getlist("self_roles")
+                    if any(raw not in role_ids for raw in selected_self_roles if raw):
+                        abort(400, "Ungültige Selbstrolle ausgewählt.")
+                    cfg["self_roles"] = sorted({int(raw) for raw in selected_self_roles if raw})
                 _save_json(data_path("config.json"), _config)
+                changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
+                _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
             except Exception as exc:
                 from werkzeug.exceptions import HTTPException
                 if isinstance(exc, HTTPException):
@@ -879,10 +921,14 @@ def guild_page(guild_id):
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled"):
+            for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                 label = {"welcome_embed": "Willkommensnachricht als Embed senden", "leave_enabled": "Auf-Wiedersehen-Nachricht aktivieren", "leave_embed": "Auf-Wiedersehen-Nachricht als Embed senden"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
+            settings_html += "<h3>AutoMod & XP konfigurieren</h3>"
+            for key, label, minimum, maximum, default in [("automod_threshold", "Nachrichten bis Spam-Erkennung", 3, 20, 6), ("automod_window_seconds", "Spam-Zeitfenster in Sekunden", 3, 30, 8), ("automod_timeout_minutes", "Timeout in Minuten", 1, 60, 2), ("xp_cooldown_seconds", "XP-Cooldown in Sekunden", 10, 600, 60), ("xp_min", "Minimale XP pro Nachricht", 1, 100, 5), ("xp_max", "Maximale XP pro Nachricht", 1, 100, 15)]:
+                value = max(minimum, min(maximum, int(cfg.get(key, default) or default)))
+                settings_html += f'<label for="{key}">{label}</label><input id="{key}" name="{key}" type="number" min="{minimum}" max="{maximum}" value="{value}" required>'
             if guild_has_feature(cfg, "invite_tracker"):
                 checked = " checked" if cfg.get("invite_tracker_enabled", False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="invite_tracker_enabled" name="invite_tracker_enabled"{checked}><label for="invite_tracker_enabled">{html.escape(BOOL_SETTINGS["invite_tracker_enabled"])}</label></div>'
@@ -897,6 +943,12 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+            selected_self_roles = {str(item) for item in cfg.get("self_roles", [])}
+            self_role_options = []
+            for role_id, role_name in roles:
+                selected = " selected" if str(role_id) in selected_self_roles else ""
+                self_role_options.append(f'<option value="{role_id}"{selected}>{html.escape(role_name)}</option>')
+            settings_html += '<label for="self_roles">Freigegebene Selbstrollen</label><small>Mitglieder können nur diese Rollen über /selbstrolle selbst vergeben oder entfernen. Keine Admin- oder Sicherheitsrollen freigeben.</small><select id="self_roles" name="self_roles" multiple size="8">' + "".join(self_role_options) + "</select>"
         if section == "voice":
             voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
             category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
@@ -935,6 +987,45 @@ def guild_page(guild_id):
         section = "overview"
     body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=security">🛡️ Sicherheit</a><a href="/guild/{gid}?section=channels">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/seasonal">🎃 Saison-Events</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/seasonal"><h2>🎃🎄 Saison-Events</h2><p>Halloween, Weihnachten, Adventskalender und Candyshop-Artikel.</p><span class="card-link">Saison-Events öffnen →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
     return _render(guild.name + " · Control Center", body)
+
+
+@app.route("/guild/<guild_id>/audit-log", methods=["GET"])
+def guild_audit_log(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    entries = list(reversed(cfg.get("dashboard_audit_log", [])))
+    body = '<section class="card"><h1>📜 Dashboard-Audit-Log</h1><p class="muted">Die letzten 200 gespeicherten Dashboard-Änderungen.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a>'
+    if not entries:
+        body += '<p>Noch keine protokollierten Änderungen. Änderungen ab diesem Update werden gespeichert.</p>'
+    for item in entries[:100]:
+        timestamp = html.escape(str(item.get("timestamp", ""))[:19].replace("T", " "))
+        actor = html.escape(str(item.get("actor_id", "unknown")))
+        action = html.escape(str(item.get("action", "Änderung")))
+        details = html.escape(str(item.get("details", "")))
+        body += '<div class="row"><div><strong>' + action + '</strong><br><small>' + timestamp + ' UTC · Discord-ID ' + actor + '</small><br><small>' + details + '</small></div></div>'
+    body += '</section>'
+    return _render(guild.name + " · Audit-Log", body)
+
+
+@app.route("/guild/<guild_id>/stats", methods=["GET"])
+def guild_live_stats(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    commands = _command_records(guild.id)
+    modules = _module_records(guild.id)
+    body = (
+        '<section class="card"><h1>📊 Live-Statistiken</h1><p class="muted">Werte aus dem aktuellen Bot-Prozess; Aktualisierung beim Neuladen.</p>'
+        '<div class="grid"><div class="notice"><small>Mitglieder (Discord-Cache)</small><h2>' + str(guild.member_count or len(guild.members)) + '</h2></div>'
+        '<div class="notice"><small>Textkanäle</small><h2>' + str(len(guild.text_channels)) + '</h2></div>'
+        '<div class="notice"><small>Rollen</small><h2>' + str(len(guild.roles)) + '</h2></div>'
+        '<div class="notice"><small>Aktive Befehle</small><h2>' + str(sum(1 for item in commands if item["enabled"])) + '</h2></div>'
+        '<div class="notice"><small>Erkannte Module</small><h2>' + str(len(modules)) + '</h2></div></div>'
+        '<p class="muted">Nachrichten- und Voice-Aktivität werden noch nicht als Zeitreihe visualisiert.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
+    )
+    return _render(guild.name + " · Live-Statistiken", body)
 
 
 @app.route("/admin/premium-servers", methods=["GET", "POST"])
@@ -1370,6 +1461,7 @@ def guild_commands(guild_id):
                 disabled.add(key)
         cfg["disabled_commands"] = sorted(disabled)
         _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Befehlsrechte", session.get("user_id"), "Deaktivierte Befehle: " + ", ".join(sorted(disabled))[:350])
         return redirect(url_for("guild_commands", guild_id=gid))
     commands = _command_records(guild.id)
     groups = {}
