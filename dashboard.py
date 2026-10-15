@@ -797,9 +797,10 @@ def birthday_dashboard(guild_id):
             continue
         selected = " selected" if str(role.id) == selected_role else ""
         can_assign = bool(can_manage_roles and bot_member and role < bot_member.top_role)
-        suffix = "" if can_assign else " (Bot kann diese Rolle nicht vergeben)"
-        disabled = "" if can_assign else " disabled"
-        role_options.append(f'<option value="{role.id}"{selected}{disabled}>{html.escape(role.name + suffix)}</option>')
+        # Allow admins to select the intended role even before fixing bot permissions
+        # or hierarchy. Show a warning instead of disabling every role in the dropdown.
+        suffix = "" if can_assign else " (Bot-Rechte/Rollenposition prüfen)"
+        role_options.append(f'<option value="{role.id}"{selected}>{html.escape(role.name + suffix)}</option>')
     month_names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
     month_entries = [[] for _ in range(12)]
     for user_id, birthday in birthdays.items():
