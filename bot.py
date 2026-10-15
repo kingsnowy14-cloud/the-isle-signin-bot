@@ -320,6 +320,13 @@ DEFAULT_GUILD_CONFIG = {
     "invite_log_channel": None,
     "social_links": {},
     "automod_enabled": False,
+    "automod_threshold": 6,
+    "automod_window_seconds": 8,
+    "automod_timeout_minutes": 2,
+    "xp_enabled": True,
+    "xp_cooldown_seconds": 60,
+    "xp_min": 5,
+    "xp_max": 15,
     "verify_channel": None,
     "verified_role": None,
     "unverified_role": None,
@@ -1111,18 +1118,21 @@ def xp_for_level(level: int) -> int:
 
 
 def add_message_xp(guild_id: int, user_id: int):
-    """Award 5–15 XP at most once every 60 seconds and return only new level-ups."""
+    """Award configured XP with a per-server cooldown and return only new level-ups."""
+    cfg = guild_config(guild_id)
+    if not cfg.get("xp_enabled", True):
+        return 0, 0
+    cooldown = max(10, min(600, int(cfg.get("xp_cooldown_seconds", 60) or 60)))
+    xp_min = max(1, min(100, int(cfg.get("xp_min", 5) or 5)))
+    xp_max = max(xp_min, min(100, int(cfg.get("xp_max", 15) or 15)))
     stats = get_user_stats(guild_id, user_id)
     now = time.time()
     last_xp_at = float(stats.get("last_xp_at", 0))
-
     old_xp = max(0, int(stats.get("xp", 0)))
     old_level = calculate_level(old_xp)
-    if now - last_xp_at < 60:
-        # A cooldown must never be mistaken for a level-up by on_message.
+    if now - last_xp_at < cooldown:
         return 0, 0
-
-    earned_xp = random.randint(5, 15)
+    earned_xp = random.randint(xp_min, xp_max)
     stats["xp"] = old_xp + earned_xp
     stats["level"] = calculate_level(stats["xp"])
     stats["last_xp_at"] = now
@@ -2542,6 +2552,7 @@ async def social_show(interaction: discord.Interaction):
 # ----------------------------- EXPANDED COMMUNITY FEATURES -----------------------------
 
 _automod_messages = defaultdict(deque)
+_raid_join_times = defaultdict(deque)
 _social_alert_task_started = False
 
 
@@ -3505,13 +3516,16 @@ async def on_message(message: discord.Message):
             now_mono = time.monotonic()
             key = (guild.id, message.author.id)
             recent = _automod_messages[key]
+            window_seconds = max(3, min(30, int(cfg.get("automod_window_seconds", 8) or 8)))
+            threshold = max(3, min(20, int(cfg.get("automod_threshold", 6) or 6)))
+            timeout_minutes = max(1, min(60, int(cfg.get("automod_timeout_minutes", 2) or 2)))
             recent.append(now_mono)
-            while recent and now_mono - recent[0] > 8:
+            while recent and now_mono - recent[0] > window_seconds:
                 recent.popleft()
-            if len(recent) >= 6 and not message.author.guild_permissions.manage_messages:
+            if len(recent) >= threshold and not message.author.guild_permissions.manage_messages:
                 try:
                     await message.delete()
-                    await message.author.timeout(timedelta(minutes=2), reason="AutoMod: Nachrichten-Spam")
+                    await message.author.timeout(timedelta(minutes=timeout_minutes), reason="AutoMod: Nachrichten-Spam")
                     recent.clear()
                     await security_log(guild, "🛡️ AutoMod: Spam erkannt", f"Mitglied: {message.author.mention} (`{message.author.id}`)\nKanal: {message.channel.mention}\nAktion: Nachrichten gelöscht und 2 Minuten Timeout.", discord.Color.orange())
                     return
@@ -3827,6 +3841,15 @@ async def on_guild_remove(guild: discord.Guild):
 @bot.event
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
+    if cfg.get("anti_raid_enabled", False) and not member.bot:
+        now_mono = time.monotonic()
+        joins = _raid_join_times[member.guild.id]
+        joins.append(now_mono)
+        while joins and now_mono - joins[0] > 60:
+            joins.popleft()
+        raid_threshold = max(3, min(30, int(cfg.get("raid_threshold", 8) or 8)))
+        if len(joins) >= raid_threshold and (len(joins) == raid_threshold or len(joins) % raid_threshold == 0):
+            await security_log(member.guild, "Anti-Raid: Beitrittswelle erkannt", f"{len(joins)} Mitglieder sind innerhalb von 60 Sekunden beigetreten. Alarm ausgelöst; automatische Quarantäne ist nicht konfiguriert.", discord.Color.red())
     # Attribute this join to an invite by comparing its use count with the last snapshot.
     if cfg.get("invite_tracker_enabled") and cfg.get("invite_log_channel") and guild_has_feature(cfg, "invite_tracker"):
         guild_id = member.guild.id
