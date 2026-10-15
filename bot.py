@@ -2311,8 +2311,12 @@ class BirthdayRegisterModal(discord.ui.Modal, title="Geburtstag eintragen"):
         cfg.setdefault("birthdays", {})[str(interaction.user.id)] = {"month": month, "day": day}
         cfg.setdefault("birthday_greeted_year", {}).pop(str(interaction.user.id), None)
         save_json(CONFIG_FILE, config)
+        try:
+            await refresh_birthday_calendar(interaction.guild, cfg)
+        except Exception as exc:
+            print(f"[BIRTHDAY] Calendar refresh failed for guild {interaction.guild.id}: {type(exc).__name__}: {exc}", flush=True)
         await interaction.response.send_message(
-            f"🎂 Dein Geburtstag wurde als **{day:02d}.{month:02d}.** gespeichert. Es wird nur Tag und Monat gespeichert.",
+            f"🎂 Dein Geburtstag wurde als **{day:02d}.{month:02d}.** gespeichert. Die Discord-Geburtstagsliste wurde aktualisiert.",
             ephemeral=True,
         )
 
@@ -2329,8 +2333,61 @@ class BirthdayRegisterView(discord.ui.View):
         await interaction.response.send_modal(BirthdayRegisterModal())
 
 
-# Expose the view to the dashboard module, which publishes the registration panel.
+async def refresh_birthday_calendar(guild, cfg=None):
+    """Edit the persistent Discord birthday calendar message in place."""
+    cfg = cfg or guild_config(guild.id)
+    channel_id = cfg.get("birthday_signup_channel")
+    message_id = cfg.get("birthday_calendar_message_id")
+    channel = guild.get_channel(int(channel_id)) if channel_id else None
+    if not isinstance(channel, discord.TextChannel) or not message_id:
+        return False
+
+    month_names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
+                   "September", "Oktober", "November", "Dezember"]
+    entries = [[] for _ in range(12)]
+    for user_id, birthday in cfg.get("birthdays", {}).items():
+        if not isinstance(birthday, dict):
+            continue
+        try:
+            month, day = int(birthday.get("month", 0)), int(birthday.get("day", 0))
+            if not 1 <= month <= 12 or not 1 <= day <= 31:
+                continue
+            member = guild.get_member(int(user_id))
+            name = member.display_name if member else f"Mitglied ({user_id})"
+            entries[month - 1].append((day, name, int(user_id)))
+        except (TypeError, ValueError):
+            continue
+
+    lines = []
+    for index, month_name in enumerate(month_names):
+        people = sorted(entries[index], key=lambda item: (item[0], item[1].casefold()))
+        lines.append(f"**{month_name}**")
+        lines.extend(f"• {day:02d}. <@{user_id}>" for day, _name, user_id in people)
+        if not people:
+            lines.append("• _Noch keine Geburtstage_")
+        lines.append("")
+
+    description = "\n".join(lines).strip()
+    if len(description) > 4000:
+        description = description[:3970] + "\n… Weitere Einträge im Web-Dashboard."
+    embed = discord.Embed(
+        title="🎂 Geburtstagskalender",
+        description=description,
+        color=discord.Color.from_rgb(83, 160, 255),
+    )
+    embed.set_footer(text="Wird automatisch aktualisiert, wenn ein Geburtstag eingetragen wird.")
+    try:
+        message = await channel.fetch_message(int(message_id))
+        await message.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        return True
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError) as exc:
+        print(f"[BIRTHDAY] Could not update calendar message in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+        return False
+
+
+# Expose the view and refresh helper to the dashboard module.
 bot.BirthdayRegisterView = BirthdayRegisterView
+bot.refresh_birthday_calendar = refresh_birthday_calendar
 
 
 @bot.tree.command(name="geburtstag-kanal", description="Lege den Kanal für automatische Geburtstagsgrüße fest")
