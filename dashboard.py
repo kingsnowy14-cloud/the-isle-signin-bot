@@ -1218,8 +1218,6 @@ def guild_economy(guild_id):
         '<p class="muted">Hinweis: Diese Anzeige-Einstellungen speichern die Dashboard-Konfiguration. Die vorhandenen Economy-Befehle und ihre Währung werden dadurch nicht automatisch umbenannt oder deaktiviert.</p></section>'
         '<div class="grid">'
         '<section class="card"><h2>🪙 Geld & Shop</h2><p>Die normalen Economy-Befehle sind im Bot verfügbar. Prüfe <code>/</code> für Slash-Befehle und nutze die Prefix-Befehle mit deinem Bot-Präfix.</p></section>'
-        '<section class="card"><h2>🍬 Halloween-Candyshop</h2><p>Artikel, Beschreibungen und Preise für den saisonalen Candyshop verwaltest du im Bereich Saison-Events.</p><a class="button" href="/guild/' + gid + '/seasonal">Saison-Events öffnen →</a></section>'
-        '<section class="card"><h2>🎄 Weihnachts-Punkte</h2><p>Die Tagesbelohnung und Nachricht des Adventskalenders findest du ebenfalls unter Saison-Events.</p><a class="button secondary" href="/guild/' + gid + '/seasonal">Adventskalender einstellen →</a></section>'
         '</div><p><a href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
     )
     return _render(guild.name + " · Wirtschaftssystem", body)
