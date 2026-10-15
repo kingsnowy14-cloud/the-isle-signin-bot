@@ -264,6 +264,8 @@ data.setdefault("suggestions", {})
 data.setdefault("events", {})
 data.setdefault("social_alert_seen", {})
 data.setdefault("polls", {})
+# Expose the shared persistent stats store to the dashboard for read-only metrics.
+bot.dashboard_data = data
 # Invite-use snapshots are kept in memory and refreshed after each join.
 _invite_cache = {}
 # Active voice sessions are kept in memory so bot downtime is not counted.
