@@ -2290,6 +2290,45 @@ async def welcome_bots(interaction: discord.Interaction, aktiv: bool):
 
 # Selbstrollen werden nicht mehr als separate Slash-Befehle angeboten.
 
+class BirthdayRegisterModal(discord.ui.Modal, title="Geburtstag eintragen"):
+    monat = discord.ui.TextInput(label="Geburtsmonat (1–12)", placeholder="z. B. 7", min_length=1, max_length=2)
+    tag = discord.ui.TextInput(label="Geburtstag (1–31)", placeholder="z. B. 24", min_length=1, max_length=2)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.guild is None:
+            await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        import calendar
+        try:
+            month = int(str(self.monat.value).strip())
+            day = int(str(self.tag.value).strip())
+            if not 1 <= month <= 12 or not 1 <= day <= calendar.monthrange(2000, month)[1]:
+                raise ValueError
+        except (TypeError, ValueError):
+            await interaction.response.send_message("Bitte gib einen gültigen Monat und Tag ein (z. B. Monat 7, Tag 24).", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        cfg.setdefault("birthdays", {})[str(interaction.user.id)] = {"month": month, "day": day}
+        cfg.setdefault("birthday_greeted_year", {}).pop(str(interaction.user.id), None)
+        save_json(CONFIG_FILE, config)
+        await interaction.response.send_message(
+            f"🎂 Dein Geburtstag wurde als **{day:02d}.{month:02d}.** gespeichert. Es wird nur Tag und Monat gespeichert.",
+            ephemeral=True,
+        )
+
+
+class BirthdayRegisterView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Geburtstag eintragen", style=discord.ButtonStyle.primary, emoji="🎂", custom_id="ironwolf:birthday:register")
+    async def register_birthday(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message("Bitte nutze diesen Button auf einem Server.", ephemeral=True)
+            return
+        await interaction.response.send_modal(BirthdayRegisterModal())
+
+
 @bot.tree.command(name="geburtstag-kanal", description="Lege den Kanal für automatische Geburtstagsgrüße fest")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
@@ -2320,26 +2359,45 @@ async def birthday_delete(interaction: discord.Interaction):
     await interaction.response.send_message("Dein gespeicherter Geburtstag wurde gelöscht.", ephemeral=True)
 
 async def birthday_worker():
-    """Send each configured birthday greeting at most once per calendar year."""
+    """Send birthday greetings once per year and keep the optional birthday role for that day."""
     await bot.wait_until_ready()
     while not bot.is_closed():
         now = datetime.now(timezone.utc)
         year_key = str(now.year)
         for guild in list(bot.guilds):
             cfg = guild_config(guild.id)
-            channel_id = cfg.get("birthday_channel")
-            if not channel_id:
-                continue
-            channel = guild.get_channel(int(channel_id))
-            if not isinstance(channel, discord.TextChannel):
-                continue
+            birthdays = cfg.setdefault("birthdays", {})
+            role_id = cfg.get("birthday_role_id")
+            birthday_role = guild.get_role(int(role_id)) if role_id else None
+            if birthday_role:
+                for member in list(guild.members):
+                    if member.bot or birthday_role not in member.roles:
+                        continue
+                    date = birthdays.get(str(member.id), {})
+                    is_today = isinstance(date, dict) and date.get("month") == now.month and date.get("day") == now.day
+                    if not is_today:
+                        try:
+                            await member.remove_roles(birthday_role, reason="Geburtstagsrolle gilt nur am Geburtstag")
+                        except (discord.Forbidden, discord.HTTPException) as exc:
+                            print(f"[BIRTHDAY] Could not remove birthday role from {member.id} in guild {guild.id}: {type(exc).__name__}: {exc}")
             greeted = cfg.setdefault("birthday_greeted_year", {})
             changed = False
-            for user_id, date in list(cfg.get("birthdays", {}).items()):
-                if not isinstance(date, dict) or date.get("month") != now.month or date.get("day") != now.day or greeted.get(user_id) == year_key:
+            for user_id, date in list(birthdays.items()):
+                if not isinstance(date, dict) or date.get("month") != now.month or date.get("day") != now.day:
                     continue
                 member = guild.get_member(int(user_id))
-                if member is None:
+                if member is None or member.bot:
+                    continue
+                if birthday_role and birthday_role not in member.roles:
+                    try:
+                        await member.add_roles(birthday_role, reason="Geburtstagsrolle für den Geburtstag")
+                    except (discord.Forbidden, discord.HTTPException) as exc:
+                        print(f"[BIRTHDAY] Could not assign birthday role to {user_id} in guild {guild.id}: {type(exc).__name__}: {exc}")
+                if greeted.get(user_id) == year_key:
+                    continue
+                channel_id = cfg.get("birthday_channel")
+                channel = guild.get_channel(int(channel_id)) if channel_id else None
+                if not isinstance(channel, discord.TextChannel):
                     continue
                 try:
                     greeting = str(cfg.get("birthday_message") or "🎂 Alles Gute zum Geburtstag, {mention}! Wir wünschen dir einen tollen Tag! 🎉")
@@ -5829,6 +5887,7 @@ async def on_ready():
                 print(f"[DASHBOARD] Could not restore message panel {message_id}: {type(exc).__name__}: {exc}")
 
     # Register persistent views so old buttons keep working after restart.
+    bot.add_view(BirthdayRegisterView())
     bot.add_view(RegistrationView())
     bot.add_view(LanguageView())
     bot.add_view(TicketControlView())
