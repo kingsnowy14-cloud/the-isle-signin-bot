@@ -2342,7 +2342,9 @@ async def birthday_worker():
                 if member is None:
                     continue
                 try:
-                    await channel.send(f"🎂 Alles Gute zum Geburtstag, {member.mention}! Wir wünschen dir einen tollen Tag! 🎉", allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
+                    greeting = str(cfg.get("birthday_message") or "🎂 Alles Gute zum Geburtstag, {mention}! Wir wünschen dir einen tollen Tag! 🎉")
+                    greeting = greeting.replace("{mention}", member.mention).replace("{user}", member.display_name).replace("{server}", guild.name)
+                    await channel.send(greeting[:1900], allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
                     greeted[user_id] = year_key
                     changed = True
                 except (discord.Forbidden, discord.HTTPException) as exc:
@@ -5502,7 +5504,9 @@ async def set_seasonal_event(interaction: discord.Interaction, event_key: str, a
         return
     cfg = guild_config(interaction.guild_id)
     seasonal = cfg.setdefault("seasonal_events", {})
-    seasonal[event_key] = {"enabled": active, "updated_at": datetime.now(timezone.utc).isoformat()}
+    event = seasonal.setdefault(event_key, {})
+    event["enabled"] = active
+    event["updated_at"] = datetime.now(timezone.utc).isoformat()
     save_json(CONFIG_FILE, config)
     await interaction.response.send_message(
         content=("🎉 Das Saison-Event wurde aktiviert!" if active else "Das Saison-Event wurde deaktiviert."),
@@ -5834,13 +5838,12 @@ async def on_ready():
         # on every server the bot is installed on, not only the optional GUILD_ID.
         global_synced = await bot.tree.sync()
         print(f"Synced {len(global_synced)} global slash commands.")
-        # Optional fast sync for the development server. Keep the global sync above;
-        # syncing only this guild would make new commands appear on just one server.
-        if GUILD_ID:
-            guild_obj = discord.Object(id=int(GUILD_ID))
+        # Copy and sync to each connected guild so new commands appear immediately
+        # instead of waiting for Discord's global-command propagation.
+        for guild_obj in bot.guilds:
             bot.tree.copy_global_to(guild=guild_obj)
             guild_synced = await bot.tree.sync(guild=guild_obj)
-            print(f"Synced {len(guild_synced)} slash commands to development guild {GUILD_ID}.")
+            print(f"Synced {len(guild_synced)} slash commands to guild {guild_obj.id}.")
     except Exception as exc:
         print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
