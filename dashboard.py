@@ -725,33 +725,6 @@ def birthday_dashboard(guild_id):
                 _save_json(data_path("config.json"), _config)
                 _audit_dashboard_change(guild.id, "Geburtstage", session.get("user_id"), "Geburtstag entfernt: " + user_id)
             return redirect(url_for("birthday_dashboard", guild_id=gid))
-        if action == "publish_panel":
-            panel_channel_raw = request.form.get("birthday_signup_channel", "").strip()
-            valid_channels = {str(channel.id) for channel in guild.text_channels}
-            if panel_channel_raw not in valid_channels:
-                abort(400, "Bitte einen gültigen Kanal für den Eintragen-Button auswählen.")
-            if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
-                abort(503, "Der Bot ist gerade nicht bereit. Bitte versuche es später erneut.")
-            panel_channel = guild.get_channel(int(panel_channel_raw))
-            if not isinstance(panel_channel, discord.TextChannel):
-                abort(400, "Der ausgewählte Kanal ist kein Textkanal.")
-            embed = discord.Embed(
-                title="🎂 Geburtstag eintragen",
-                description="Trage deinen Geburtstag über den Button ein. Es werden nur Tag und Monat gespeichert. An deinem Geburtstag erhältst du eine Glückwunschnachricht und – falls eingerichtet – die Geburtstagsrolle.",
-                color=discord.Color.from_rgb(83, 160, 255),
-            )
-            embed.set_footer(text="IronWolf · Geburtstagskalender")
-            async def _send_birthday_panel():
-                return await panel_channel.send(embed=embed, view=_bot.BirthdayRegisterView(), allowed_mentions=discord.AllowedMentions.none())
-            try:
-                sent = asyncio.run_coroutine_threadsafe(_send_birthday_panel(), _bot.loop).result(timeout=20)
-            except Exception as exc:
-                print(f"[DASHBOARD] Birthday panel send failed in guild {gid}: {type(exc).__name__}: {exc}", flush=True)
-                abort(502, "Der Geburtstags-Button konnte nicht gesendet werden. Prüfe Bot-Rechte und Railway-Logs.")
-            cfg["birthday_signup_channel"] = int(panel_channel_raw)
-            _save_json(data_path("config.json"), _config)
-            _audit_dashboard_change(guild.id, "Geburtstage", session.get("user_id"), "Geburtstags-Eintragen-Button gesendet")
-            return redirect(url_for("birthday_dashboard", guild_id=gid))
         channel_raw = request.form.get("birthday_channel", "").strip()
         signup_channel_raw = request.form.get("birthday_signup_channel", "").strip()
         role_raw = request.form.get("birthday_role_id", "").strip()
@@ -769,6 +742,27 @@ def birthday_dashboard(guild_id):
         cfg["birthday_message"] = request.form.get("birthday_message", "").strip()[:1000]
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Geburtstage", session.get("user_id"), "Geburtstags-Einstellungen gespeichert")
+        # Saving settings also publishes/refreshes the signup panel when a signup channel is selected.
+        if signup_channel_raw:
+            if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
+                abort(503, "Der Bot ist gerade nicht bereit. Einstellungen wurden gespeichert; der Button konnte noch nicht gesendet werden.")
+            panel_channel = guild.get_channel(int(signup_channel_raw))
+            if not isinstance(panel_channel, discord.TextChannel):
+                abort(400, "Der ausgewählte Kanal ist kein Textkanal.")
+            embed = discord.Embed(
+                title="🎂 Geburtstag eintragen",
+                description="Trage deinen Geburtstag über den Button ein. Es werden nur Tag und Monat gespeichert. An deinem Geburtstag erhältst du eine Glückwunschnachricht und – falls eingerichtet – die Geburtstagsrolle.",
+                color=discord.Color.from_rgb(83, 160, 255),
+            )
+            embed.set_footer(text="IronWolf · Geburtstagskalender")
+            async def _send_birthday_panel():
+                return await panel_channel.send(embed=embed, view=_bot.BirthdayRegisterView(), allowed_mentions=discord.AllowedMentions.none())
+            try:
+                asyncio.run_coroutine_threadsafe(_send_birthday_panel(), _bot.loop).result(timeout=20)
+            except Exception as exc:
+                print(f"[DASHBOARD] Birthday panel send failed in guild {gid}: {type(exc).__name__}: {exc}", flush=True)
+                abort(502, "Einstellungen wurden gespeichert, aber der Geburtstags-Button konnte nicht gesendet werden. Prüfe Bot-Rechte und Railway-Logs.")
+            _audit_dashboard_change(guild.id, "Geburtstage", session.get("user_id"), "Geburtstags-Einstellungen gespeichert und Eintragen-Button gesendet")
         return redirect(url_for("birthday_dashboard", guild_id=gid))
     selected_channel = str(cfg.get("birthday_channel") or "")
     selected_signup_channel = str(cfg.get("birthday_signup_channel") or "")
@@ -800,7 +794,7 @@ def birthday_dashboard(guild_id):
     if not rows:
         rows.append('<tr><td colspan="3" class="muted">Noch keine Geburtstage gespeichert. Mitglieder können den Button unten verwenden oder /geburtstag nutzen.</td></tr>')
     body = '<section class="card hero"><span class="pill">🎂 COMMUNITY-MODUL</span><h1>Geburtstagskalender</h1><p>Stelle einen Eintragen-Button bereit, verwalte Geburtstagsgrüße und optional eine Tagesrolle.</p><p>Es wird nur Tag und Monat gespeichert – kein Geburtsjahr.</p></section>'
-    body += '<section class="card"><h2>⚙️ Geburtstags-Einstellungen</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="save"><label for="birthday_channel">Kanal für automatische Geburtstagsgrüße</label><select id="birthday_channel" name="birthday_channel">' + ''.join(channel_options) + '</select><label for="birthday_signup_channel">Kanal für den Geburtstag-eintragen-Button</label><select id="birthday_signup_channel" name="birthday_signup_channel">' + ''.join(signup_channel_options) + '</select><label for="birthday_role_id">Optionale Geburtstagsrolle (wird am Geburtstag vergeben und danach entfernt)</label><select id="birthday_role_id" name="birthday_role_id">' + ''.join(role_options) + '</select><label for="birthday_message">Nachricht</label><small>Platzhalter: {mention}, {user}, {server}</small><textarea id="birthday_message" name="birthday_message" maxlength="1000">' + html.escape(str(cfg.get("birthday_message") or "🎂 Alles Gute zum Geburtstag, {mention}! Wir wünschen dir einen tollen Tag! 🎉")) + '</textarea><button type="submit">Einstellungen speichern</button></form><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="publish_panel"><button type="submit">🎂 Eintragen-Button in den ausgewählten Kanal senden</button></form><p class="muted">Der Bot braucht im Zielkanal die Berechtigung, Nachrichten und Embeds zu senden. Für die Rolle muss seine höchste Rolle über der Geburtstagsrolle liegen und „Rollen verwalten“ erlaubt sein.</p></section>'
+    body += '<section class="card"><h2>⚙️ Geburtstags-Einstellungen</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="save"><label for="birthday_channel">Kanal für automatische Geburtstagsgrüße</label><select id="birthday_channel" name="birthday_channel">' + ''.join(channel_options) + '</select><label for="birthday_signup_channel">Kanal für den Geburtstag-eintragen-Button</label><select id="birthday_signup_channel" name="birthday_signup_channel">' + ''.join(signup_channel_options) + '</select><label for="birthday_role_id">Optionale Geburtstagsrolle (wird am Geburtstag vergeben und danach entfernt)</label><select id="birthday_role_id" name="birthday_role_id">' + ''.join(role_options) + '</select><label for="birthday_message">Nachricht</label><small>Platzhalter: {mention}, {user}, {server}</small><textarea id="birthday_message" name="birthday_message" maxlength="1000">' + html.escape(str(cfg.get("birthday_message") or "🎂 Alles Gute zum Geburtstag, {mention}! Wir wünschen dir einen tollen Tag! 🎉")) + '</textarea><button type="submit">Einstellungen speichern</button></form><p class="muted">Der Bot braucht im Zielkanal die Berechtigung, Nachrichten und Embeds zu senden. Für die Rolle muss seine höchste Rolle über der Geburtstagsrolle liegen und „Rollen verwalten“ erlaubt sein.</p></section>'
     body += '<section class="card"><h2>🎉 Gespeicherte Geburtstage (' + str(len(birthdays)) + ')</h2><div style="overflow-x:auto"><table><thead><tr><th>Mitglied</th><th>Geburtstag</th><th>Aktion</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div></section>'
     body += '<section class="card"><h2>🧭 Schnellzugriff</h2><a class="button secondary" href="/guild/' + gid + '/commands">Befehle & Slash-Commands ansehen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht →</a></section>'
     return _render("Geburtstagskalender", body)
