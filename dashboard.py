@@ -740,16 +740,16 @@ def seasonal_dashboard(guild_id):
     body += '<label for="advent_reward">Punkte pro Türchen</label><input type="number" id="advent_reward" name="advent_reward" min="1" max="10000" value="' + str(reward) + '" required>'
     body += '<label for="advent_message">Adventskalender-Nachricht</label><textarea id="advent_message" name="advent_message" maxlength="500">' + html.escape(str(advent.get("message", "Frohe Adventszeit! Hier ist deine tägliche Belohnung."))) + '</textarea>'
     body += '<button type="submit" name="action" value="save">Saison-Einstellungen speichern</button></form></section>'
-    body += '<section class="card"><h2>🍬 Candyshop-Artikel</h2><p>Artikel und Preise hier anlegen. Nutzer können sie anschließend über <code>/candyshop</code> in einem öffentlichen Kanal ansehen und kaufen.</p>'
+    body += '<section class="card"><h2>🍬 Candyshop-Artikel</h2><p>Artikel und Preise hier einfach anlegen. Ein Admin veröffentlicht den Shop mit <code>/candyshop</code>; alle Mitglieder sehen die Artikel und kaufen mit 🍬-Süßigkeiten. Süßigkeiten sammelt man mit <code>!süßes</code>; mit <code>!spook @Mitglied</code> kann man andere bestehlen.</p>'
     body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add_shop_item">'
     body += '<label for="item_name">Artikelname</label><input id="item_name" name="item_name" maxlength="80" required>'
     body += '<label for="item_description">Beschreibung (optional)</label><input id="item_description" name="item_description" maxlength="200">'
-    body += '<label for="item_price">Preis in Euro-Spielgeld</label><input type="number" id="item_price" name="item_price" min="1" max="100000000" required>'
+    body += '<label for="item_price">Preis in 🍬 Süßigkeiten</label><input type="number" id="item_price" name="item_price" min="1" max="100000000" required>'
     body += '<button type="submit">Artikel hinzufügen</button></form><h3>Vorhandene Artikel</h3>'
     if candyshop["items"]:
         for item in candyshop["items"]:
             item_name = str(item.get("name", ""))
-            body += '<div class="notice"><strong>' + html.escape(item_name) + '</strong> · ' + html.escape(str(item.get("price", 0))) + ' €<p>' + html.escape(str(item.get("description", ""))) + '</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="delete_shop_item"><input type="hidden" name="item_name" value="' + html.escape(item_name, quote=True) + '"><button class="secondary" type="submit">Artikel löschen</button></form></div>'
+            body += '<div class="notice"><strong>' + html.escape(item_name) + '</strong> · ' + html.escape(str(item.get("price", 0))) + ' 🍬<p>' + html.escape(str(item.get("description", ""))) + '</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="delete_shop_item"><input type="hidden" name="item_name" value="' + html.escape(item_name, quote=True) + '"><button class="secondary" type="submit">Artikel löschen</button></form></div>'
     else:
         body += '<p>Noch keine Artikel angelegt.</p>'
     body += '</section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
