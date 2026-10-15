@@ -1445,6 +1445,61 @@ async def finish_verification(interaction: discord.Interaction, cfg):
     await respond("✅ Du bist jetzt verifiziert. Willkommen!")
 
 
+class DashboardMessageView(discord.ui.View):
+    """Persistent buttons created by the dashboard message builder."""
+    def __init__(self, guild_id: int, buttons: list[dict]):
+        super().__init__(timeout=None)
+        self.guild_id = int(guild_id)
+        for index, item in enumerate(buttons[:5]):
+            label = str(item.get("label", "Button"))[:80]
+            if item.get("type") == "link":
+                self.add_item(discord.ui.Button(
+                    label=label,
+                    style=discord.ButtonStyle.link,
+                    url=str(item.get("url", "")),
+                ))
+            elif item.get("type") == "role":
+                role_id = int(item.get("role_id", 0))
+                button = discord.ui.Button(
+                    label=label,
+                    style=discord.ButtonStyle.primary,
+                    custom_id=f"iwrole:{self.guild_id}:{role_id}:{index}",
+                )
+                async def callback(interaction: discord.Interaction, rid=role_id):
+                    await self.toggle_role(interaction, rid)
+                button.callback = callback
+                self.add_item(button)
+
+    async def toggle_role(self, interaction: discord.Interaction, role_id: int):
+        if not interaction.guild or interaction.guild.id != self.guild_id or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Dieser Button gehört zu einem anderen Server.", ephemeral=True)
+            return
+        role = interaction.guild.get_role(role_id)
+        me = interaction.guild.me
+        if role is None or role.is_default() or role.managed or me is None or role >= me.top_role:
+            await interaction.response.send_message("Diese Rolle kann aktuell nicht vergeben werden. Bitte informiere das Team.", ephemeral=True)
+            return
+        try:
+            if role in interaction.user.roles:
+                await interaction.user.remove_roles(role, reason="Dashboard-Rollenbutton")
+                message = f"Die Rolle {role.mention} wurde entfernt."
+            else:
+                await interaction.user.add_roles(role, reason="Dashboard-Rollenbutton")
+                message = f"Die Rolle {role.mention} wurde dir gegeben."
+            await interaction.response.send_message(message, ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("Der Bot darf diese Rolle nicht verwalten. Bitte Rollenposition und Berechtigungen prüfen.", ephemeral=True)
+        except discord.HTTPException:
+            await interaction.response.send_message("Discord konnte die Rolle gerade nicht ändern. Bitte versuche es erneut.", ephemeral=True)
+
+
+def build_dashboard_message_view(guild_id: int, buttons: list[dict]):
+    return DashboardMessageView(guild_id, buttons) if buttons else None
+
+
+bot.build_dashboard_message_view = build_dashboard_message_view
+
+
 class VerifyView(discord.ui.View):
     """Persistent verification panel; supports one-click and image-captcha verification."""
     def __init__(self, label: str = "Regeln akzeptieren / Verifizieren", emoji: str = "✅"):
@@ -2237,43 +2292,7 @@ async def welcome_bots(interaction: discord.Interaction, aktiv: bool):
 
 # ----------------------------- SELF ROLES & BIRTHDAYS -----------------------------
 
-@bot.tree.command(name="selbstrolle-freigeben", description="Erlaube oder sperre eine Rolle für Selbstrollen")
-@app_commands.guild_only()
-@app_commands.checks.has_permissions(manage_roles=True)
-async def self_role_allow(interaction: discord.Interaction, rolle: discord.Role, aktiv: bool):
-    cfg = guild_config(interaction.guild_id)
-    allowed = {int(x) for x in cfg.get("self_roles", []) if str(x).isdigit()}
-    if rolle.is_default() or rolle.managed or rolle >= interaction.guild.me.top_role:
-        await interaction.response.send_message("Diese Rolle kann nicht freigegeben werden. Prüfe die Rollenreihenfolge.", ephemeral=True)
-        return
-    if aktiv:
-        allowed.add(rolle.id)
-    else:
-        allowed.discard(rolle.id)
-    cfg["self_roles"] = sorted(allowed)
-    save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"{rolle.mention} ist jetzt " + ("freigegeben." if aktiv else "gesperrt."), ephemeral=True)
-
-@bot.tree.command(name="selbstrolle", description="Gib dir eine freigegebene Rolle oder entferne sie")
-@app_commands.guild_only()
-async def self_role_toggle(interaction: discord.Interaction, rolle: discord.Role):
-    cfg = guild_config(interaction.guild_id)
-    allowed = {int(x) for x in cfg.get("self_roles", []) if str(x).isdigit()}
-    if rolle.id not in allowed or rolle.is_default() or rolle.managed or rolle >= interaction.guild.me.top_role:
-        await interaction.response.send_message("Diese Rolle ist nicht freigegeben oder kann vom Bot nicht verwaltet werden.", ephemeral=True)
-        return
-    try:
-        if rolle in interaction.user.roles:
-            await interaction.user.remove_roles(rolle, reason="Selbstrolle durch Mitglied entfernt")
-            text = f"Die Rolle {rolle.mention} wurde entfernt."
-        else:
-            await interaction.user.add_roles(rolle, reason="Freigegebene Selbstrolle")
-            text = f"Die Rolle {rolle.mention} wurde dir gegeben."
-        await interaction.response.send_message(text, ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("Mir fehlen Rechte, diese Rolle zu verwalten. Prüfe die Bot-Rollenposition.", ephemeral=True)
-    except discord.HTTPException as exc:
-        await interaction.response.send_message(f"Discord konnte die Rolle nicht ändern ({type(exc).__name__}).", ephemeral=True)
+# Selbstrollen werden nicht mehr als separate Slash-Befehle angeboten.
 
 @bot.tree.command(name="geburtstag-kanal", description="Lege den Kanal für automatische Geburtstagsgrüße fest")
 @app_commands.guild_only()
@@ -5791,6 +5810,15 @@ async def on_ready():
                 asyncio.create_task(_finish_giveaway(int(record["guild_id"]), int(record["channel_id"]), int(message_id), int(record.get("winners", 1)), str(record.get("prize", "Giveaway"))))
             except (KeyError, TypeError, ValueError):
                 pass
+
+    # Restore role/link buttons created from the dashboard message builder.
+    for guild_id, cfg in config.items():
+        for message_id, panel in cfg.get("message_panels", {}).items():
+            try:
+                panel_view = DashboardMessageView(int(guild_id), panel.get("buttons", []))
+                bot.add_view(panel_view, message_id=int(message_id))
+            except Exception as exc:
+                print(f"[DASHBOARD] Could not restore message panel {message_id}: {type(exc).__name__}: {exc}")
 
     # Register persistent views so old buttons keep working after restart.
     bot.add_view(RegistrationView())
