@@ -5627,15 +5627,17 @@ async def on_ready():
             except Exception:
                 pass
     try:
+        # Always publish the full command tree globally so commands are available
+        # on every server the bot is installed on, not only the optional GUILD_ID.
+        global_synced = await bot.tree.sync()
+        print(f"Synced {len(global_synced)} global slash commands.")
+        # Optional fast sync for the development server. Keep the global sync above;
+        # syncing only this guild would make new commands appear on just one server.
         if GUILD_ID:
             guild_obj = discord.Object(id=int(GUILD_ID))
-            # Copy registered commands to this server and sync them immediately.
             bot.tree.copy_global_to(guild=guild_obj)
-            synced = await bot.tree.sync(guild=guild_obj)
-            print(f"Synced {len(synced)} slash commands to guild {GUILD_ID}.")
-        else:
-            synced = await bot.tree.sync()
-            print(f"Synced {len(synced)} global slash commands. Global commands may take a while to appear; set GUILD_ID in Railway for faster server-only sync.")
+            guild_synced = await bot.tree.sync(guild=guild_obj)
+            print(f"Synced {len(guild_synced)} slash commands to development guild {GUILD_ID}.")
     except Exception as exc:
         print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
