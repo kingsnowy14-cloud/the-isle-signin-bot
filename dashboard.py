@@ -723,6 +723,11 @@ def birthday_dashboard(guild_id):
                 birthdays.pop(user_id, None)
                 cfg.setdefault("birthday_greeted_year", {}).pop(user_id, None)
                 _save_json(data_path("config.json"), _config)
+                if _bot and getattr(_bot, "loop", None) and _bot.loop.is_running() and hasattr(_bot, "refresh_birthday_calendar"):
+                    try:
+                        asyncio.run_coroutine_threadsafe(_bot.refresh_birthday_calendar(guild, cfg), _bot.loop).result(timeout=15)
+                    except Exception as exc:
+                        print(f"[DASHBOARD] Birthday calendar refresh after delete failed: {type(exc).__name__}: {exc}", flush=True)
                 _audit_dashboard_change(guild.id, "Geburtstage", session.get("user_id"), "Geburtstag entfernt: " + user_id)
             return redirect(url_for("birthday_dashboard", guild_id=gid))
         channel_raw = request.form.get("birthday_channel", "").strip()
