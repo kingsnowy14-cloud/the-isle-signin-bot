@@ -53,6 +53,7 @@ class ShopPurchaseView(discord.ui.View):
     def __init__(self, guild_id: int, items: dict):
         super().__init__(timeout=180)
         self.guild_id = guild_id
+        self.items = dict(items)
         self.selected_name = None
         options = [
             discord.SelectOption(label=name[:100], description=f"{money(item['price'])} · {(item.get('description') or 'Keine Beschreibung')[:70]}", value=name)
@@ -69,7 +70,7 @@ class ShopItemSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         self.parent_view.selected_name = self.values[0]
-        item = guild(self.parent_view.guild_id)["shop"].get(self.values[0])
+        item = self.parent_view.items.get(self.values[0])
         if item:
             await interaction.response.send_message(
                 f"Ausgewählt: **{self.values[0]}** für **{money(item['price'])}**. Drücke anschließend auf „Jetzt kaufen“.",
@@ -93,7 +94,7 @@ class ShopBuyButton(discord.ui.Button):
             await interaction.response.send_message("Wähle zuerst oben einen Artikel aus.", ephemeral=True)
             return
         g = guild(interaction.guild_id)
-        item = g["shop"].get(name)
+        item = self.parent_view.items.get(name)
         if not item:
             await interaction.response.send_message("Artikel nicht gefunden. Öffne /shop erneut.", ephemeral=True)
             return
