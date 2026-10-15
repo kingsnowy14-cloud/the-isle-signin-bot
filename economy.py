@@ -138,6 +138,41 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @app_commands.command(name="candyshop", description="Sendet den öffentlichen Candyshop mit kaufbaren Artikeln in diesen Kanal")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.guild_only()
+    async def candyshop(self, interaction: discord.Interaction):
+        config_path = data_path("config.json")
+        try:
+            config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            config_data = {}
+        server_cfg = config_data.get(str(interaction.guild_id), {})
+        seasonal = server_cfg.get("seasonal_events", {})
+        shop_cfg = seasonal.get("candyshop", {})
+        items = shop_cfg.get("items", [])
+        if not items:
+            await interaction.response.send_message("🍬 Der Candyshop ist noch leer. Lege zuerst im Dashboard unter Saison-Events Artikel und Preise an.", ephemeral=True)
+            return
+        shop_items = {}
+        for item in items[:25]:
+            name = str(item.get("name", "")).strip()[:100]
+            try:
+                price = max(1, int(item.get("price", 0)))
+            except (TypeError, ValueError):
+                continue
+            if name:
+                shop_items[name] = {"price": price, "description": str(item.get("description", ""))[:100]}
+        if not shop_items:
+            await interaction.response.send_message("Im Dashboard sind keine gültigen Artikel hinterlegt.", ephemeral=True)
+            return
+        embed = discord.Embed(title="🍬 IronWolf · Candyshop", description="Wähle einen Artikel aus und kaufe ihn direkt. Bezahlt wird mit deinem Bankguthaben.", color=discord.Color.from_rgb(255, 105, 180))
+        for name, item in shop_items.items():
+            desc = item.get("description") or "Ein exklusiver Shop-Artikel."
+            embed.add_field(name=f"{name} · {money(item['price'])}", value=desc, inline=False)
+        embed.set_footer(text="Artikel und Preise werden vom Server-Team im Dashboard verwaltet.")
+        await interaction.response.send_message(embed=embed, view=ShopPurchaseView(interaction.guild_id, shop_items), ephemeral=False)
+
     @commands.command(name="work")
     @commands.guild_only()
     async def work(self, ctx):
