@@ -311,6 +311,7 @@ DEFAULT_GUILD_CONFIG = {
     "welcome_bots_enabled": False,
     "self_roles": [],
     "birthday_channel": None,
+    "levelup_channel": None,
     "birthdays": {},
     "birthday_greeted_year": {},
     "leave_enabled": True,
@@ -3550,7 +3551,10 @@ async def on_message(message: discord.Message):
                 ),
                 color=discord.Color.gold(),
             )
-            await message.channel.send(embed=embed)
+            levelup_channel_id = guild_config(guild.id).get("levelup_channel")
+            levelup_channel = guild.get_channel(int(levelup_channel_id)) if levelup_channel_id else None
+            target_channel = levelup_channel if isinstance(levelup_channel, discord.TextChannel) else message.channel
+            await target_channel.send(embed=embed)
             level_role_id = guild_config(guild.id).get("level_roles", {}).get(str(reached_level))
             level_role = guild.get_role(int(level_role_id)) if level_role_id else None
             if level_role and isinstance(message.author, discord.Member):
