@@ -927,7 +927,7 @@ def guild_page(guild_id):
     settings_cards = ''.join('<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><strong>Seite öffnen →</strong></a>' for key, title, desc in section_links) + '<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '/seasonal"><h2>🎃🎄 Saison-Events</h2><p>Halloween, Weihnachten und Adventskalender · Premium</p><strong>Events verwalten →</strong></a>'
     if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general">⚙️ Allgemein</a><a href="/guild/{gid}?section=channels">📡 Kanäle</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Temp Voice</a><a href="/guild/{gid}?section=security">🛡️ Schutz</a><a href="/guild/{gid}/seasonal">🎃🎄 Saison-Events</a><a href="/guild/{gid}?section=modules">🧩 Module</a><a href="/guild/{gid}?section=template">＋ Modul-Vorlage</a><a href="/guild/{gid}/commands">⌘ Befehle</a></div>{settings_html if section != "overview" else '<h2>🧩 Einstellungsbereiche</h2><div class="grid">' + settings_cards + '</div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div><div class="card"><h2>Weitere eigene Verwaltungsseiten</h2><div class="grid"><a class="card" href="/guild/{gid}/tickets"><h2>🎟️ Tickets</h2><p>Panels, Branding und Ticketoptionen</p></a><a class="card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost und Rollen</p></a><a class="card" href="/guild/{gid}/automation"><h2>⚙️ Automation</h2><p>Geplante Ankündigungen</p></a><a class="card" href="/guild/{gid}/commands"><h2>⌘ Befehle</h2><p>Prefix- und Slash-Befehle</p></a><a class="card" href="/guild/{gid}/actions"><h2>🎮 Aktionszentrale</h2><p>Serveraktionen</p></a></div></div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general">⚙️ Allgemein</a><a href="/guild/{gid}?section=channels">📡 Kanäle</a><a href="/guild/{gid}?section=roles">🎭 Rollen</a><a href="/guild/{gid}?section=voice">🔊 Temp Voice</a><a href="/guild/{gid}?section=security">🛡️ Schutz</a><a href="/guild/{gid}/economy">💰 Wirtschaftssystem</a><a href="/guild/{gid}/seasonal">🎃🎄 Saison-Events</a><a href="/guild/{gid}?section=modules">🧩 Module</a><a href="/guild/{gid}?section=template">＋ Modul-Vorlage</a><a href="/guild/{gid}/commands">⌘ Befehle</a></div>{settings_html if section != "overview" else '<h2>🧩 Einstellungsbereiche</h2><div class="grid">' + settings_cards + '</div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div><div class="card"><h2>Weitere eigene Verwaltungsseiten</h2><div class="grid"><a class="card" href="/guild/{gid}/tickets"><h2>🎟️ Tickets</h2><p>Panels, Branding und Ticketoptionen</p></a><a class="card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost und Rollen</p></a><a class="card" href="/guild/{gid}/automation"><h2>⚙️ Automation</h2><p>Geplante Ankündigungen</p></a><a class="card" href="/guild/{gid}/commands"><h2>⌘ Befehle</h2><p>Prefix- und Slash-Befehle</p></a><a class="card" href="/guild/{gid}/actions"><h2>🎮 Aktionszentrale</h2><p>Serveraktionen</p></a></div></div>'
     return _render(guild.name + " · Control Center", body)
 
 
@@ -967,6 +967,48 @@ def dashboard_premium_servers_admin():
         rows.append(f'<label style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><input type="checkbox" name="guild_ids" value="{guild.id}"{checked}><span><strong>{html.escape(guild.name)}</strong><br><small>Server-ID: {guild.id}</small></span></label>')
     body = '<section class="card"><span class="pill">OWNER ONLY</span><h1>Premium-Server freischalten</h1><p class="muted">Nur konfigurierte Dashboard-Administratoren sehen diese Seite. Markiere die Server, die manuell Premium erhalten sollen.</p><form method="post">' + _csrf_field() + ''.join(rows) + '<button type="submit">Premium-Server speichern</button></form><p><a href="/">Zur Übersicht</a></p></section>'
     return _render("Owner · Premium-Server", body)
+
+
+@app.route("/guild/<guild_id>/economy", methods=["GET", "POST"])
+def guild_economy(guild_id):
+    """Dedicated dashboard category for the server economy."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    economy_cfg = cfg.setdefault("economy_dashboard", {})
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        currency_name = request.form.get("currency_name", "Münzen").strip()[:32] or "Münzen"
+        economy_cfg["currency_name"] = currency_name
+        economy_cfg["enabled"] = request.form.get("enabled") == "on"
+        _save_json(data_path("config.json"), _config)
+        return redirect(url_for("guild_economy", guild_id=gid))
+    enabled = economy_cfg.get("enabled", True)
+    checked = " checked" if enabled else ""
+    currency_name = html.escape(str(economy_cfg.get("currency_name", "Münzen")), quote=True)
+    body = (
+        '<section class="card"><h1>💰 Wirtschaftssystem</h1>'
+        '<p>Verwalte hier die Wirtschaft deines Servers und finde die wichtigsten Geld-, Shop- und Saisonfunktionen an einem Ort.</p>'
+        '<form method="post">' + _csrf_field() +
+        '<label for="currency_name">Währungsname</label>'
+        '<input id="currency_name" name="currency_name" maxlength="32" value="' + currency_name + '" required>'
+        '<div class="check"><input type="checkbox" id="enabled" name="enabled"' + checked + '>'
+        '<label for="enabled">Wirtschaftssystem im Dashboard als aktiviert markieren</label></div>'
+        '<button type="submit">Einstellungen speichern</button></form>'
+        '<p class="muted">Hinweis: Diese Anzeige-Einstellungen speichern die Dashboard-Konfiguration. Die vorhandenen Economy-Befehle und ihre Währung werden dadurch nicht automatisch umbenannt oder deaktiviert.</p></section>'
+        '<div class="grid">'
+        '<section class="card"><h2>🪙 Geld & Shop</h2><p>Die normalen Economy-Befehle sind im Bot verfügbar. Prüfe <code>/</code> für Slash-Befehle und nutze die Prefix-Befehle mit deinem Bot-Präfix.</p></section>'
+        '<section class="card"><h2>🍬 Halloween-Candyshop</h2><p>Artikel, Beschreibungen und Preise für den saisonalen Candyshop verwaltest du im Bereich Saison-Events.</p><a class="button" href="/guild/' + gid + '/seasonal">Saison-Events öffnen →</a></section>'
+        '<section class="card"><h2>🎄 Weihnachts-Punkte</h2><p>Die Tagesbelohnung und Nachricht des Adventskalenders findest du ebenfalls unter Saison-Events.</p><a class="button secondary" href="/guild/' + gid + '/seasonal">Adventskalender einstellen →</a></section>'
+        '</div><p><a href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
+    )
+    return _render(guild.name + " · Wirtschaftssystem", body)
 
 
 @app.route("/guild/<guild_id>/verification", methods=["GET", "POST"])
