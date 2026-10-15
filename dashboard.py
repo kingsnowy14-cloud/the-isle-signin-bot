@@ -754,9 +754,19 @@ def birthday_dashboard(guild_id):
                 description="Trage deinen Geburtstag über den Button ein. Es werden nur Tag und Monat gespeichert. An deinem Geburtstag erhältst du eine Glückwunschnachricht und – falls eingerichtet – die Geburtstagsrolle.",
                 color=discord.Color.from_rgb(83, 160, 255),
             )
-            embed.set_footer(text="IronWolf · Geburtstagskalender")
+            embed.set_footer(text="IronWolf · Geburtstag eintragen")
             async def _send_birthday_panel():
-                return await panel_channel.send(embed=embed, view=_bot.BirthdayRegisterView(), allowed_mentions=discord.AllowedMentions.none())
+                panel_message = await panel_channel.send(embed=embed, view=_bot.BirthdayRegisterView(), allowed_mentions=discord.AllowedMentions.none())
+                cfg["birthday_signup_message_id"] = panel_message.id
+                calendar_message = await panel_channel.send(
+                    embed=discord.Embed(title="🎂 Geburtstagskalender", description="Die Liste wird automatisch aktualisiert, sobald Mitglieder ihren Geburtstag eintragen.", color=discord.Color.from_rgb(83, 160, 255)),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                cfg["birthday_calendar_message_id"] = calendar_message.id
+                if hasattr(_bot, "refresh_birthday_calendar"):
+                    await _bot.refresh_birthday_calendar(guild, cfg)
+                _save_json(data_path("config.json"), _config)
+                return panel_message
             try:
                 asyncio.run_coroutine_threadsafe(_send_birthday_panel(), _bot.loop).result(timeout=20)
             except Exception as exc:
