@@ -64,7 +64,7 @@ async def dashboard_prefix_command_check(ctx):
         return False
     cog = getattr(ctx, "cog", None)
     module_name = cog.__class__.__name__ if cog is not None else None
-    if ctx.command and ctx.command.qualified_name.split(" ")[0].lower() in {"halloween", "weihnachten", "advent", "adventskalender"}:
+    if ctx.command and ctx.command.qualified_name.split(" ")[0].lower() in {"halloween", "weihnachten", "advent", "adventskalender", "süßes", "suesses", "susses", "spook", "halloween-shop", "hshop", "halloween-kaufen", "hkauf", "halloween-guthaben", "sweets"}:
         if not guild_has_feature(guild_config(guild_id), "seasonal_events"):
             await ctx.reply("👑 Dieses Saison-Event ist ein Premium-Modul. Bitte aktiviere Premium im Dashboard.", mention_author=False)
             return False
@@ -86,7 +86,7 @@ async def dashboard_slash_command_check(interaction):
     cog = getattr(command, "binding", None)
     module_name = cog.__class__.__name__ if cog is not None else None
     premium_feature = {"SecurityTools": "security", "EventTools": "automation"}.get(module_name)
-    if command.qualified_name in {"halloween-aktivieren", "halloween-deaktivieren", "halloween-gruss", "halloween-info", "weihnachten-aktivieren", "weihnachten-deaktivieren", "weihnachts-gruss", "weihnachten-info", "advent", "adventskalender"}:
+    if command.qualified_name in {"halloween-aktivieren", "halloween-deaktivieren", "halloween-gruss", "halloween-info", "weihnachten-aktivieren", "weihnachten-deaktivieren", "weihnachts-gruss", "weihnachten-info", "advent", "adventskalender", "süßes", "spook", "halloween-shop", "halloween-kaufen", "halloween-guthaben"}:
         premium_feature = "seasonal_events"
     if premium_feature and not guild_has_feature(guild_config(interaction.guild_id), premium_feature):
         message = "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto."
