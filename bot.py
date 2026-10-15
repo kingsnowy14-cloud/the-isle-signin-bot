@@ -2332,6 +2332,26 @@ class BirthdayRegisterView(discord.ui.View):
             return
         await interaction.response.send_modal(BirthdayRegisterModal())
 
+    @discord.ui.button(label="Meinen Geburtstag löschen", style=discord.ButtonStyle.danger, emoji="🗑️", custom_id="ironwolf:birthday:delete_own")
+    async def delete_own_birthday(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message("Bitte nutze diesen Button auf einem Server.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        user_id = str(interaction.user.id)
+        birthdays = cfg.setdefault("birthdays", {})
+        if user_id not in birthdays:
+            await interaction.response.send_message("Du hast keinen Geburtstag eingetragen, den ich löschen könnte.", ephemeral=True)
+            return
+        birthdays.pop(user_id, None)
+        cfg.setdefault("birthday_greeted_year", {}).pop(user_id, None)
+        save_json(CONFIG_FILE, config)
+        try:
+            await refresh_birthday_calendar(interaction.guild, cfg)
+        except Exception as exc:
+            print(f"[BIRTHDAY] Calendar refresh after self-delete failed for guild {interaction.guild.id}: {type(exc).__name__}: {exc}", flush=True)
+        await interaction.response.send_message("🗑️ Dein Geburtstagseintrag wurde gelöscht. Andere Einträge bleiben unverändert.", ephemeral=True)
+
 
 async def refresh_birthday_calendar(guild, cfg=None):
     """Edit the persistent Discord birthday calendar message in place."""
