@@ -3837,16 +3837,24 @@ async def voice_support_waiting_room(member, before, after):
     if member.bot:
         return
     cfg = guild_config(member.guild.id)
-    waiting_id = cfg.get("voice_support_waiting_channel")
+    waiting_ids = cfg.get("voice_support_waiting_channels")
+    if not isinstance(waiting_ids, list) or not waiting_ids:
+        legacy_waiting_id = cfg.get("voice_support_waiting_channel")
+        waiting_ids = [legacy_waiting_id] if legacy_waiting_id else []
+    try:
+        waiting_ids = {int(value) for value in waiting_ids if str(value).isdigit()}
+    except (TypeError, ValueError):
+        waiting_ids = set()
     key = (member.guild.id, member.id)
-    if before.channel and waiting_id and before.channel.id == int(waiting_id) and (after.channel is None or after.channel.id != before.channel.id):
+    if before.channel and before.channel.id in waiting_ids and (after.channel is None or after.channel.id != before.channel.id):
         _support_pending.discard(key)
     if after.channel is None or (before.channel and before.channel.id == after.channel.id):
         return
     if not cfg.get("voice_support_enabled", False):
         return
-    if not waiting_id or after.channel.id != int(waiting_id):
+    if after.channel.id not in waiting_ids:
         return
+    waiting_id = after.channel.id
     if key in _support_pending:
         return
     notification_id = cfg.get("voice_support_notification_channel")
