@@ -2932,6 +2932,70 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
     await interaction.response.send_message(f"✅ Nachricht wurde als Bot in {kanal.mention} gesendet.", ephemeral=True)
 
 
+@bot.tree.command(name="ausweis", description="Zeigt deinen digitalen IronWolf-Mitgliedsausweis")
+@app_commands.guild_only()
+async def ausweis_command(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message("Der Ausweis funktioniert nur auf einem Discord-Server.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild.id)
+    if not cfg.get("id_card_enabled", False):
+        await interaction.response.send_message("🪪 Das Ausweissystem ist auf diesem Server ausgeschaltet. Bitte frage die Serververwaltung.", ephemeral=True)
+        return
+
+    member = interaction.user
+    title = str(cfg.get("id_card_title", "🪪 Mitgliedsausweis"))[:256]
+    description = str(cfg.get("id_card_description", "Offizieller Mitgliedsausweis für {server}."))
+    replacements = {
+        "{server}": interaction.guild.name,
+        "{user}": member.name,
+        "{display_name}": member.display_name,
+    }
+    for token, value in replacements.items():
+        description = description.replace(token, value)
+    try:
+        color = int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)
+    except (TypeError, ValueError):
+        color = 0x5865F2
+    embed = discord.Embed(title=title, description=description[:4096], color=color)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="Mitglied", value=member.mention, inline=True)
+    if cfg.get("id_card_show_id", True):
+        embed.add_field(name="Discord-ID", value=str(member.id), inline=True)
+    if cfg.get("id_card_show_joined", True):
+        joined = member.joined_at
+        embed.add_field(name="Beigetreten", value=discord.utils.format_dt(joined, style="D") if joined else "Unbekannt", inline=True)
+    if cfg.get("id_card_show_created", False):
+        embed.add_field(name="Konto erstellt", value=discord.utils.format_dt(member.created_at, style="D"), inline=True)
+    if cfg.get("id_card_show_roles", True):
+        role_names = [role.mention for role in reversed(member.roles) if not role.is_default()]
+        role_text = ", ".join(role_names) if role_names else "Keine zusätzlichen Rollen"
+        if len(role_text) > 1024:
+            role_text = role_text[:1018] + "…"
+        embed.add_field(name="Server-Rollen", value=role_text, inline=False)
+    embed.set_footer(text="IronWolf · Created by KingSnowy")
+
+    role_id = cfg.get("id_card_role_id")
+    if role_id:
+        role = interaction.guild.get_role(int(role_id))
+        if role is not None and role not in member.roles:
+            try:
+                await member.add_roles(role, reason="Digitaler Mitgliedsausweis über IronWolf")
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "Dein Ausweis wurde erstellt, aber die Ausweisrolle konnte nicht vergeben werden. Prüfe die Bot-Rollenrechte und Rollenreihenfolge.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException:
+                await interaction.response.send_message(
+                    "Dein Ausweis wurde erstellt, aber Discord konnte die Ausweisrolle gerade nicht vergeben.",
+                    ephemeral=True,
+                )
+                return
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.tree.command(name="verify", description="Richtet das Verifizierungs-Panel vollständig ein")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
