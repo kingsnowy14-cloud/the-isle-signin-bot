@@ -193,7 +193,7 @@ async def ironwolf_logs(ctx):
 def create_embed(*args, **kwargs):
     """Create an embed with the standard bot attribution footer."""
     embed = discord.Embed(*args, **kwargs)
-    embed.set_footer(text="Created by KingSnowy")
+    embed.set_footer(text="IronWolf · Created by KingSnowy")
     return embed
 
 
@@ -1473,7 +1473,10 @@ class DashboardMessageView(discord.ui.View):
         role = interaction.guild.get_role(role_id)
         me = interaction.guild.me
         if role is None or role.is_default() or role.managed or me is None or role >= me.top_role:
-            await interaction.response.send_message("Diese Rolle kann aktuell nicht vergeben werden. Bitte informiere das Team.", ephemeral=True)
+            await interaction.response.send_message("Diese Rolle kann aktuell nicht vergeben werden: Prüfe, ob sie existiert und unter der höchsten IronWolf-Botrolle liegt.", ephemeral=True)
+            return
+        if not me.guild_permissions.manage_roles:
+            await interaction.response.send_message("IronWolf benötigt auf diesem Server die Berechtigung „Rollen verwalten“.", ephemeral=True)
             return
         try:
             if role in interaction.user.roles:
