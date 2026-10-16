@@ -6273,14 +6273,20 @@ async def on_ready():
             if not member.bot and member.voice and member.voice.channel:
                 _active_voice_sessions.setdefault((guild.id, member.id), now)
 
-    # Load the personal ID card command once before slash-command sync.
+    # Avoid registering /ausweis twice: bot.py already defines the command.
+    # Only load the extension when it does not duplicate a command already present.
     if not getattr(bot, "_ausweis_loaded", False):
-        try:
-            await bot.load_extension("ausweis")
+        existing_ausweis = bot.tree.get_command("ausweis")
+        if existing_ausweis is not None:
             bot._ausweis_loaded = True
-            print("Personal ID card extension loaded.")
-        except Exception as exc:
-            print(f"Could not load personal ID card extension: {type(exc).__name__}: {exc}")
+            print("[ID CARD] Skipping ausweis extension because /ausweis is already registered in bot.py.")
+        else:
+            try:
+                await bot.load_extension("ausweis")
+                bot._ausweis_loaded = True
+                print("Personal ID card extension loaded.")
+            except Exception as exc:
+                print(f"Could not load personal ID card extension: {type(exc).__name__}: {exc}")
 
     # Register the applications system defined directly in this file.
     if not getattr(bot, "_applications_loaded", False):
@@ -6314,14 +6320,19 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load IronWolf security suite: {type(exc).__name__}: {exc}")
 
-    # Load the economy extension once before slash-command sync.
+    # Discord allows at most 100 global application commands. Do not attempt to
+    # load an extension that would push an already-full tree over the limit.
     if not getattr(bot, "_economy_loaded", False):
-        try:
-            await bot.load_extension("economy")
-            bot._economy_loaded = True
-            print("IronWolf economy extension loaded.")
-        except Exception as exc:
-            print(f"Could not load economy extension: {type(exc).__name__}: {exc}")
+        global_command_count = len(bot.tree.get_commands())
+        if global_command_count >= 100:
+            print(f"[ECONOMY] Skipping economy extension: {global_command_count} global slash commands already registered (Discord limit: 100). Consolidate commands into subcommands to enable it.", flush=True)
+        else:
+            try:
+                await bot.load_extension("economy")
+                bot._economy_loaded = True
+                print("IronWolf economy extension loaded.")
+            except Exception as exc:
+                print(f"Could not load economy extension: {type(exc).__name__}: {exc}")
 
     # Resume giveaway timers saved in data.json after a reconnect/restart.
     if not getattr(bot, "_giveaways_resumed", False):
