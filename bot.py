@@ -331,6 +331,8 @@ DEFAULT_GUILD_CONFIG = {
     "verified_role": None,
     "unverified_role": None,
     "level_roles": {},
+    "nickname_role_id": None,
+    "nickname_template": "{role} | {name}",
     "tempvoice_trigger": None,
     "tempvoice_category": None,
     "social_alerts": {},
@@ -4641,6 +4643,7 @@ async def on_guild_remove(guild: discord.Guild):
 
 @bot.event
 async def on_member_join(member: discord.Member):
+    await _apply_role_nickname(member)
     cfg = guild_config(member.guild.id)
     if cfg.get("anti_raid_enabled", False) and not member.bot:
         now_mono = time.monotonic()
@@ -5418,9 +5421,60 @@ async def ironwolf_profile(
     except (ValueError, requests.RequestException) as exc:
         await interaction.followup.send("❌ Profiländerung fehlgeschlagen: {}".format(str(exc)[:700]), ephemeral=True)
 
+async def _apply_role_nickname(member: discord.Member):
+    """Apply the configured nickname when a member has the configured role."""
+    if member.bot:
+        return
+    cfg = guild_config(member.guild.id)
+    raw_role_id = cfg.get("nickname_role_id")
+    if not raw_role_id:
+        return
+    try:
+        role_id = int(raw_role_id)
+    except (TypeError, ValueError):
+        return
+    role = member.guild.get_role(role_id)
+    if role is None or role not in member.roles:
+        return
+    me = member.guild.me
+    if me is None or not me.guild_permissions.manage_nicknames:
+        return
+    template = str(cfg.get("nickname_template") or "{role} | {name}")[:200]
+    nickname = template.replace("{name}", member.name).replace("{username}", member.name).replace("{role}", role.name)
+    nickname = nickname.strip()[:32] or member.name[:32]
+    if member.nick == nickname:
+        return
+    try:
+        await member.edit(nick=nickname, reason=f"Automatischer Nickname für Rolle {role.name}")
+        print(f"[role-nickname] Set nickname for member {member.id} in guild {member.guild.id}.")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[role-nickname] Could not set nickname for member {member.id}: {type(exc).__name__}: {exc}")
+
+
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
-    """Revert IronWolf's server nickname unless that guild ID is explicitly allowlisted."""
+    """Apply role-based nicknames and guard the bot's own nickname."""
+    if bot.user is not None and after.id != bot.user.id:
+        cfg = guild_config(after.guild.id)
+        raw_role_id = cfg.get("nickname_role_id")
+        try:
+            role_id = int(raw_role_id) if raw_role_id else None
+        except (TypeError, ValueError):
+            role_id = None
+        if role_id is not None:
+            before_has_role = any(role.id == role_id for role in before.roles)
+            after_has_role = any(role.id == role_id for role in after.roles)
+            if before_has_role != after_has_role:
+                if after_has_role:
+                    await _apply_role_nickname(after)
+                elif not after.bot and after.nick is not None:
+                    me = after.guild.me
+                    if me is not None and me.guild_permissions.manage_nicknames:
+                        try:
+                            await after.edit(nick=None, reason="Automatischer Nickname: konfigurierte Rolle entfernt")
+                        except (discord.Forbidden, discord.HTTPException) as exc:
+                            print(f"[role-nickname] Could not reset nickname for member {after.id}: {type(exc).__name__}: {exc}")
+
     if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
         return
 
@@ -5455,8 +5509,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             f"[nickname-guard] Failed to restore nickname in guild "
             f"{after.guild.id}: {type(exc).__name__}: {exc}"
         )
-
-
 
 
 # ---------------------- IRONWOLF FEATURES (INLINE) ----------------------
