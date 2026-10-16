@@ -2932,83 +2932,101 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
     await interaction.response.send_message(f"✅ Nachricht wurde als Bot in {kanal.mention} gesendet.", ephemeral=True)
 
 
-def _id_card_image(guild, member, card_number):
-    """Create a simple member ID card PNG in memory."""
-    image = Image.new("RGB", (1000, 560), "#172033")
+def _id_card_image(guild, member, card_number, answers=None):
+    """Create one PNG ID card containing member data and application answers."""
+    answers = answers or []
+    image = Image.new("RGB", (1200, 1000), "#172033")
     draw = ImageDraw.Draw(image)
     try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 42)
-        font_body = ImageFont.truetype("DejaVuSans.ttf", 26)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 20)
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 24)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 18)
     except OSError:
         font_title = font_body = font_small = ImageFont.load_default()
-    color = str(guild_config(guild.id).get("id_card_color", "5865F2")).lstrip("#")
+    cfg = guild_config(guild.id)
+    color = str(cfg.get("id_card_color", "5865F2")).lstrip("#")
     if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
         color = "5865F2"
-    draw.rounded_rectangle((18, 18, 982, 542), radius=32, fill="#202b43", outline="#" + color, width=8)
-    draw.rounded_rectangle((18, 18, 982, 135), radius=28, fill="#" + color)
-    draw.text((55, 48), str(guild_config(guild.id).get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:36], font=font_title, fill="white")
-    draw.text((55, 175), "MITGLIED", font=font_small, fill="#aebbd1")
-    draw.text((55, 212), member.display_name[:32], font=font_body, fill="white")
-    draw.text((55, 285), "AUSWEISNUMMER", font=font_small, fill="#aebbd1")
-    draw.text((55, 322), str(card_number)[:40], font=font_body, fill="white")
-    draw.text((55, 395), "SERVER", font=font_small, fill="#aebbd1")
-    draw.text((55, 430), guild.name[:36], font=font_body, fill="white")
-    draw.text((55, 495), "IronWolf · Created by KingSnowy", font=font_small, fill="#aebbd1")
+    draw.rounded_rectangle((18, 18, 1182, 982), radius=32, fill="#202b43", outline="#" + color, width=8)
+    draw.rounded_rectangle((18, 18, 1182, 125), radius=28, fill="#" + color)
+    draw.text((48, 48), str(cfg.get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:42], font=font_title, fill="white")
+    draw.text((48, 150), "MITGLIED", font=font_small, fill="#aebbd1")
+    draw.text((48, 180), member.display_name[:36], font=font_body, fill="white")
+    draw.text((48, 230), "AUSWEISNUMMER", font=font_small, fill="#aebbd1")
+    draw.text((48, 260), str(card_number)[:44], font=font_body, fill="white")
+    draw.text((48, 310), "SERVER", font=font_small, fill="#aebbd1")
+    draw.text((48, 340), guild.name[:48], font=font_body, fill="white")
+    draw.line((48, 390, 1150, 390), fill="#" + color, width=3)
+    draw.text((48, 410), "ANTRAGSANGABEN", font=font_title, fill="white")
+    y = 465
+    for idx, item in enumerate(answers[:10]):
+        draw.text((48, y), f"{idx + 1}. {str(item.get('question', 'Frage'))[:70]}", font=font_small, fill="#aebbd1")
+        y += 25
+        answer = " ".join(str(item.get("answer", "—")).split())[:100] or "—"
+        draw.text((70, y), answer, font=font_small, fill="white")
+        y += 42
+    draw.text((48, 950), "IronWolf · Created by KingSnowy", font=font_small, fill="#aebbd1")
     output = io.BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
     return output
 
 
-def _id_card_issue(guild, member, application_id):
+def _id_card_issue(guild, member, application_id, answers=None):
     cfg = guild_config(guild.id)
-    card = discord.Embed(title=cfg.get("id_card_title", "🪪 Mitgliedsausweis"), description="Dein digitaler Mitgliedsausweis wurde ausgestellt.", color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)))
+    answers = answers or []
+    card = discord.Embed(title=cfg.get("id_card_title", "🪪 Mitgliedsausweis"), description="Dein digitaler Mitgliedsausweis mit deinen Antragsangaben wurde ausgestellt.", color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)))
     card.add_field(name="Mitglied", value=member.mention, inline=True)
     card.add_field(name="Ausweisnummer", value=str(application_id), inline=True)
+    for item in answers[:10]:
+        card.add_field(name=str(item.get("question", "Frage"))[:256], value=str(item.get("answer", "—"))[:1024] or "—", inline=False)
     card.set_footer(text="IronWolf · Created by KingSnowy")
-    file = discord.File(_id_card_image(guild, member, application_id), filename="ironwolf-ausweis.png")
+    file = discord.File(_id_card_image(guild, member, application_id, answers), filename="ironwolf-ausweis.png")
     card.set_image(url="attachment://ironwolf-ausweis.png")
     return card, file
 
 
-class IDCardApplicationModal(discord.ui.Modal):
-    def __init__(self, guild_id, questions, page=0, previous=None):
-        super().__init__(title="Ausweis beantragen" if page == 0 else "Ausweis beantragen · Teil 2", timeout=600)
-        self.guild_id = guild_id
-        self.questions = questions
-        self.page = page
-        self.previous = previous or []
-        start = page * 5
-        for idx, question in enumerate(questions[start:start + 5]):
-            self.add_item(discord.ui.TextInput(label=question[:45], custom_id="answer_" + str(start + idx), style=discord.TextStyle.paragraph, required=True, max_length=500))
-    async def on_submit(self, interaction: discord.Interaction):
-        answers = list(self.previous)
-        start = self.page * 5
-        for idx, question in enumerate(self.questions[start:start + 5]):
-            answers.append({"question": question, "answer": str(self.children[idx].value).strip()})
-        if self.page == 0 and len(self.questions) > 5:
-            await interaction.response.send_modal(IDCardApplicationModal(self.guild_id, self.questions, page=1, previous=answers))
-            return
-        guild = interaction.guild
-        if guild is None or guild.id != self.guild_id:
-            await interaction.response.send_message("Bitte nutze das Ausweis-Panel auf dem richtigen Server.", ephemeral=True)
+async def _id_card_dm_application(guild_id, user):
+    """Ask questions in DMs, then store and process the application."""
+    try:
+        guild = bot.get_guild(int(guild_id))
+        if guild is None:
             return
         cfg = guild_config(guild.id)
-        if not cfg.get("id_card_enabled", False):
-            await interaction.response.send_message("Das Ausweissystem ist derzeit ausgeschaltet.", ephemeral=True)
-            return
-        existing = next((row for row in RECORDS.setdefault("id_card_applications", {}).values() if row.get("guild_id") == guild.id and row.get("user_id") == interaction.user.id and row.get("status") == "pending"), None)
+        questions = [str(q).strip()[:45] for q in (cfg.get("id_card_questions") or ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]) if str(q).strip()][:10]
+        if not questions:
+            questions = ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]
+        await user.send(f"🪪 **Ausweisantrag für {guild.name}**\nIch stelle dir jetzt {len(questions)} Frage(n). Antworte jeweils direkt auf meine DM. Du hast pro Frage 5 Minuten Zeit. Schreibe ABBRECHEN, um aufzuhören.")
+        dm_channel = user.dm_channel or await user.create_dm()
+        answers = []
+        for index, question in enumerate(questions, start=1):
+            await user.send(f"**Frage {index}/{len(questions)}:** {question}")
+            def check(message):
+                return message.author.id == user.id and message.channel.id == dm_channel.id
+            try:
+                reply = await bot.wait_for("message", check=check, timeout=300)
+            except asyncio.TimeoutError:
+                await user.send("⌛ Dein Ausweisantrag wurde wegen Zeitüberschreitung abgebrochen. Starte ihn über den Server-Button erneut.")
+                return
+            if reply.content.strip().lower() in {"abbrechen", "cancel", "stop"}:
+                await user.send("Der Ausweisantrag wurde abgebrochen.")
+                return
+            answer = reply.content.strip()
+            if not answer:
+                await user.send("Bitte gib eine Antwort ein. Starte den Antrag erneut.")
+                return
+            answers.append({"question": question, "answer": answer[:500]})
+        existing = next((row for row in RECORDS.setdefault("id_card_applications", {}).values() if row.get("guild_id") == guild.id and row.get("user_id") == user.id and row.get("status") == "pending"), None)
         if existing:
-            await interaction.response.send_message("Du hast bereits einen offenen Ausweisantrag.", ephemeral=True)
+            await user.send("Du hast bereits einen offenen Ausweisantrag. Deine Antworten wurden nicht doppelt eingereicht.")
             return
-        app_id = str(guild.id) + "-" + str(interaction.user.id) + "-" + str(int(datetime.now(timezone.utc).timestamp()))
+        app_id = str(guild.id) + "-" + str(user.id) + "-" + str(int(datetime.now(timezone.utc).timestamp()))
         auto = bool(cfg.get("id_card_auto_approve", False))
-        row = {"id": app_id, "guild_id": guild.id, "user_id": interaction.user.id, "answers": answers, "status": "approved" if auto else "pending", "created_at": datetime.now(timezone.utc).isoformat()}
+        row = {"id": app_id, "guild_id": guild.id, "user_id": user.id, "answers": answers, "status": "approved" if auto else "pending", "created_at": datetime.now(timezone.utc).isoformat()}
         RECORDS["id_card_applications"][app_id] = row
         save_records()
         if auto:
-            member = guild.get_member(interaction.user.id)
+            member = guild.get_member(user.id)
             role_id = cfg.get("id_card_role_id")
             if member and role_id:
                 role = guild.get_role(int(role_id))
@@ -3017,32 +3035,44 @@ class IDCardApplicationModal(discord.ui.Modal):
                         await member.add_roles(role, reason="Automatisch ausgestellter IronWolf-Ausweis")
                     except (discord.Forbidden, discord.HTTPException):
                         pass
-            card, file = _id_card_issue(guild, interaction.user, app_id)
-            try:
-                await interaction.user.send(embed=card, file=file)
-                await interaction.response.send_message("✅ Dein Ausweis wurde automatisch erstellt und dir per DM geschickt.", ephemeral=True)
-            except (discord.Forbidden, discord.HTTPException):
-                await interaction.response.send_message("✅ Dein Antrag wurde automatisch genehmigt. Ich konnte dir den Ausweis nicht per DM senden; er wurde erstellt, aber bitte erlaube Server-DMs und beantrage ihn erneut nicht.", ephemeral=True)
+            card, file = _id_card_issue(guild, member or user, app_id, answers)
+            await user.send("✅ Dein Antrag wurde automatisch genehmigt. Hier ist dein Ausweis:", embed=card, file=file)
+            await _id_card_publish_to_channel(guild, app_id, answers, member or user)
             return
         channel = guild.get_channel(int(cfg.get("id_card_review_channel_id") or 0))
         if not isinstance(channel, discord.TextChannel):
             RECORDS["id_card_applications"].pop(app_id, None)
             save_records()
-            await interaction.response.send_message("Das Team-Prüfverfahren ist aktiv, aber im Dashboard ist kein gültiger Prüfkanal eingestellt.", ephemeral=True)
+            await user.send("Der Antrag konnte nicht eingereicht werden, weil im Dashboard kein gültiger Prüfkanal eingestellt ist.")
             return
-        embed = discord.Embed(title="🪪 Neuer Ausweisantrag", description=f"Antragsteller: {interaction.user.mention}\nAntragsnummer: {app_id}", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        embed = discord.Embed(title="🪪 Neuer Ausweisantrag", description=f"Antragsteller: {user.mention}\nAntragsnummer: {app_id}", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         for answer in answers:
             embed.add_field(name=answer["question"][:256], value=answer["answer"][:1000] or "—", inline=False)
         embed.set_footer(text="IronWolf · Created by KingSnowy")
+        await channel.send(embed=embed, view=IDCardReviewView(app_id))
+        await user.send("📨 Danke! Deine Antworten wurden vollständig eingereicht und an das Serverteam zur Prüfung gesendet.")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[ID CARD] DM workflow failed for {getattr(user, 'id', 'unknown')}: {type(exc).__name__}", flush=True)
         try:
-            await channel.send(embed=embed, view=IDCardReviewView(app_id))
-        except (discord.Forbidden, discord.HTTPException):
-            RECORDS["id_card_applications"].pop(app_id, None)
-            save_records()
-            await interaction.response.send_message("Der Antrag konnte nicht an das Team gesendet werden. Bitte prüfe die Kanalrechte.", ephemeral=True)
-            return
-        await interaction.response.send_message("📨 Dein Ausweisantrag wurde an das Team gesendet.", ephemeral=True)
+            await user.send("Ich konnte deine Ausweis-DMs nicht fortsetzen. Bitte erlaube Direktnachrichten vom Server und starte den Antrag erneut.")
+        except Exception:
+            pass
 
+
+async def _id_card_publish_to_channel(guild, app_id, answers, member):
+    """Optionally publish the issued card to the configured output channel."""
+    cfg = guild_config(guild.id)
+    channel_id = cfg.get("id_card_output_channel_id")
+    if not channel_id:
+        return
+    channel = guild.get_channel(int(channel_id))
+    if not isinstance(channel, discord.TextChannel):
+        return
+    try:
+        card, file = _id_card_issue(guild, member, app_id, answers)
+        await channel.send(content=f"🪪 Ausweis ausgestellt für {member.mention}", embed=card, file=file)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[ID CARD] Could not publish card to output channel: {type(exc).__name__}", flush=True)
 
 class IDCardApplyButton(discord.ui.Button):
     def __init__(self, guild_id):
@@ -3056,8 +3086,8 @@ class IDCardApplyButton(discord.ui.Button):
         if not cfg.get("id_card_enabled", False):
             await interaction.response.send_message("Das Ausweissystem ist ausgeschaltet.", ephemeral=True)
             return
-        questions = [str(q).strip()[:45] for q in (cfg.get("id_card_questions") or ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]) if str(q).strip()][:10]
-        await interaction.response.send_modal(IDCardApplicationModal(interaction.guild.id, questions))
+        await interaction.response.send_message("📩 Ich schreibe dir jetzt privat per DM und stelle dir deine Ausweisfragen. Bitte öffne deine Direktnachrichten.", ephemeral=True)
+        asyncio.create_task(_id_card_dm_application(interaction.guild.id, interaction.user))
 
 
 class IDCardApplyView(discord.ui.View):
@@ -3109,11 +3139,12 @@ class IDCardReviewView(discord.ui.View):
                             await member.add_roles(role, reason="Ausweisantrag genehmigt")
                         except (discord.Forbidden, discord.HTTPException):
                             pass
-                card, file = _id_card_issue(interaction.guild, member, self.app_id)
+                card, file = _id_card_issue(interaction.guild, member, self.app_id, row.get("answers", []))
                 try:
                     await member.send(embed=card, file=file)
                 except (discord.Forbidden, discord.HTTPException):
                     pass
+                await _id_card_publish_to_channel(interaction.guild, self.app_id, row.get("answers", []), member)
         await interaction.response.edit_message(content=("✅ Genehmigt – Ausweis erstellt." if approve else "❌ Antrag abgelehnt."), view=None)
         try:
             applicant = interaction.guild.get_member(int(row["user_id"]))
