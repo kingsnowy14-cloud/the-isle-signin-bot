@@ -1589,6 +1589,56 @@ def guild_audit_log(guild_id):
     return _render(guild.name + " · Audit-Log", body)
 
 
+@app.route("/guild/<guild_id>/health", methods=["GET"])
+def guild_health_center(guild_id):
+    """Show actionable runtime and permission diagnostics for a server admin."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+
+    ready = bool(_bot and _bot.is_ready())
+    latency = getattr(_bot, "latency", None)
+    latency_ms = round(latency * 1000) if isinstance(latency, (int, float)) and latency >= 0 else None
+    me = getattr(guild, "me", None)
+    perms = getattr(me, "guild_permissions", None)
+    checks = [
+        ("Bot-Verbindung", ready, "Der Bot ist bereit und mit Discord verbunden." if ready else "Der Bot ist noch nicht bereit oder offline."),
+        ("Kanäle verwalten", bool(getattr(perms, "manage_channels", False)), "Für automatische Kanal-Setups erforderlich."),
+        ("Rollen verwalten", bool(getattr(perms, "manage_roles", False)), "Für Rollen-Erstellung und Rollen-Zuweisung erforderlich."),
+        ("Nachrichten senden", bool(getattr(perms, "send_messages", False)), "Für Meldungen und Panel-Nachrichten erforderlich."),
+        ("Nachrichten einbetten", bool(getattr(perms, "embed_links", False)), "Für formatierte Panels und Ausweis-Einbettungen hilfreich."),
+        ("Mitglieder anzeigen", bool(getattr(perms, "view_guild_insights", False) or getattr(perms, "view_audit_log", False)), "Audit-Log-Rechte sind separat; dieser Check zeigt nur zusätzliche Verwaltungsrechte an."),
+    ]
+    rows = ""
+    for label, ok, detail in checks:
+        status = "OK" if ok else "PRÜFEN"
+        color = "#3fbf91" if ok else "#e6a23c"
+        rows += (
+            '<div class="row"><div><strong>' + html.escape(label) + '</strong><br><small>'
+            + html.escape(detail) + '</small></div><span class="pill" style="color:' + color
+            + ';border-color:' + color + '">' + status + '</span></div>'
+        )
+    ping = (str(latency_ms) + " ms") if latency_ms is not None else "Nicht verfügbar"
+    guild_count = len(getattr(_bot, "guilds", [])) if _bot else 0
+    command_count = len(_command_records(guild.id))
+    module_count = len(_module_records(guild.id))
+    body = (
+        '<section class="card"><span class="pill">SYSTEMDIAGNOSE</span><h1>🩺 Systemzustand</h1>'
+        '<p class="muted">Prüft den aktuellen Bot-Prozess und die wichtigsten Berechtigungen auf diesem Server. '
+        'Die Diagnose führt keine Änderungen durch.</p><div class="grid">'
+        '<div class="notice"><small>Discord-Latenz</small><h2>' + html.escape(ping) + '</h2></div>'
+        '<div class="notice"><small>Server des Bots</small><h2>' + str(guild_count) + '</h2></div>'
+        '<div class="notice"><small>Befehle erkannt</small><h2>' + str(command_count) + '</h2></div>'
+        '<div class="notice"><small>Module erkannt</small><h2>' + str(module_count) + '</h2></div>'
+        '</div><h2>Verbindungs- und Berechtigungschecks</h2>' + rows
+        + '<p class="muted">Hinweis: Discord-Berechtigungen können durch Kanal-Overrides eingeschränkt sein. '
+        'Diese Übersicht ersetzt keinen Test in jedem einzelnen Kanal.</p>'
+        '<p><a class="button secondary" href="/guild/' + str(guild.id) + '/health">Diagnose aktualisieren</a> '
+        '<a class="button secondary" href="/guild/' + str(guild.id) + '/stats">Statistiken →</a></p></section>'
+    )
+    return _render(guild.name + " · Systemzustand", body)
+
+
 @app.route("/guild/<guild_id>/stats", methods=["GET"])
 def guild_live_stats(guild_id):
     guild, response = _authorized_guild(guild_id)
