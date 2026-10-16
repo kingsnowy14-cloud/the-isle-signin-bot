@@ -198,7 +198,53 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 </style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf Control Center · Änderungen gelten serverbezogen. Neue Python-Module werden nicht automatisch ausgeführt.</small></p></main></body></html>"""
 
 
+def _module_command_footer():
+    """Render the commands relevant to the current dashboard module at its bottom."""
+    if request.method != "GET" or not _bot or not request.path.startswith("/guild/"):
+        return ""
+    parts = request.path.strip("/").split("/")
+    if len(parts) != 3 or parts[2] in {"commands", "stats", "audit-log", "premium"}:
+        return ""
+    guild_id, slug = parts[1], parts[2]
+    # Match dashboard modules to the command/cog names exposed by discord.py.
+    terms_by_slug = {
+        "automation": ("automation", "autom", "scheduled", "plan"),
+        "birthdays": ("birthday", "geburtstag"),
+        "economy": ("economy", "econom", "shop", "money", "currency", "wirtschaft"),
+        "verification": ("verif", "verify", "registration", "anmeld", "ausweis"),
+        "tickets": ("ticket", "support"),
+        "messages": ("message", "nachricht", "panel", "button"),
+        "actions": ("moderation", "moder", "security", "serverlogs", "controltools"),
+    }
+    terms = terms_by_slug.get(slug)
+    if not terms:
+        return ""
+    try:
+        records = _command_records(guild_id)
+    except Exception:
+        return ""
+    matched = [
+        item for item in records
+        if any(term in (str(item.get("cog", "")) + " " + str(item.get("name", ""))).casefold() for term in terms)
+    ]
+    rows = []
+    for item in matched:
+        status = "🟢 Aktiv" if item.get("enabled") else "🔴 Deaktiviert"
+        rows.append(
+            '<div class="row"><div><strong><code>' + html.escape(item["name"]) +
+            '</code></strong><br><small>' + html.escape(item.get("kind", "Befehl")) +
+            ' · ' + html.escape(item.get("cog", "Allgemein")) +
+            '</small></div><small>' + status + '</small></div>'
+        )
+    if not rows:
+        content = '<p class="muted">Für dieses Modul wurden keine direkt zuordenbaren Discord-Befehle erkannt. Die vollständige Liste findest du unter <a href="/guild/' + html.escape(guild_id) + '/commands">Befehle &amp; Slash-Commands</a>.</p>'
+    else:
+        content = '<p class="muted">Die Befehle dieses Moduls im Discord-Chat. Deaktivierte Befehle sind markiert; verwalte sie in der Befehlsübersicht.</p>' + ''.join(rows)
+    return '<section class="card module-command-footer"><h2>⌘ Zugehörige Discord-Befehle</h2>' + content + '<p><a class="button secondary" href="/guild/' + html.escape(guild_id) + '/commands">Alle Befehle verwalten →</a></p></section>'
+
+
 def _render(title, body, status=200):
+    body += _module_command_footer()
     return make_response(_page(title, body), status)
 
 
