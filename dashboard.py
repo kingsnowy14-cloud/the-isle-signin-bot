@@ -1458,7 +1458,9 @@ def guild_page(guild_id):
                         changed = 0
                         skipped = 0
                         matched = 0
-                        template = str(cfg.get("nickname_template") or "{role} | {name}")
+                        prefix = str(cfg.get("nickname_prefix") or "")
+                        suffix = str(cfg.get("nickname_suffix") or "")
+                        bases = cfg.setdefault("nickname_base_names", {})
                         # Fetch members instead of relying only on role.members cache.
                         # This requires the Server Members Intent to be enabled in the Discord Developer Portal.
                         try:
@@ -1469,8 +1471,13 @@ def guild_page(guild_id):
                                 if member == target_guild.owner or member.top_role >= me.top_role:
                                     skipped += 1
                                     continue
-                                nickname = template.replace("{name}", member.name).replace("{username}", member.name).replace("{role}", role.name).strip()[:32]
-                                nickname = nickname or member.name[:32]
+                                base = bases.get(str(member.id)) or member.nick or member.name
+                                if prefix and base.startswith(prefix):
+                                    base = base[len(prefix):]
+                                if suffix and base.endswith(suffix):
+                                    base = base[:-len(suffix)]
+                                bases[str(member.id)] = base
+                                nickname = (prefix + base + suffix).strip()[:32] or member.name[:32]
                                 if member.nick == nickname:
                                     continue
                                 try:
@@ -1480,6 +1487,7 @@ def guild_page(guild_id):
                                     skipped += 1
                         except discord.Forbidden as fetch_exc:
                             raise RuntimeError("Discord verweigert das Abrufen der Mitglieder. Aktiviere im Developer Portal unter Bot den Server Members Intent und prüfe die Bot-Berechtigungen.") from fetch_exc
+                        save_json(data_path("config.json"), _config)
                         return changed, skipped, matched
                     future = asyncio.run_coroutine_threadsafe(_apply_nicknames_to_existing_members(), _bot.loop)
                     try:
