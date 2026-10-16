@@ -2933,39 +2933,86 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
 
 
 def _id_card_image(guild, member, card_number, answers=None):
-    """Create one PNG ID card containing member data and application answers."""
+    """Create a polished, security-style membership card as a single PNG."""
     answers = answers or []
-    image = Image.new("RGB", (1200, 1250), "#172033")
+    image = Image.new("RGB", (1200, 1250), "#101827")
     draw = ImageDraw.Draw(image)
     try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
+        font_heading = ImageFont.truetype("DejaVuSans-Bold.ttf", 25)
         font_body = ImageFont.truetype("DejaVuSans.ttf", 24)
         font_small = ImageFont.truetype("DejaVuSans.ttf", 18)
+        font_tiny = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
     except OSError:
-        font_title = font_body = font_small = ImageFont.load_default()
+        font_title = font_heading = font_body = font_small = font_tiny = ImageFont.load_default()
+
     cfg = guild_config(guild.id)
     color = str(cfg.get("id_card_color", "5865F2")).lstrip("#")
     if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
         color = "5865F2"
-    draw.rounded_rectangle((18, 18, 1182, 1232), radius=32, fill="#202b43", outline="#" + color, width=8)
-    draw.rounded_rectangle((18, 18, 1182, 125), radius=28, fill="#" + color)
-    draw.text((48, 48), str(cfg.get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:42], font=font_title, fill="white")
-    draw.text((48, 150), "MITGLIED", font=font_small, fill="#aebbd1")
-    draw.text((48, 180), member.display_name[:36], font=font_body, fill="white")
-    draw.text((48, 230), "AUSWEISNUMMER", font=font_small, fill="#aebbd1")
-    draw.text((48, 260), str(card_number)[:44], font=font_body, fill="white")
-    draw.text((48, 310), "SERVER", font=font_small, fill="#aebbd1")
-    draw.text((48, 340), guild.name[:48], font=font_body, fill="white")
-    draw.line((48, 390, 1150, 390), fill="#" + color, width=3)
-    draw.text((48, 410), "ANTRAGSANGABEN", font=font_title, fill="white")
-    y = 465
+    accent = "#" + color
+    display_name = str(getattr(member, "display_name", getattr(member, "name", "Mitglied")))[:36]
+    server_name = str(guild.name)[:48]
+
+    # Layered edges and subtle security-line texture make the card feel like a
+    # premium printed credential, while keeping every field legible.
+    draw.rounded_rectangle((12, 12, 1188, 1238), radius=38, fill="#080d17", outline="#9ba9bd", width=3)
+    draw.rounded_rectangle((22, 22, 1178, 1228), radius=31, fill="#182438", outline=accent, width=5)
+    for x in range(35, 1170, 22):
+        draw.line((x, 135, min(x + 240, 1165), 385), fill="#22334a", width=2)
+        draw.line((x, 385, min(x + 180, 1165), 135), fill="#1d2d42", width=1)
+    draw.rounded_rectangle((26, 26, 1174, 132), radius=26, fill="#263b56")
+    draw.rectangle((26, 100, 1174, 132), fill=accent)
+    # Abstract crest and concentric security seal (not an official emblem).
+    draw.ellipse((48, 39, 124, 115), fill="#101827", outline="#d6e1ef", width=3)
+    draw.ellipse((57, 48, 115, 106), outline=accent, width=3)
+    draw.polygon([(86, 55), (104, 72), (98, 94), (86, 103), (74, 94), (68, 72)], fill=accent)
+    draw.text((145, 42), str(cfg.get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:42], font=font_title, fill="#ffffff")
+    draw.text((148, 84), "DIGITALER MITGLIEDSAUSWEIS  /  MEMBER CREDENTIAL", font=font_tiny, fill="#d8e2f0")
+
+    # Member identity panel.
+    draw.rounded_rectangle((44, 158, 1156, 375), radius=22, fill="#202f45", outline="#425570", width=2)
+    draw.rounded_rectangle((66, 180, 220, 334), radius=18, fill="#111c2d", outline="#8294ad", width=2)
+    draw.ellipse((108, 198, 178, 268), fill=accent, outline="#e5edf7", width=3)
+    initials = "".join(part[0] for part in display_name.split()[:2]).upper() or "M"
+    try:
+        bounds = draw.textbbox((0, 0), initials, font=font_heading)
+        tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
+    except AttributeError:
+        tw, th = draw.textsize(initials, font=font_heading)
+    draw.text((143 - tw / 2, 232 - th / 2), initials, font=font_heading, fill="#ffffff")
+    draw.text((88, 286), "MITGLIED", font=font_tiny, fill="#b8c7db")
+    draw.text((250, 180), "NAME / MITGLIED", font=font_tiny, fill="#b8c7db")
+    draw.text((250, 207), display_name, font=font_body, fill="#ffffff")
+    draw.text((250, 251), "AUSWEISNUMMER", font=font_tiny, fill="#b8c7db")
+    draw.text((250, 275), str(card_number)[:44], font=font_small, fill="#ffffff")
+    draw.rounded_rectangle((850, 180, 1118, 226), radius=18, fill="#173e35", outline="#4caa8a", width=2)
+    draw.ellipse((870, 195, 886, 211), fill="#6ce0b1")
+    draw.text((900, 190), "STATUS: AKTIV", font=font_tiny, fill="#d7ffed")
+    draw.text((850, 251), "AUSSTELLER", font=font_tiny, fill="#b8c7db")
+    draw.text((850, 275), server_name[:24], font=font_small, fill="#ffffff")
+
+    # Decorative security band.
+    draw.rounded_rectangle((44, 395, 1156, 431), radius=10, fill="#111c2d", outline="#344861", width=1)
+    for x in range(58, 1145, 16):
+        draw.line((x, 400, x + 20, 426), fill=accent if (x // 16) % 3 == 0 else "#50637d", width=2)
+    draw.text((48, 450), "ANTRAGSANGABEN", font=font_heading, fill="#ffffff")
+    draw.text((48, 484), "Vom Mitglied übermittelte Informationen", font=font_small, fill="#b8c7db")
+    draw.line((48, 520, 1152, 520), fill=accent, width=3)
+
+    y = 540
     for idx, item in enumerate(answers[:10]):
-        draw.text((48, y), f"{idx + 1}. {str(item.get('question', 'Frage'))[:70]}", font=font_small, fill="#aebbd1")
-        y += 25
+        question = " ".join(str(item.get("question", "Frage")).split())[:76]
         answer = " ".join(str(item.get("answer", "—")).split())[:100] or "—"
-        draw.text((70, y), answer, font=font_small, fill="white")
-        y += 42
-    draw.text((48, 1200), "IronWolf · Created by KingSnowy", font=font_small, fill="#aebbd1")
+        draw.rounded_rectangle((48, y, 1152, y + 57), radius=12, fill="#202f45", outline="#344861", width=1)
+        draw.text((65, y + 7), f"{idx + 1:02d}  {question}", font=font_tiny, fill="#b8c7db")
+        draw.text((85, y + 27), answer, font=font_small, fill="#ffffff")
+        y += 64
+
+    # Bottom authentication strip and microprint-style footer.
+    draw.line((48, 1190, 1152, 1190), fill="#425570", width=2)
+    draw.text((48, 1202), "IRONWOLF  •  COMMUNITY ID", font=font_tiny, fill="#d5deea")
+    draw.text((790, 1202), "DIGITAL CREDENTIAL  /  VERIFIED MEMBER", font=font_tiny, fill="#aabbd0")
     output = io.BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
@@ -3060,7 +3107,7 @@ async def _id_card_dm_application(guild_id, user):
 
 
 async def _id_card_publish_to_channel(guild, app_id, answers, member):
-    """Optionally publish the issued card to the configured output channel."""
+    """Publish only the ID-card PNG in the configured output channel."""
     cfg = guild_config(guild.id)
     channel_id = cfg.get("id_card_output_channel_id")
     if not channel_id:
@@ -3069,9 +3116,9 @@ async def _id_card_publish_to_channel(guild, app_id, answers, member):
     if not isinstance(channel, discord.TextChannel):
         return
     try:
-        card, file = _id_card_issue(guild, member, app_id, answers)
-        await channel.send(content=f"🪪 Ausweis ausgestellt für {member.mention}", embed=card, file=file)
-    except (discord.Forbidden, discord.HTTPException) as exc:
+        file = discord.File(_id_card_image(guild, member, app_id, answers), filename="ironwolf-ausweis.png")
+        await channel.send(file=file)
+    except (discord.Forbidden, discord.HTTPException, OSError) as exc:
         print(f"[ID CARD] Could not publish card to output channel: {type(exc).__name__}", flush=True)
 
 class IDCardApplyButton(discord.ui.Button):
