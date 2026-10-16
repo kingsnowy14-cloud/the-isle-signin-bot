@@ -1457,23 +1457,30 @@ def guild_page(guild_id):
                             raise PermissionError("Dem Bot fehlt die Berechtigung „Spitznamen verwalten“.")
                         changed = 0
                         skipped = 0
+                        matched = 0
                         template = str(cfg.get("nickname_template") or "{role} | {name}")
-                        for member in list(role.members):
-                            if member.bot or member == target_guild.owner or member.top_role >= me.top_role:
-                                skipped += 1
-                                continue
-                            nickname = template.replace("{name}", member.name).replace("{username}", member.name).replace("{role}", role.name).strip()[:32]
-                            nickname = nickname or member.name[:32]
-                            if member.nick == nickname:
-                                continue
-                            try:
-                                await member.edit(nick=nickname, reason=f"Dashboard: Nickname-Automatik für Rolle {role.name}")
-                                changed += 1
-                            except discord.Forbidden:
-                                skipped += 1
-                            except discord.HTTPException:
-                                skipped += 1
-                        return changed, skipped, len(role.members)
+                        # Fetch members instead of relying only on role.members cache.
+                        # This requires the Server Members Intent to be enabled in the Discord Developer Portal.
+                        try:
+                            async for member in target_guild.fetch_members(limit=None):
+                                if member.bot or role not in member.roles:
+                                    continue
+                                matched += 1
+                                if member == target_guild.owner or member.top_role >= me.top_role:
+                                    skipped += 1
+                                    continue
+                                nickname = template.replace("{name}", member.name).replace("{username}", member.name).replace("{role}", role.name).strip()[:32]
+                                nickname = nickname or member.name[:32]
+                                if member.nick == nickname:
+                                    continue
+                                try:
+                                    await member.edit(nick=nickname, reason=f"Dashboard: Nickname-Automatik für Rolle {role.name}")
+                                    changed += 1
+                                except (discord.Forbidden, discord.HTTPException):
+                                    skipped += 1
+                        except discord.Forbidden as fetch_exc:
+                            raise RuntimeError("Discord verweigert das Abrufen der Mitglieder. Aktiviere im Developer Portal unter Bot den Server Members Intent und prüfe die Bot-Berechtigungen.") from fetch_exc
+                        return changed, skipped, matched
                     future = asyncio.run_coroutine_threadsafe(_apply_nicknames_to_existing_members(), _bot.loop)
                     try:
                         nickname_applied = future.result(timeout=45)
