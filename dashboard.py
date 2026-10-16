@@ -1216,7 +1216,7 @@ def guild_ping_protection(guild_id):
         '<label for="protected_member_ids">Geschützte Personen</label><select id="protected_member_ids" name="protected_member_ids" multiple size="8" style="min-height:170px">' + member_options + '</select>'
         '<small class="muted">Mehrere Personen mit Strg (Windows) oder Cmd (Mac) auswählen. Die Mitgliederliste hängt davon ab, welche Mitglieder IronWolf kennt.</small>'
         '<p class="notice">Hinweis: Mitglieder mit „Nachrichten verwalten“ sind ausgenommen. IronWolf braucht im betroffenen Kanal „Nachrichten verwalten“, um Pings löschen zu können. DMs können durch die Privatsphäre-Einstellungen blockiert sein.</p>'
-        '<button type="submit">💾 Ping-Schutz speichern</button></form><p><a class="button secondary" href="/guild/' + gid + ''>← Serverübersicht</a></p></section>'
+        '<button type="submit">💾 Ping-Schutz speichern</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Ping-Schutz", body)
 
