@@ -2145,9 +2145,41 @@ def guild_tickets(guild_id):
             selected = " selected" if str(item_id) == str(current or "") else ""
             out.append(f'<option value="{item_id}"{selected}>{html.escape(name)}</option>')
         return "".join(out)
-    body = (
+    ticket_data = {}
+    try:
+        with open(data_path("data.json"), "r", encoding="utf-8") as ticket_file:
+            ticket_data = json.load(ticket_file)
+        if not isinstance(ticket_data, dict):
+            ticket_data = {}
+    except (OSError, ValueError, TypeError):
+        ticket_data = {}
+    open_tickets = [
+        (str(channel_id), meta) for channel_id, meta in ticket_data.get("tickets", {}).items()
+        if isinstance(meta, dict) and str(meta.get("guild_id", guild.id)) == str(guild.id)
+    ]
+    # Older ticket records do not store guild_id; confirm them against actual channels.
+    open_tickets = [(cid, meta) for cid, meta in open_tickets if guild.get_channel(int(cid)) is not None]
+    claimed_tickets = sum(1 for _, meta in open_tickets if meta.get("claimed_by"))
+    priority_tickets = sum(1 for _, meta in open_tickets if meta.get("priority"))
+    closed_history = [
+        item for item in ticket_data.get("ticket_history", [])
+        if isinstance(item, dict) and str(item.get("guild_id")) == str(guild.id)
+    ]
+    durations = [item.get("resolution_minutes") for item in closed_history if isinstance(item.get("resolution_minutes"), (int, float))]
+    avg_resolution = (sum(durations) / len(durations)) if durations else None
+    avg_label = (f"{avg_resolution / 60:.1f} Std." if avg_resolution >= 60 else f"{avg_resolution:.0f} Min.") if avg_resolution is not None else "Noch keine Daten"
+    ticket_metrics_html = (
+        '<section class="card"><span class="pill">TICKET-ANALYTICS</span><h2>📊 Ticket-Übersicht</h2><div class="grid">'
+        '<div class="notice"><small>Offene Tickets</small><h2>' + str(len(open_tickets)) + '</h2></div>'
+        '<div class="notice"><small>Übernommen</small><h2>' + str(claimed_tickets) + '</h2></div>'
+        '<div class="notice"><small>Hohe Priorität</small><h2>' + str(priority_tickets) + '</h2></div>'
+        '<div class="notice"><small>Ø Bearbeitungszeit</small><h2>' + html.escape(avg_label) + '</h2></div>'
+        '<div class="notice"><small>Geschlossene Tickets (gespeicherte Historie)</small><h2>' + str(len(closed_history)) + '</h2></div>'
+        '</div><p class="muted">Die Historie beginnt mit den neuen Bot-Versionen; ältere Schließungen werden nicht rückwirkend ergänzt.</p></section>'
+    )
+    body = ticket_metrics_html + (
         f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
-        '<p class="muted">Bearbeite Titel, Beschreibung, Button-Texte, Zielkanal, Ticket-Kategorie und Support-Rolle. Gespeicherte Panel-Nachrichten werden nach Möglichkeit direkt bearbeitet.</p>'
+        '<p class="muted">Bearbeite Titel, Beschreibung, Anfragearten, Ticket-Kategorie und Support-Rolle. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
         '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support-Rolle, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu fünf Anfrage-Buttons pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
