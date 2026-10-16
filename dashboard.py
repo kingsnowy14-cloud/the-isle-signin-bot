@@ -129,7 +129,7 @@ def _page(title, body):
     logged_in = bool(session.get("access_token"))
     is_premium_admin = str(session.get("user_id", "")) == "1493110334280564807"
     custom_theme_css = ""
-    match = re.match(r"^/guild/(\\d+)", request.path)
+    match = re.match(r"^/guild/(\d+)", request.path)
     if match and _guild_config:
         try:
             theme_cfg = _guild_config(int(match.group(1)))
