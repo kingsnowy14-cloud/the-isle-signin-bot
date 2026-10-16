@@ -1160,14 +1160,72 @@ def guild_message_builder(guild_id):
         return redirect(url_for("guild_message_builder", guild_id=gid, sent="1"))
     channels = ''.join(f'<option value="{ch.id}">{html.escape(ch.name)}</option>' for ch in guild.text_channels)
     roles = ''.join(f'<option value="{role.id}">{html.escape(role.name)}</option>' for role in guild.roles if not role.is_default() and not role.managed)
-    button_fields = '<div id="button-fields">'
+    button_fields = '<div id="button-fields" class="scnx-button-list">'
     for index in range(1, 6):
         default_type = "role" if index == 1 else "link"
         hidden = "" if index == 1 else ' hidden'
-        button_fields += f'<div class="notice manual-button-row" data-button-row="{index}"{hidden}><strong>Button {index}</strong><button type="button" class="secondary remove-button" onclick="removeManualButton({index})" style="float:right">Entfernen</button><label>Typ</label><select name="button_type"><option value="role" {"selected" if default_type == "role" else ""}>Rollen-Button</option><option value="link" {"selected" if default_type == "link" else ""}>HTTPS-Link-Button</option></select><label>Button-Name (optional)</label><input name="button_label" maxlength="80" placeholder="Leer = automatischer Name"><label>HTTPS-Link (nur für Link-Button)</label><input name="button_url" type="url" placeholder="https://example.com"><label>Rolle (nur für Rollen-Button)</label><select name="button_role"><option value="">— Rolle auswählen —</option>{roles}</select></div>'
-    button_fields += '</div><button type="button" id="add-button-row" class="secondary" onclick="addManualButton()">＋ Button hinzufügen</button><script>function addManualButton(){const rows=[...document.querySelectorAll(".manual-button-row")];const row=rows.find(r=>r.hidden);if(!row){alert("Maximal fünf Buttons pro Nachricht.");return;}row.hidden=false;}function removeManualButton(n){const row=document.querySelector("[data-button-row="+n+"]");if(!row)return;row.querySelectorAll("input").forEach(i=>i.value="");row.querySelectorAll("select").forEach(s=>s.selectedIndex=0);row.hidden=true;}document.querySelector("form").addEventListener("submit",function(){document.querySelectorAll(".manual-button-row[hidden]").forEach(row=>row.querySelectorAll("input,select").forEach(el=>el.disabled=true));});</script>'
+        button_fields += f'<div class="scnx-button-item manual-button-row" data-button-row="{index}"{hidden}><div class="scnx-button-heading"><strong><span class="scnx-button-number">{index}</span> Button {index}</strong><button type="button" class="secondary scnx-remove-button" onclick="removeManualButton({index})">Entfernen</button></div><label>Button-Typ</label><select name="button_type" class="scnx-button-type" onchange="updateButtonType(this)"><option value="role" {"selected" if default_type == "role" else ""}>🎭 Rolle vergeben</option><option value="link" {"selected" if default_type == "link" else ""}>🔗 Link öffnen</option></select><label>Button-Text</label><input name="button_label" maxlength="80" placeholder="z. B. Jetzt verifizieren"><div class="scnx-link-fields"><label>HTTPS-Link</label><input name="button_url" type="url" placeholder="https://deine-seite.de" disabled></div><div class="scnx-role-fields"><label>Rolle auswählen</label><select name="button_role" disabled><option value="">— Discord-Rolle wählen —</option>{roles}</select></div></div>'
+    button_fields += '</div><button type="button" id="add-button-row" class="secondary" onclick="addManualButton()">＋ Weiteren Button hinzufügen</button><p class="muted">Bis zu 5 Buttons. Rollen-Buttons vergeben oder entfernen die gewählte Rolle; Link-Buttons öffnen eine HTTPS-Seite.</p>'
+    button_fields += """<style>
+.scnx-builder{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:18px;align-items:start}
+.scnx-panel{border:1px solid var(--border-color,rgba(148,163,184,.25));border-radius:14px;padding:18px;margin:14px 0;background:var(--card-bg,rgba(127,127,127,.035))}
+.scnx-panel h2,.scnx-panel h3{margin-top:0}.scnx-field-help{display:block;color:var(--muted,#94a3b8);font-size:.86rem;margin:-5px 0 12px}
+.scnx-button-item{border:1px solid var(--border-color,rgba(148,163,184,.25));border-radius:12px;padding:14px;margin:12px 0}
+.scnx-button-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.scnx-button-number{display:inline-grid;place-items:center;width:27px;height:27px;border-radius:8px;background:rgba(124,58,237,.16);margin-right:6px}
+.scnx-remove-button{padding:5px 10px!important;font-size:.85rem}
+.scnx-preview{position:sticky;top:16px}.scnx-discord-preview{background:#313338;color:#dbdee1;border-radius:12px;padding:16px;font-family:Arial,sans-serif;overflow-wrap:anywhere}
+.scnx-preview-label{font-size:.75rem;color:#949ba4;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.scnx-preview-message{white-space:pre-wrap;margin-bottom:12px}.scnx-preview-embed{border-left:4px solid #5865f2;background:#2b2d31;border-radius:4px;padding:12px;margin:10px 0;min-height:54px}
+.scnx-preview-title{font-weight:700;color:#fff;margin-bottom:8px}.scnx-preview-desc{white-space:pre-wrap}.scnx-preview-buttons{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.scnx-preview-button{background:#4e5058;color:white;border:0;border-radius:5px;padding:8px 12px;font-size:.85rem}.scnx-preview-button.link{background:#5865f2}
+.scnx-send{width:100%;margin-top:12px}
+@media(max-width:850px){.scnx-builder{grid-template-columns:1fr}.scnx-preview{position:static;grid-row:1}}
+</style>
+<script>
+function updateButtonType(select){
+ const row=select.closest(".manual-button-row"), isLink=select.value==="link";
+ const link=row.querySelector(".scnx-link-fields"), role=row.querySelector(".scnx-role-fields");
+ link.hidden=!isLink; role.hidden=isLink;
+ const url=link.querySelector("input"), roleSelect=role.querySelector("select");
+ url.disabled=!isLink; roleSelect.disabled=isLink;
+ updateScnxPreview();
+}
+function addManualButton(){
+ const row=[...document.querySelectorAll(".manual-button-row")].find(r=>r.hidden);
+ if(!row){alert("Du kannst maximal fünf Buttons hinzufügen.");return;}
+ row.hidden=false;updateButtonType(row.querySelector(".scnx-button-type"));row.scrollIntoView({behavior:"smooth",block:"center"});
+}
+function removeManualButton(n){
+ const row=document.querySelector('[data-button-row="'+n+'"]');if(!row)return;
+ row.querySelectorAll("input").forEach(i=>i.value="");row.querySelectorAll("select").forEach(s=>s.selectedIndex=0);
+ row.hidden=true;updateButtonType(row.querySelector(".scnx-button-type"));updateScnxPreview();
+}
+function updateScnxPreview(){
+ const val=id=>document.getElementById(id)?.value||"";
+ document.getElementById("scnx-preview-message").textContent=val("message")||"Deine Nachricht erscheint hier …";
+ const title=val("embed_title"),desc=val("embed_description");
+ document.getElementById("scnx-preview-embed").hidden=!(title||desc);
+ document.getElementById("scnx-preview-title").textContent=title;
+ document.getElementById("scnx-preview-desc").textContent=desc;
+ const buttons=document.getElementById("scnx-preview-buttons");buttons.replaceChildren();
+ document.querySelectorAll(".manual-button-row:not([hidden])").forEach(row=>{
+  const label=row.querySelector('[name="button_label"]').value.trim();
+  const type=row.querySelector('[name="button_type"]').value;
+  const role=row.querySelector('[name="button_role"]');
+  const text=label||(type==="role"?(role.selectedOptions[0]?.textContent&&role.value?role.selectedOptions[0].textContent:"Rolle erhalten"):"Link öffnen");
+  const button=document.createElement("span");button.className="scnx-preview-button"+(type==="link"?" link":"");button.textContent=(type==="link"?"↗ ":"")+text;buttons.appendChild(button);
+ });
+}
+document.addEventListener("DOMContentLoaded",()=>{
+ document.querySelectorAll(".manual-button-row").forEach(row=>updateButtonType(row.querySelector(".scnx-button-type")));
+ document.querySelectorAll("#message,#embed_title,#embed_description,.manual-button-row input,.manual-button-row select").forEach(el=>el.addEventListener("input",updateScnxPreview));
+ document.querySelector("form").addEventListener("submit",()=>document.querySelectorAll(".manual-button-row[hidden]").forEach(row=>row.querySelectorAll("input,select").forEach(el=>el.disabled=true)));
+ updateScnxPreview();
+});
+</script>"""
     success = '<div class="notice">✅ Nachricht wurde vom Bot gesendet.</div>' if request.args.get("sent") == "1" else ''
-    body = '<section class="card"><span class="pill">BOT MESSAGE BUILDER</span><h1>✉️ Bot-Nachricht erstellen</h1><p>Der Bot sendet die Nachricht direkt in den gewählten Kanal. Füge nur die Buttons hinzu, die du wirklich brauchst. Jeder Button kann manuell ergänzt oder entfernt werden. Namen sind optional; ohne Namen setzt der Bot einen passenden Standardtext. Rollen-Buttons geben die ausgewählte Rolle oder entfernen sie wieder.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<label for="channel_id">Zielkanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" placeholder="Deine Nachricht …"></textarea><h3>Optionaler Embed</h3><label for="embed_title">Embed-Titel</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="Titel"><label for="embed_description">Embed-Beschreibung</label><textarea id="embed_description" name="embed_description" maxlength="4000" placeholder="Beschreibung im Embed …"></textarea><h3>Buttons (optional)</h3><p class="muted">Mit „Button hinzufügen“ fügst du weitere Felder bei Bedarf hinzu. Unbenutzte Felder werden ignoriert. Du kannst bis zu fünf Rollen- und/oder HTTPS-Link-Buttons kombinieren.</p>' + button_fields + '<button type="submit">🚀 Nachricht senden</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
+    body = '<section class="card scnx-message-builder"><span class="pill">MESSAGE BUILDER</span><h1>✉️ Nachricht erstellen</h1><p class="muted">Erstelle eine Discord-Nachricht wie in einem visuellen Editor: Inhalt links bearbeiten, Vorschau rechts ansehen und am Ende direkt senden.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<div class="scnx-builder"><div><section class="scnx-panel"><h2>1. Wo soll die Nachricht hin?</h2><label for="channel_id">Discord-Kanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><small class="scnx-field-help">Wähle den Kanal, in dem der Bot die Nachricht veröffentlichen soll.</small></section><section class="scnx-panel"><h2>2. Nachricht gestalten</h2><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" rows="4" placeholder="Schreibe hier deine Nachricht …"></textarea><small class="scnx-field-help">Normale Discord-Nachricht, maximal 2000 Zeichen.</small><h3>Embed (optional)</h3><label for="embed_title">Überschrift</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="z. B. Willkommen auf dem Server!"><label for="embed_description">Beschreibung</label><textarea id="embed_description" name="embed_description" maxlength="4000" rows="5" placeholder="Erkläre hier, was Mitglieder tun sollen …"></textarea><small class="scnx-field-help">Du kannst nur normalen Text, nur einen Embed oder beides zusammen senden.</small></section><section class="scnx-panel"><h2>3. Buttons hinzufügen</h2><p class="muted">Füge nur die Buttons hinzu, die du brauchst. Wähle einen Button-Typ; unnötige Felder werden automatisch ausgeblendet.</p>' + button_fields + '</section><button class="scnx-send" type="submit">🚀 Nachricht jetzt senden</button></div><aside class="scnx-panel scnx-preview"><div class="scnx-preview-label">Live-Vorschau · Discord</div><div class="scnx-discord-preview"><div class="scnx-preview-message" id="scnx-preview-message">Deine Nachricht erscheint hier …</div><div class="scnx-preview-embed" id="scnx-preview-embed" hidden><div class="scnx-preview-title" id="scnx-preview-title"></div><div class="scnx-preview-desc" id="scnx-preview-desc"></div></div><div class="scnx-preview-buttons" id="scnx-preview-buttons"></div></div><p class="muted" style="font-size:.85rem;margin-top:12px">Die Vorschau ist eine ungefähre Darstellung. Das tatsächliche Aussehen richtet sich nach Discord.</p></aside></div></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     return _render(guild.name + " · Bot-Nachricht", body)
 
 
