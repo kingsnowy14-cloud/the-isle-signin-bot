@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
+import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
 from premium import guild_has_feature, account_plan, expired_grants, mark_expiry_dm_sent
@@ -2938,11 +2939,11 @@ def _id_card_image(guild, member, card_number, answers=None):
     image = Image.new("RGB", (1200, 1250), "#101827")
     draw = ImageDraw.Draw(image)
     try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
-        font_heading = ImageFont.truetype("DejaVuSans-Bold.ttf", 25)
-        font_body = ImageFont.truetype("DejaVuSans.ttf", 24)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 18)
-        font_tiny = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
+        font_heading = ImageFont.truetype("DejaVuSans-Bold.ttf", 30)
+        font_body = ImageFont.truetype("DejaVuSans-Bold.ttf", 30)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 22)
+        font_tiny = ImageFont.truetype("DejaVuSans-Bold.ttf", 17)
     except OSError:
         font_title = font_heading = font_body = font_small = font_tiny = ImageFont.load_default()
 
@@ -2972,20 +2973,37 @@ def _id_card_image(guild, member, card_number, answers=None):
 
     # Member identity panel.
     draw.rounded_rectangle((44, 158, 1156, 375), radius=22, fill="#202f45", outline="#425570", width=2)
+    # Use the card holder's real Discord avatar as the ID portrait.
     draw.rounded_rectangle((66, 180, 220, 334), radius=18, fill="#111c2d", outline="#8294ad", width=2)
-    draw.ellipse((108, 198, 178, 268), fill=accent, outline="#e5edf7", width=3)
-    initials = "".join(part[0] for part in display_name.split()[:2]).upper() or "M"
+    avatar_drawn = False
     try:
-        bounds = draw.textbbox((0, 0), initials, font=font_heading)
-        tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
-    except AttributeError:
-        tw, th = draw.textsize(initials, font=font_heading)
-    draw.text((143 - tw / 2, 232 - th / 2), initials, font=font_heading, fill="#ffffff")
-    draw.text((88, 286), "MITGLIED", font=font_tiny, fill="#b8c7db")
+        avatar_url = str(member.display_avatar.with_size(256).url)
+        request = urllib.request.Request(avatar_url, headers={"User-Agent": "IronWolf-IDCard/1.0"})
+        with urllib.request.urlopen(request, timeout=4) as response:
+            avatar_bytes = response.read(2_000_000)
+        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGB")
+        avatar = avatar.resize((140, 140), Image.Resampling.LANCZOS)
+        mask = Image.new("L", (140, 140), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, 139, 139), radius=14, fill=255)
+        image.paste(avatar, (73, 187), mask)
+        draw.rounded_rectangle((70, 184, 216, 330), radius=15, outline="#d6e1ef", width=3)
+        avatar_drawn = True
+    except Exception:
+        pass
+    if not avatar_drawn:
+        initials = "".join(part[0] for part in display_name.split()[:2]).upper() or "M"
+        draw.ellipse((108, 198, 178, 268), fill=accent, outline="#e5edf7", width=3)
+        try:
+            bounds = draw.textbbox((0, 0), initials, font=font_heading)
+            tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
+        except AttributeError:
+            tw, th = draw.textsize(initials, font=font_heading)
+        draw.text((143 - tw / 2, 232 - th / 2), initials, font=font_heading, fill="#ffffff")
+    draw.text((88, 336), "FOTO / MITGLIED", font=font_tiny, fill="#b8c7db")
     draw.text((250, 180), "NAME / MITGLIED", font=font_tiny, fill="#b8c7db")
-    draw.text((250, 207), display_name, font=font_body, fill="#ffffff")
+    draw.text((250, 207), display_name[:30], font=font_body, fill="#ffffff")
     draw.text((250, 251), "AUSWEISNUMMER", font=font_tiny, fill="#b8c7db")
-    draw.text((250, 275), str(card_number)[:44], font=font_small, fill="#ffffff")
+    draw.text((250, 275), str(card_number)[:34], font=font_small, fill="#ffffff")
     draw.rounded_rectangle((850, 180, 1118, 226), radius=18, fill="#173e35", outline="#4caa8a", width=2)
     draw.ellipse((870, 195, 886, 211), fill="#6ce0b1")
     draw.text((900, 190), "STATUS: AKTIV", font=font_tiny, fill="#d7ffed")
@@ -3005,8 +3023,8 @@ def _id_card_image(guild, member, card_number, answers=None):
         question = " ".join(str(item.get("question", "Frage")).split())[:76]
         answer = " ".join(str(item.get("answer", "—")).split())[:100] or "—"
         draw.rounded_rectangle((48, y, 1152, y + 57), radius=12, fill="#202f45", outline="#344861", width=1)
-        draw.text((65, y + 7), f"{idx + 1:02d}  {question}", font=font_tiny, fill="#b8c7db")
-        draw.text((85, y + 27), answer, font=font_small, fill="#ffffff")
+        draw.text((65, y + 5), f"{idx + 1:02d}  {question[:66]}", font=font_tiny, fill="#b8c7db")
+        draw.text((85, y + 27), answer[:90], font=font_small, fill="#ffffff")
         y += 64
 
     # Bottom authentication strip and microprint-style footer.
