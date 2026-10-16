@@ -1172,7 +1172,7 @@ def guild_create_role(guild_id):
 
 @app.route("/guild/<guild_id>/branding", methods=["GET", "POST"])
 def guild_branding(guild_id):
-    """Per-server dashboard accent and default embed branding."""
+    """Configure dashboard-only accent styling for this Discord server."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
@@ -1196,7 +1196,7 @@ def guild_branding(guild_id):
     success = '<div class="notice">✅ Dashboard-Design gespeichert. Die Änderung betrifft ausschließlich die Darstellung im Dashboard und verändert keine Discord-Nachrichten.</div>' if request.args.get("saved") == "1" else ""
     body = (
         '<section class="card"><span class="pill">IRONWOLF · SERVER DESIGN</span><h1>🎨 Server-Design</h1>'
-        '<p class="muted">Passe die Akzentfarbe des Dashboards und die Standardfarbe neuer Bot-Nachrichten für diesen Server an.</p>'
+        '<p class="muted">Passe ausschließlich die Darstellung des Dashboards für diesen Server an.</p>'
         + success +
         '<form method="post">' + _csrf_field() +
         '<div class="grid"><section class="card"><h2>🖥️ Dashboard-Design</h2>'
