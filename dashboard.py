@@ -1185,27 +1185,31 @@ def teamlist_dashboard(guild_id):
                         if matching_roles:
                             matching.append((member, matching_roles))
                     matching.sort(key=lambda item: (item[0].display_name or item[0].name).casefold())
-                    lines = [f"👥 **Teamliste – {guild.name}**", f"Mitglieder: {len(matching)}"]
-                    if matching:
-                        lines.extend(
-                            f"• {member.mention} — " + ", ".join(role.name for role in member_roles)
-                            for member, member_roles in matching
+                    # Discord embeds are limited to 25 fields each; split large team lists
+                    # into several embeds so the list remains readable on desktop and mobile.
+                    page_size = 25
+                    pages = [matching[index:index + page_size] for index in range(0, len(matching), page_size)]
+                    if not pages:
+                        pages = [[]]
+                    for page_index, page_members in enumerate(pages, start=1):
+                        embed = discord.Embed(
+                            title=f"👥 Teamliste · {guild.name}"[:256],
+                            description=f"**Mitglieder:** {len(matching)}",
+                            color=discord.Color.blurple(),
                         )
-                    else:
-                        lines.append("Aktuell wurden keine Mitglieder mit den ausgewählten Rollen gefunden.")
-                    chunks = []
-                    current = ""
-                    for line in lines:
-                        if len(current) + len(line) + 1 > 1850:
-                            chunks.append(current)
-                            current = ""
-                        current += ( "\\n" if current else "" ) + line
-                    if current:
-                        chunks.append(current)
-                    for index, chunk in enumerate(chunks):
-                        if len(chunks) > 1:
-                            chunk = f"**Teamliste ({index + 1}/{len(chunks)})**\\n" + chunk
-                        await target_channel.send(chunk, allowed_mentions=discord.AllowedMentions.none())
+                        if page_members:
+                            for member, member_roles in page_members:
+                                display_name = (member.display_name or member.name)[:256]
+                                role_names = ", ".join(role.name for role in member_roles)[:1024]
+                                embed.add_field(
+                                    name=f"👤 {display_name}",
+                                    value=role_names or "Keine passende Rolle",
+                                    inline=False,
+                                )
+                        else:
+                            embed.description += "\\n\\nAktuell wurden keine Mitglieder mit den ausgewählten Rollen gefunden."
+                        embed.set_footer(text=f"IronWolf Teamliste · Seite {page_index}/{len(pages)}")
+                        await target_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
                     return len(matching)
                 count = asyncio.run_coroutine_threadsafe(_publish_teamlist(), _bot.loop).result(timeout=90)
                 _audit_dashboard_change(guild.id, "Teamliste gesendet", session.get("user_id"),
