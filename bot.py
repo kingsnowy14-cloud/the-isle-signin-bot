@@ -3730,23 +3730,38 @@ class ClaimVoiceSupportView(discord.ui.View):
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
             requester: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
         }
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(view_channel=True, connect=True, speak=True)
         if guild.me:
             overwrites[guild.me] = discord.PermissionOverwrite(view_channel=True, connect=True, manage_channels=True, move_members=True)
         support_channel = None
+        created_channel = False
+        existing_id = cfg.get("voice_support_existing_channel")
+        selected_channel = guild.get_channel(int(existing_id)) if existing_id else None
+        if existing_id and not isinstance(selected_channel, discord.VoiceChannel):
+            await interaction.response.send_message("Der ausgewählte vorhandene Support-Kanal existiert nicht mehr. Bitte prüfe die Dashboard-Einstellungen.", ephemeral=True)
+            return
+        if isinstance(selected_channel, discord.VoiceChannel) and selected_channel.members:
+            await interaction.response.send_message("Der ausgewählte Support-Kanal ist bereits belegt. Bitte leere ihn oder wähle im Dashboard einen anderen Kanal.", ephemeral=True)
+            return
         try:
-            support_channel = await guild.create_voice_channel(
-                name=f"{prefix}-{safe_name}"[:100],
-                category=category,
-                overwrites=overwrites,
-                reason=f"Voice-Support übernommen von {interaction.user}",
-            )
+            if isinstance(selected_channel, discord.VoiceChannel):
+                support_channel = selected_channel
+                await support_channel.edit(overwrites=overwrites, reason=f"Voice-Support für {requester} vorbereitet")
+            else:
+                support_channel = await guild.create_voice_channel(
+                    name=f"{prefix}-{safe_name}"[:100],
+                    category=category,
+                    overwrites=overwrites,
+                    reason=f"Voice-Support übernommen von {interaction.user}",
+                )
+                created_channel = True
             previous_voice_id = interaction.user.voice.channel.id if interaction.user.voice and interaction.user.voice.channel else 0
             await requester.move_to(support_channel, reason="Voice-Support gestartet")
             await interaction.user.move_to(support_channel, reason="Voice-Support übernommen")
         except (discord.Forbidden, discord.HTTPException) as exc:
-            if support_channel is not None:
+            if created_channel and support_channel is not None:
                 try:
                     await support_channel.delete(reason="Support konnte nicht gestartet werden")
                 except discord.HTTPException:
@@ -3788,21 +3803,13 @@ class ActiveVoiceSupportView(discord.ui.View):
             await interaction.response.send_message("Nur der zuständige Supporter oder ein Moderator kann den Fall beenden.", ephemeral=True)
             return
         support_channel = guild.get_channel(channel_id) if channel_id else None
-        supporter = guild.get_member(supporter_id) if supporter_id else None
-        requester = guild.get_member(requester_id) if requester_id else None
-        if supporter and previous_id:
-            previous = guild.get_channel(previous_id)
-            if isinstance(previous, discord.VoiceChannel) and supporter.voice and supporter.voice.channel == support_channel:
-                try:
-                    await supporter.move_to(previous, reason="Voice-Support beendet")
-                except discord.HTTPException:
-                    pass
-        if requester and requester.voice and requester.voice.channel == support_channel:
-            try:
-                await requester.move_to(None, reason="Voice-Support beendet")
-            except discord.HTTPException:
-                pass
         if isinstance(support_channel, discord.VoiceChannel):
+            # Everyone in the support room is disconnected before the room is deleted.
+            for member in list(support_channel.members):
+                try:
+                    await member.move_to(None, reason=f"Voice-Support beendet von {interaction.user}")
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
             try:
                 await support_channel.delete(reason=f"Voice-Support beendet von {interaction.user}")
             except discord.HTTPException:
