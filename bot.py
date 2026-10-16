@@ -3726,7 +3726,7 @@ class ClaimVoiceSupportView(discord.ui.View):
         if category is not None and not isinstance(category, discord.CategoryChannel):
             category = requester.voice.channel.category
         prefix = str(cfg.get("voice_support_prefix") or "Support")[:40]
-        safe_name = re.sub(r"[^a-zA-Z0-9\\-]", "-", requester.display_name.lower()).strip("-")[:60] or "mitglied"
+        safe_name = re.sub(r"[^a-zA-Z0-9-]", "-", requester.display_name.lower()).strip("-")[:60] or "mitglied"
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
             requester: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
@@ -3734,6 +3734,7 @@ class ClaimVoiceSupportView(discord.ui.View):
         }
         if guild.me:
             overwrites[guild.me] = discord.PermissionOverwrite(view_channel=True, connect=True, manage_channels=True, move_members=True)
+        support_channel = None
         try:
             support_channel = await guild.create_voice_channel(
                 name=f"{prefix}-{safe_name}"[:100],
@@ -3745,10 +3746,9 @@ class ClaimVoiceSupportView(discord.ui.View):
             await requester.move_to(support_channel, reason="Voice-Support gestartet")
             await interaction.user.move_to(support_channel, reason="Voice-Support übernommen")
         except (discord.Forbidden, discord.HTTPException) as exc:
-            channel = guild.get_channel(locals().get("support_channel", 0))
-            if channel:
+            if support_channel is not None:
                 try:
-                    await channel.delete(reason="Support konnte nicht gestartet werden")
+                    await support_channel.delete(reason="Support konnte nicht gestartet werden")
                 except discord.HTTPException:
                     pass
             await interaction.response.send_message(
