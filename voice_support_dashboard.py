@@ -80,7 +80,10 @@ def register():
         max_waiting = 5 if premium_voice else 1
         configured_ids = {int(x) for x in configured_waiting if str(x).isdigit()}
         waiting_opts = "".join(
-            '<option value="' + str(ch.id) + '"' + (" selected" if ch.id in configured_ids else "") + '>' + html.escape(ch.name) + '</option>'
+            '<label class="voice-waiting-option" style="display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;">'
+            '<input type="checkbox" name="waiting_channels" value="' + str(ch.id) + '"'
+            + (" checked" if ch.id in configured_ids else "") + ' style="width:auto;margin:0;">'
+            + '<span>' + html.escape(ch.name) + '</span></label>'
             for ch in guild.voice_channels
         )
         waiting_limit_note = (
@@ -100,10 +103,14 @@ def register():
             '<p>Mitglieder treten dem Warteraum bei. IronWolf benachrichtigt das Team; ein Supporter übernimmt per Button und erhält einen privaten Sprachkanal.</p>'
             + saved + '<form method="post">' + d._csrf_field()
             + '<div class="check"><input type="checkbox" id="enabled" name="enabled"' + checked + '><label for="enabled">Sprach-Support aktivieren</label></div>'
-            + '<label for="waiting_channels">Voice-Support-Warteräume (max. ' + str(max_waiting) + ')</label><select id="waiting_channels" name="waiting_channels" multiple size="6" required data-max-selections="' + str(max_waiting) + '">' + waiting_opts + '</select>'
+            + '<label for="waiting_channels_dropdown">Voice-Support-Warteräume (max. ' + str(max_waiting) + ')</label>'
+            + '<details id="waiting_channels_dropdown" style="position:relative;margin-bottom:10px;">'
+            + '<summary id="waiting_channels_summary" style="list-style:none;cursor:pointer;padding:12px 14px;border:1px solid #30394b;border-radius:9px;background:#0d1422;color:inherit;">Warteräume auswählen ▾</summary>'
+            + '<div id="waiting_channels_menu" data-max-selections="' + str(max_waiting) + '" style="position:relative;margin-top:5px;border:1px solid #30394b;border-radius:9px;background:#111827;max-height:240px;overflow-y:auto;">'
+            + (waiting_opts or '<p style="padding:10px 12px;">Keine Sprachkanäle vorhanden.</p>') + '</div></details>'
             + waiting_limit_note
-            + '<p id="waiting_channels_help">Wähle bis zu ' + str(max_waiting) + ' Warteräume aus. Mehrere Auswahlmöglichkeiten: Strg (Windows) bzw. Cmd (Mac) gedrückt halten.</p>'
-            + '<script>(function(){const select=document.getElementById("waiting_channels");if(!select)return;const max=Number(select.dataset.maxSelections||1);select.addEventListener("change",function(){const chosen=Array.from(select.options).filter(o=>o.selected);if(chosen.length>max){const last=chosen[chosen.length-1];last.selected=false;const help=document.getElementById("waiting_channels_help");if(help)help.textContent="Dein Tarif erlaubt maximal "+max+" Warteraum/Warteräume. Für bis zu 5 Warteräume brauchst du Premium Voice Support.";}});})();</script>'
+            + '<p id="waiting_channels_help">Wähle bis zu ' + str(max_waiting) + ' Warteräume aus.</p>'
+            + '<script>(function(){const menu=document.getElementById("waiting_channels_menu");const summary=document.getElementById("waiting_channels_summary");const help=document.getElementById("waiting_channels_help");if(!menu||!summary)return;const max=Number(menu.dataset.maxSelections||1);const boxes=Array.from(menu.querySelectorAll('input[name="waiting_channels"]'));function update(){const chosen=boxes.filter(b=>b.checked);summary.textContent=(chosen.length?chosen.map(b=>b.parentElement.querySelector("span").textContent.trim()).join(", "):"Warteräume auswählen")+" ▾";help.textContent=chosen.length+" von "+max+" Warteraum/Warteräumen ausgewählt."; }boxes.forEach(box=>box.addEventListener("change",function(){const chosen=boxes.filter(b=>b.checked);if(chosen.length>max){box.checked=false;help.textContent="Dein Tarif erlaubt maximal "+max+" Warteraum/Warteräume. Für bis zu 5 brauchst du Premium Voice Support.";}update();}));update();})();</script>'
             + '<label for="notification_channel">Benachrichtigungskanal</label><select id="notification_channel" name="notification_channel" required>' + notification_opts + '</select>'
             + '<label for="support_role">Support-Team-Rolle</label><select id="support_role" name="support_role" required>' + role_opts + '</select>'
             + '<label for="support_category">Kategorie für neu erstellte Räume (optional)</label><select id="support_category" name="support_category">' + category_opts + '</select>'
