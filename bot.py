@@ -4650,20 +4650,20 @@ async def on_guild_join(guild: discord.Guild):
         bot_member = guild.me
         if bot_member is None:
             bot_member = await guild.fetch_member(bot.user.id)
-        ironbot_role = discord.utils.get(guild.roles, name="Ironbot")
+        ironbot_role = discord.utils.get(guild.roles, name="IronWolf")
         if ironbot_role is None:
             ironbot_role = await guild.create_role(
-                name="Ironbot",
+                name="IronWolf",
                 colour=discord.Colour.blurple(),
                 permissions=discord.Permissions.none(),
-                reason="Ironbot erstellt seine eigene Bot-Rolle beim Serverbeitritt",
+                reason="IronWolf erstellt seine eigene Bot-Rolle beim Serverbeitritt",
             )
         if ironbot_role not in bot_member.roles:
             await bot_member.add_roles(
                 ironbot_role,
-                reason="Ironbot stattet sich mit seiner eigenen Rolle aus",
+                reason="IronWolf stattet sich mit seiner eigenen Rolle aus",
             )
-        print(f"[ROLE] Ironbot role created/found and assigned in guild {guild.id}.")
+        print(f"[ROLE] IronWolf role created/found and assigned in guild {guild.id}.")
     except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
         print(f"[ROLE] Could not create/assign Ironbot role in guild {guild.id}: {type(exc).__name__}: {exc}")
     """Thank the server owner by DM and post the command list in the new server."""
