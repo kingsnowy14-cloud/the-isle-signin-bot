@@ -1144,6 +1144,32 @@ def guild_page(guild_id):
                         if not meta["min"] <= value <= meta["max"]:
                             abort(400, f"{meta['label']} muss zwischen {meta['min']} und {meta['max']} liegen.")
                         cfg[key] = value
+                    from security_suite import guild_state as security_guild_state, save_guild_state as save_security_guild_state
+                    secure_cfg = security_guild_state(guild.id)
+                    secure_cfg["alt_alerts_enabled"] = request.form.get("secure_alt_alerts_enabled") == "on"
+                    try:
+                        alt_days = int(request.form.get("secure_alt_min_days", str(secure_cfg.get("alt_min_days", 7))).strip())
+                    except (TypeError, ValueError):
+                        abort(400, "Mindestalter für neue Accounts muss eine ganze Zahl sein.")
+                    if not 1 <= alt_days <= 365:
+                        abort(400, "Mindestalter muss zwischen 1 und 365 Tagen liegen.")
+                    secure_cfg["alt_min_days"] = alt_days
+                    secure_cfg["scam_enabled"] = request.form.get("secure_scam_enabled") == "on"
+                    secure_cfg["log_channel_id"] = int(request.form["secure_log_channel"]) if request.form.get("secure_log_channel") else None
+                    secure_cfg["verify_channel_id"] = int(request.form["secure_verify_channel"]) if request.form.get("secure_verify_channel") else None
+                    secure_cfg["verified_role_id"] = int(request.form["secure_verified_role"]) if request.form.get("secure_verified_role") else None
+                    secure_cfg["unverified_role_id"] = int(request.form["secure_unverified_role"]) if request.form.get("secure_unverified_role") else None
+                    raw_domains = request.form.get("secure_blocked_domains", "")
+                    domains = []
+                    for domain in raw_domains.splitlines():
+                        domain = domain.strip().lower().removeprefix("https://").removeprefix("http://").split("/")[0]
+                        if domain and re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", domain):
+                            if domain not in domains:
+                                domains.append(domain)
+                    if len(domains) > 100:
+                        abort(400, "Es können maximal 100 gesperrte Domains gespeichert werden.")
+                    secure_cfg["blocked_domains"] = domains
+                    save_security_guild_state(guild.id, secure_cfg)
                 if settings_section == "voice":
                     voice_ids = {str(item.id) for item in guild.voice_channels}
                     raw = request.form.get("tempvoice_trigger", "").strip()
@@ -1160,6 +1186,15 @@ def guild_page(guild_id):
                         if raw and raw not in role_ids:
                             abort(400, "Ungültige Rolle ausgewählt.")
                         cfg[key] = int(raw) if raw else None
+                    # Level rewards are editable per server; blank means no reward at that level.
+                    level_roles = {}
+                    for level in range(1, 51):
+                        raw = request.form.get(f"level_role_{level}", "").strip()
+                        if raw:
+                            if raw not in role_ids:
+                                abort(400, f"Ungültige Level-Rolle für Level {level}.")
+                            level_roles[str(level)] = int(raw)
+                    cfg["level_roles"] = level_roles
                 _save_json(data_path("config.json"), _config)
                 changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
                 _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
@@ -1214,6 +1249,11 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+            settings_html += '<h3>🏆 Level-Rollen</h3><p class="muted">Wähle optional eine Rolle für Level 1 bis 50. Beim Erreichen des Levels versucht IronWolf, die passende Rolle zu vergeben. Die Bot-Rolle muss darüber liegen.</p>'
+            configured_level_roles = cfg.get("level_roles", {}) if isinstance(cfg.get("level_roles", {}), dict) else {}
+            for level in range(1, 51):
+                current_role = configured_level_roles.get(str(level))
+                settings_html += f'<label for="level_role_{level}">Belohnungsrolle für Level {level}</label><select id="level_role_{level}" name="level_role_{level}">{options(roles, current_role)}</select>'
             if request.args.get("role_created") == "1":
                 settings_html += '<div class="notice">✅ Discord-Rolle erstellt. Du kannst sie jetzt im Nachrichten-Editor für einen Rollen-Button auswählen.</div>'
         if section == "voice":
@@ -1231,6 +1271,22 @@ def guild_page(guild_id):
                 value = int(cfg.get(key, meta["default"]) or meta["default"])
                 value = max(meta["min"], min(meta["max"], value))
                 settings_html += f'<label for="{key}">{html.escape(meta["label"])}</label><small>{html.escape(meta["help"])}</small><input id="{key}" name="{key}" type="number" min="{meta["min"]}" max="{meta["max"]}" step="1" value="{value}" required>'
+            from security_suite import guild_state as security_guild_state
+            secure_cfg = security_guild_state(guild.id)
+            settings_html += '<h3>🔐 Erweiterte Sicherheitsfunktionen</h3><p class="muted">Diese Optionen werden serverbezogen gespeichert. Der Link-/Scam-Filter greift nur, wenn er aktiviert ist.</p>'
+            for key, label in [("secure_alt_alerts_enabled", "Warnung bei sehr neuen Accounts aktivieren"), ("secure_scam_enabled", "Link-/Scam-Filter aktivieren")]:
+                source_key = "alt_alerts_enabled" if key == "secure_alt_alerts_enabled" else "scam_enabled"
+                checked = " checked" if secure_cfg.get(source_key, False) else ""
+                settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{label}</label></div>'
+            alt_days = max(1, min(365, int(secure_cfg.get("alt_min_days", 7) or 7)))
+            settings_html += f'<label for="secure_alt_min_days">Account-Mindestalter für Warnungen (Tage)</label><input id="secure_alt_min_days" name="secure_alt_min_days" type="number" min="1" max="365" value="{alt_days}" required>'
+            secure_channels = options(channels, secure_cfg.get("log_channel_id"))
+            settings_html += '<label for="secure_log_channel">Sicherheits-Logkanal</label><select id="secure_log_channel" name="secure_log_channel">' + secure_channels + '</select>'
+            settings_html += '<label for="secure_verify_channel">Verifizierungskanal (für Secure-Verify)</label><select id="secure_verify_channel" name="secure_verify_channel">' + options(channels, secure_cfg.get("verify_channel_id")) + '</select>'
+            settings_html += '<label for="secure_verified_role">Verifizierte Rolle</label><select id="secure_verified_role" name="secure_verified_role">' + options(roles, secure_cfg.get("verified_role_id")) + '</select>'
+            settings_html += '<label for="secure_unverified_role">Unverifizierte Rolle</label><select id="secure_unverified_role" name="secure_unverified_role">' + options(roles, secure_cfg.get("unverified_role_id")) + '</select>'
+            blocked_domains = secure_cfg.get("blocked_domains", [])
+            settings_html += '<label for="secure_blocked_domains">Gesperrte Domains (eine pro Zeile)</label><small>Nur Hostnamen, z. B. beispiel.invalid. Maximal 100 Einträge.</small><textarea id="secure_blocked_domains" name="secure_blocked_domains" maxlength="10000">' + html.escape("\n".join(blocked_domains)) + '</textarea>'
         if section == "channels":
             settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
         settings_html += '<button type="submit">Änderungen speichern</button></form></section>'
@@ -1246,9 +1302,9 @@ def guild_page(guild_id):
     modules_html += '<button type="submit">Module speichern</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
     section_links = [
-        ("general", "⚙️ Willkommen & Allgemeines", "Willkommensnachricht und grundlegende Optionen"),
-        ("channels", "📡 Kanäle & Logs", "Log-, Ticket-, Vorschlags-, Invite- und Verifizierungskanäle"),
-        ("roles", "🎭 Rollen", "Support-, Verifizierungs- und Sicherheitsrollen"),
+        ("general", "⚙️ Willkommen, XP & Allgemeines", "XP aktivieren, Cooldown und XP-Belohnung einstellen"),
+        ("channels", "📡 Kanäle & Logs", "Log-, Level-Up-, Ticket-, Vorschlags- und Verifizierungskanäle"),
+        ("roles", "🎭 Rollen & Level-Belohnungen", "Support-, Sicherheits- und Level-Rollen konfigurieren"),
         ("voice", "🔊 Temporäre Voice-Kanäle", "Trigger und Zielkategorie für temporäre Räume"),
     ]
     settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Einstellungen öffnen →</span></a>' for key, title, desc in section_links)
