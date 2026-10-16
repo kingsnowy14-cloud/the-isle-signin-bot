@@ -160,6 +160,41 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 .command-groups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:14px;align-items:start}}.command-group{{border:1px solid var(--border);background:rgba(7,12,21,.5);border-radius:15px;padding:14px;min-width:0}}.command-group h3{{margin:2px 0 10px;padding-bottom:10px;border-bottom:1px solid var(--border)}}.command-group .row{{gap:8px;padding:10px 0}}.command-group .row strong{{font-size:13px;overflow-wrap:anywhere}}.command-group .check label{{font-size:12px}}
 @media(max-width:650px){{nav{{padding:12px 15px;gap:10px}}nav a:first-child{{font-size:15px}}main{{margin:25px auto;padding:0 14px 34px}}.card{{padding:19px;border-radius:16px}}.row{{align-items:flex-start}}.section-nav{{gap:6px;padding:9px}}.section-nav a{{font-size:12px;padding:7px 9px}}button,.button{{max-width:100%;white-space:normal}}}}
 \n/* Gaming HUD look */\nbody{{background-image:radial-gradient(ellipse at 12% 0%,rgba(47,112,255,.22),transparent 35%),radial-gradient(ellipse at 90% 12%,rgba(0,255,190,.075),transparent 28%),linear-gradient(180deg,#080d19 0%,#070a12 62%,#04060b 100%)}}\n.card{{border-radius:16px;border-color:rgba(103,143,208,.22);background:linear-gradient(145deg,rgba(16,27,48,.96),rgba(8,14,26,.98));box-shadow:0 16px 45px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.025)}}\n.card::before{{height:3px;background:linear-gradient(90deg,#53a0ff,#438fd0,#72c7ff,transparent)}}\n.pill{{background:rgba(62,133,255,.12);border-color:rgba(83,160,255,.32);color:#a9d0ff;letter-spacing:1.4px}}\nh1{{text-shadow:0 0 34px rgba(65,129,255,.16)}}\n.button{{background:linear-gradient(120deg,#73b7ff,#9b8cff 55%,#64efd0);color:#07111e;border:0;box-shadow:0 8px 26px rgba(72,136,255,.18)}}\n.button:hover,button:hover{{box-shadow:0 10px 30px rgba(72,136,255,.27)}}\ninput[type=file]{{width:100%;padding:12px;border:1px dashed rgba(103,164,255,.45);border-radius:12px;background:rgba(32,66,112,.12);color:var(--text)}}\n@media(max-width:760px){{nav{{flex-wrap:wrap}}nav span{{display:none}}nav a:first-child{{width:100%}}}}\n@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{scroll-behavior:auto!important;transition:none!important;animation:none!important}}}}
+/* GalaxyBot-inspired clean module dashboard */
+:root{{--bg:#0b1020;--panel:#111827;--panel2:#182235;--text:#f3f6fc;--muted:#9caec5;--accent:#8b9dff;--accent2:#c7d0ff;--border:rgba(163,177,211,.15);--shadow:0 12px 34px rgba(0,0,0,.22);--glow:rgba(139,157,255,.10)}}
+body{{background:radial-gradient(ellipse at 50% -12%,rgba(105,123,255,.12),transparent 48%),#0b1020;font-size:14px;line-height:1.65}}
+nav{{gap:10px;padding-top:11px;padding-bottom:11px;background:rgba(11,16,32,.92);border-bottom:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.12)}}
+nav a:first-child{{font-size:16px;letter-spacing:.8px;text-shadow:none}}
+nav a:not(:first-child){{padding:7px 11px;border-radius:9px;background:transparent;border-color:transparent;font-size:13px;box-shadow:none}}
+nav a:not(:first-child):hover{{background:rgba(139,157,255,.09);border-color:rgba(139,157,255,.22);box-shadow:none;color:#d7ddff}}
+main{{max-width:1180px;margin:30px auto;padding:0 22px 48px}}
+h1{{font-size:clamp(28px,3.3vw,38px);letter-spacing:-.8px;text-shadow:none}}
+h2{{font-size:19px;letter-spacing:-.2px}}
+h3{{font-size:12px;letter-spacing:.8px;color:#aebaff}}
+.card{{border-radius:14px;padding:22px;margin:16px 0;background:#111827;border-color:var(--border);box-shadow:0 8px 24px rgba(0,0,0,.16);backdrop-filter:none}}
+.card::before{{height:1px;background:linear-gradient(90deg,rgba(139,157,255,.6),rgba(139,157,255,0));opacity:.65}}
+.card::after{{display:none}}
+.card p{{color:#aab7ca}}
+.grid{{gap:15px}}
+.grid>.card,.grid>div>.card{{margin:0 0 15px}}
+.grid>a.card{{min-height:132px;transition:transform .16s,border-color .16s,background .16s}}
+.grid>a.card:hover{{transform:translateY(-2px);border-color:rgba(139,157,255,.42);background:#151e30;box-shadow:0 12px 28px rgba(0,0,0,.22)}}
+.dashboard-metric{{background:#111827;border-color:var(--border);border-radius:12px}}
+.dashboard-metric strong{{color:#d0d6ff;font-size:23px}}
+.dashboard-group-title{{margin:26px 0 11px;font-size:16px;font-weight:850}}
+.pill{{background:rgba(139,157,255,.09);border-color:rgba(139,157,255,.23);color:#c7ceff;letter-spacing:.9px}}
+button,.button{{border-radius:9px;padding:10px 15px;background:#818cf8;color:#0b1020;box-shadow:none;font-size:13px}}
+.button:hover,button:hover{{background:#a5b4fc;box-shadow:none;filter:none}}
+button.secondary,.button.secondary{{background:#1b2639;border-color:var(--border);color:#e4e9f5}}
+button.secondary:hover,.button.secondary:hover{{background:#24314a;border-color:rgba(139,157,255,.4);color:#fff}}
+input[type=text],input[type=password],select,textarea{{border-radius:9px;background:#0c1322;border-color:rgba(163,177,211,.2);padding:11px 12px}}
+input:focus,select:focus,textarea:focus{{border-color:#818cf8;box-shadow:0 0 0 3px rgba(129,140,248,.12)}}
+label{{font-size:13px;margin:13px 0 6px}}
+.row{{border-color:rgba(163,177,211,.11)}}
+.notice{{border-radius:10px}}
+table{{border-collapse:collapse;width:100%;overflow:hidden;border-radius:10px}}
+th,td{{border-color:var(--border);padding:10px 12px}}
+@media(max-width:760px){{main{{margin:20px auto;padding:0 14px 34px}}.card{{padding:17px;border-radius:12px}}nav{{gap:6px}}nav a:not(:first-child){{font-size:12px;padding:6px 8px}}}}
 </style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf Control Center · Änderungen gelten serverbezogen. Neue Python-Module werden nicht automatisch ausgeführt.</small></p></main></body></html>"""
 
 
