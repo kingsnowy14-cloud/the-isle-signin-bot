@@ -2063,10 +2063,12 @@ def guild_commands(guild_id):
     for item in commands:
         groups.setdefault(item["cog"], []).append(item)
     command_html = '<span class="pill">IRONWOLF · COMMAND CENTER</span><h1 style="margin-top:12px">⌘ Befehle</h1><p class="muted">Alle Befehle sind nach Modul gruppiert. Schalte nur die Befehle ab, die auf diesem Server nicht verfügbar sein sollen.</p><div class="section-nav"><a href="/guild/' + gid + '">← Serverübersicht</a><a href="#prefix">Prefix-Befehle</a><a href="#slash">Slash-Befehle</a></div>'
-    command_html += '<div class="notice">💡 <strong>Tipp:</strong> Nutze die Browser-Suche (Strg+F bzw. „Auf Seite suchen“ auf dem Handy), um einen Befehl schnell zu finden. Speichere Änderungen unten.</div>'
-    command_html += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands"><div class="command-groups">'
+    command_html += '<div class="notice">🔎 Suche nach Befehlsnamen oder Modul. Die Liste wird sofort gefiltert; Änderungen anschließend unten speichern.</div>'
+    command_html += '<label for="command-search">Befehle durchsuchen</label><input id="command-search" type="search" placeholder="z. B. !filmserver, /ticket, Moderation …" autocomplete="off" style="width:100%;box-sizing:border-box;margin:0 0 16px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text)">'
+    command_html += '<p id="command-search-count" class="muted" aria-live="polite"></p>'
+    command_html += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands"><div class="command-groups" id="command-groups">'
     for group_name, items in sorted(groups.items(), key=lambda pair: pair[0].lower()):
-        command_html += '<section class="command-group"><h3>' + html.escape(group_name) + '</h3>'
+        command_html += '<section class="command-group" data-command-group="' + html.escape(group_name.lower(), quote=True) + '"><h3>' + html.escape(group_name) + '</h3>'
         for item in items:
             checked = " checked" if item["enabled"] else ""
             command_name = item["name"]
@@ -2075,9 +2077,33 @@ def guild_commands(guild_id):
                 premium_marker = ' <span class="pill">PREMIUM+</span>'
             elif item["cog"] in {"TicketTools", "TicketSystem"}:
                 premium_marker = ' <span class="pill">PREMIUM</span>'
-            command_html += f'<div class="row"><div><strong>{html.escape(command_name)}</strong>{premium_marker}<br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
+            command_html += f'<div class="row command-entry" data-command-search="{html.escape((command_name + " " + item["kind"] + " " + item["cog"]).casefold(), quote=True)}"><div><strong>{html.escape(command_name)}</strong>{premium_marker}<br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
         command_html += '</section>'
     command_html += '</div><button type="submit">Änderungen speichern</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
+    command_html += """<script>
+(function(){
+  const input=document.getElementById('command-search');
+  const groups=document.querySelectorAll('#command-groups .command-group');
+  const count=document.getElementById('command-search-count');
+  if(!input)return;
+  function filterCommands(){
+    const query=input.value.trim().toLocaleLowerCase();
+    let visible=0;
+    groups.forEach(function(group){
+      let groupVisible=0;
+      group.querySelectorAll('.command-entry').forEach(function(row){
+        const matches=!query || (row.dataset.commandSearch+' '+(group.dataset.commandGroup||'')).toLocaleLowerCase().includes(query);
+        row.hidden=!matches;
+        if(matches){groupVisible++;visible++;}
+      });
+      group.hidden=groupVisible===0;
+    });
+    count.textContent=query ? visible+' passende Befehle gefunden.' : visible+' Befehle insgesamt.';
+  }
+  input.addEventListener('input',filterCommands);
+  filterCommands();
+})();
+</script>"""
     return _render(guild.name + " · Befehle", command_html)
 
 
