@@ -4224,8 +4224,6 @@ async def register_voice_support_views():
 
 @bot.listen("on_voice_state_update")
 async def voice_support_waiting_room(member, before, after):
-    if member.bot:
-        return
     cfg = guild_config(member.guild.id)
     waiting_ids = cfg.get("voice_support_waiting_channels")
     if not isinstance(waiting_ids, list) or not waiting_ids:
