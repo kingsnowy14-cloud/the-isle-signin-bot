@@ -1673,9 +1673,24 @@ def guild_config_backup(guild_id):
         backup = {str(k): v for k, v in backup.items() if isinstance(k, str) and k not in forbidden}
         if not backup:
             abort(400, "Die Sicherungsdatei enthält keine wiederherstellbaren Einstellungen.")
+        # Create a recovery snapshot before replacing anything, so a bad import
+        # can be reversed without relying on an older manual download.
+        recovery_dir = data_path("backups")
+        recovery_dir.mkdir(parents=True, exist_ok=True)
+        recovery_path = recovery_dir / ("guild-" + str(guild.id) + "-before-restore-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".json")
+        try:
+            recovery_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as exc:
+            print(f"[DASHBOARD] Could not create pre-restore backup for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+            abort(500, "Sicherheits-Backup fehlgeschlagen. Die bestehende Konfiguration wurde nicht verändert.")
         _config[str(guild.id)] = backup
-        _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Konfiguration wiederhergestellt", session.get("user_id"), "Serverkonfiguration aus JSON-Sicherung importiert")
+        try:
+            _save_json(data_path("config.json"), _config)
+        except Exception:
+            # Restore the in-memory value if persistence failed.
+            _config[str(guild.id)] = cfg
+            raise
+        _audit_dashboard_change(guild.id, "Konfiguration wiederhergestellt", session.get("user_id"), "JSON-Import; vorherige Konfiguration automatisch gesichert als " + recovery_path.name)
         return redirect(url_for("guild_config_backup", guild_id=guild.id))
 
     if request.args.get("download") == "1":
