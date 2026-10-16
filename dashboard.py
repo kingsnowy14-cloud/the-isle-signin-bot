@@ -5,6 +5,7 @@ New module files are generated as downloadable templates and are never executed
 automatically by the running bot.
 """
 import hmac
+import re
 import asyncio
 import html
 import json
