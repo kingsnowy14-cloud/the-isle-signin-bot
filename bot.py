@@ -331,12 +331,6 @@ DEFAULT_GUILD_CONFIG = {
     "verified_role": None,
     "unverified_role": None,
     "level_roles": {},
-    "nickname_role_id": None,
-    "nickname_template": "{role} | {name}",
-    "nickname_prefix": "",
-    "nickname_suffix": "",
-    "nickname_enforce": False,
-    "nickname_base_names": {},
     "tempvoice_trigger": None,
     "tempvoice_category": None,
     "social_alerts": {},
@@ -2683,14 +2677,59 @@ async def _refresh_poll(payload: discord.RawReactionActionEvent):
         pass
 
 
+async def _handle_reaction_role(payload: discord.RawReactionActionEvent, add: bool):
+    if payload.guild_id is None or (bot.user and payload.user_id == bot.user.id):
+        return
+    guild = bot.get_guild(payload.guild_id)
+    if guild is None:
+        return
+    cfg = guild_config(payload.guild_id)
+    records = cfg.get("reaction_roles", [])
+    if not isinstance(records, list):
+        return
+    member = guild.get_member(payload.user_id)
+    if member is None:
+        try:
+            member = await guild.fetch_member(payload.user_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return
+    if member.bot:
+        return
+    emoji_id = payload.emoji.id
+    emoji_name = payload.emoji.name
+    for record in records:
+        if str(record.get("message_id")) != str(payload.message_id):
+            continue
+        saved_emoji = str(record.get("emoji", "")).strip()
+        matches = ((emoji_id is not None) and (saved_emoji == str(emoji_id) or saved_emoji.endswith(":" + str(emoji_id) + ">"))) or ((emoji_id is None) and saved_emoji == emoji_name)
+        if not matches:
+            continue
+        try:
+            role = guild.get_role(int(record.get("role_id", 0)))
+        except (TypeError, ValueError):
+            role = None
+        me = guild.me
+        if role is None or me is None or not me.guild_permissions.manage_roles or role >= me.top_role:
+            continue
+        try:
+            if add and role not in member.roles:
+                await member.add_roles(role, reason="Reaktionsrolle")
+            elif not add and role in member.roles:
+                await member.remove_roles(role, reason="Reaktionsrolle entfernt")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[reaction-roles] Could not {'add' if add else 'remove'} role in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+
+
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    await _handle_reaction_role(payload, add=True)
     await _refresh_giveaway_participants(payload)
     await _refresh_poll(payload)
 
 
 @bot.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    await _handle_reaction_role(payload, add=False)
     await _refresh_giveaway_participants(payload)
     await _refresh_poll(payload)
 
@@ -4645,7 +4684,6 @@ async def on_guild_remove(guild: discord.Guild):
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    await _apply_role_nickname(member)
     cfg = guild_config(member.guild.id)
     if cfg.get("anti_raid_enabled", False) and not member.bot:
         now_mono = time.monotonic()
@@ -5423,81 +5461,9 @@ async def ironwolf_profile(
     except (ValueError, requests.RequestException) as exc:
         await interaction.followup.send("❌ Profiländerung fehlgeschlagen: {}".format(str(exc)[:700]), ephemeral=True)
 
-async def _apply_role_nickname(member: discord.Member):
-    """Apply a configurable role prefix/suffix while preserving the member's base nickname."""
-    cfg = guild_config(member.guild.id)
-    raw_role_id = cfg.get("nickname_role_id")
-    if not raw_role_id:
-        return
-    try:
-        role_id = int(raw_role_id)
-    except (TypeError, ValueError):
-        print(f"[role-nickname] Invalid nickname_role_id in guild {member.guild.id}: {raw_role_id!r}", flush=True)
-        return
-    role = member.guild.get_role(role_id)
-    if role is None or role not in member.roles:
-        return
-    me = member.guild.me
-    if me is None or not me.guild_permissions.manage_nicknames:
-        print(f"[role-nickname] Missing Manage Nicknames permission in guild {member.guild.id}.", flush=True)
-        return
-    if member == member.guild.owner or member.top_role >= me.top_role:
-        print(f"[role-nickname] Cannot edit member {member.id}: bot role must be higher.", flush=True)
-        return
-    bases = cfg.setdefault("nickname_base_names", {})
-    key = str(member.id)
-    prefix = str(cfg.get("nickname_prefix") or "")
-    suffix = str(cfg.get("nickname_suffix") or "")
-    base = bases.get(key)
-    if not base:
-        # Preserve a nickname the member already had before this module touched it.
-        base = member.nick or member.name
-        if prefix and base.startswith(prefix):
-            base = base[len(prefix):]
-        if suffix and base.endswith(suffix):
-            base = base[:-len(suffix)]
-        bases[key] = base
-        save_json(CONFIG_FILE, config)
-    nickname = (prefix + base + suffix).strip()[:32] or member.name[:32]
-    if member.nick == nickname:
-        return
-    try:
-        await member.edit(nick=nickname, reason=f"Automatischer Rollen-Nickname: {role.name}")
-        print(f"[role-nickname] Set nickname for member {member.id} in guild {member.guild.id}.", flush=True)
-    except (discord.Forbidden, discord.HTTPException) as exc:
-        print(f"[role-nickname] Could not set nickname for member {member.id}: {type(exc).__name__}: {exc}", flush=True)
-
-
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
-    """Apply role-based nicknames and guard the bot's own nickname."""
-    if bot.user is not None and after.id != bot.user.id:
-        cfg = guild_config(after.guild.id)
-        raw_role_id = cfg.get("nickname_role_id")
-        try:
-            role_id = int(raw_role_id) if raw_role_id else None
-        except (TypeError, ValueError):
-            role_id = None
-        if role_id is not None:
-            before_has_role = any(role.id == role_id for role in before.roles)
-            after_has_role = any(role.id == role_id for role in after.roles)
-            if before_has_role != after_has_role:
-                if after_has_role:
-                    await _apply_role_nickname(after)
-                elif after.nick is not None:
-                    me = after.guild.me
-                    bases = cfg.setdefault("nickname_base_names", {})
-                    base = bases.pop(str(after.id), None)
-                    if base and me is not None and me.guild_permissions.manage_nicknames and after != after.guild.owner and after.top_role < me.top_role:
-                        try:
-                            await after.edit(nick=base[:32], reason="Rollen-Nickname entfernt; ursprünglichen Nickname wiederhergestellt")
-                            save_json(CONFIG_FILE, config)
-                        except (discord.Forbidden, discord.HTTPException) as exc:
-                            print(f"[role-nickname] Could not restore nickname for member {after.id}: {type(exc).__name__}: {exc}", flush=True)
-            elif role_id is not None and cfg.get("nickname_enforce", False):
-                if any(role.id == role_id for role in after.roles) and before.nick != after.nick:
-                    await _apply_role_nickname(after)
-
+    """Guard the bot account nickname on servers where it is not allowlisted."""
     if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
         return
 
