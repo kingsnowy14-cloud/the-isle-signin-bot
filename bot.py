@@ -6350,54 +6350,58 @@ async def on_app_command_error(interaction: discord.Interaction, error):
 
 
 
-@bot.command(name="filmserver")
+@bot.command(name="filmserver", aliases=["flimserver"])
 @commands.guild_only()
 @commands.has_guild_permissions(manage_guild=True)
 async def filmserver(ctx):
-    """Create a film and movie community server layout in the current Discord server."""
+    """Create a server for people who make their own films and videos."""
     roles = [
-        ("Film-Administrator", discord.Colour.from_rgb(190, 35, 45), discord.Permissions(administrator=True)),
-        ("Film-Moderator", discord.Colour.from_rgb(230, 125, 45), discord.Permissions(moderate_members=True, manage_messages=True, kick_members=True)),
-        ("Kritiker", discord.Colour.from_rgb(220, 175, 65), discord.Permissions.none()),
-        ("Filmfan", discord.Colour.from_rgb(70, 145, 220), discord.Permissions.none()),
-        ("Serienfan", discord.Colour.from_rgb(125, 85, 200), discord.Permissions.none()),
-        ("Neu im Kino", discord.Colour.from_rgb(100, 190, 125), discord.Permissions.none()),
+        ("Filmstudio-Admin", discord.Colour.from_rgb(190, 35, 45), discord.Permissions(administrator=True)),
+        ("Regie", discord.Colour.from_rgb(220, 165, 55), discord.Permissions.none()),
+        ("Kamera", discord.Colour.from_rgb(70, 145, 220), discord.Permissions.none()),
+        ("Schnitt & Editing", discord.Colour.from_rgb(125, 85, 200), discord.Permissions.none()),
+        ("Drehbuch", discord.Colour.from_rgb(75, 175, 125), discord.Permissions.none()),
+        ("Schauspieler", discord.Colour.from_rgb(230, 125, 45), discord.Permissions.none()),
+        ("Produktion", discord.Colour.from_rgb(60, 180, 180), discord.Permissions.none()),
+        ("Filmfan", discord.Colour.from_rgb(150, 150, 150), discord.Permissions.none()),
     ]
     channels = [
-        ("🎬 START & INFOS", [
-            ("text", "willkommen", "Willkommen in der Film-Community!"),
-            ("text", "film-regeln", "Regeln für Spoiler, Reviews und respektvolle Diskussionen."),
-            ("text", "ankündigungen", "Filmnews, Serverneuigkeiten und wichtige Ankündigungen."),
-            ("text", "neuerscheinungen", "Kommende Kinofilme und neue Streaming-Veröffentlichungen."),
-            ("text", "rollen-auswahl", "Wähle Rollen für deine Lieblingsgenres."),
+        ("🎬 START & ORGANISATION", [
+            ("text", "willkommen", "Willkommen bei der Community für eigene Filme und Videos!"),
+            ("text", "regeln", "Regeln für Zusammenarbeit, Feedback, Urheberrecht und respektvollen Umgang."),
+            ("text", "ankündigungen", "Wichtige Neuigkeiten, Community-Events und gemeinsame Projekte."),
+            ("text", "stell-dich-vor", "Stell dich und deine Erfahrungen beim Filmen vor."),
+            ("text", "projekt-suche", "Finde Leute für dein nächstes Film- oder Videoprojekt."),
         ]),
-        ("🍿 FILM-LOUNGE", [
-            ("text", "film-talk", "Diskutiere über Filme aller Genres."),
-            ("text", "serien-talk", "Sprich über Serien und Staffeln."),
-            ("text", "film-empfehlungen", "Empfiehl Filme und Serien, die sich lohnen."),
-            ("text", "was-schaust-du", "Teile, was du gerade ansiehst."),
-            ("text", "off-topic", "Alles rund um Filme hinaus."),
-            ("voice", "Film-Lounge", None),
+        ("🎥 FILMPRODUKTION", [
+            ("text", "projektplanung", "Plane Projekte, Drehtermine, Aufgaben und Deadlines."),
+            ("text", "drehbuch-ideen", "Teile Story-Ideen, Drehbücher und Konzepte."),
+            ("text", "casting-schauspieler", "Suche Schauspieler, Statisten und Sprecher."),
+            ("text", "drehorte-requisiten", "Finde Drehorte, Requisiten, Kostüme und Ausstattung."),
+            ("text", "produktionstagebuch", "Teile Fortschritte und Updates laufender Produktionen."),
+            ("voice", "Produktionsbesprechung", None),
         ]),
-        ("⭐ REVIEWS & ABSTIMMUNGEN", [
-            ("text", "film-rezensionen", "Bewertungen und ausführliche Filmkritiken."),
-            ("text", "bewertung-des-tages", "Bewerte Filme und vergleiche eure Meinungen."),
-            ("text", "umfragen", "Abstimmungen zu Lieblingsfilmen und Filmabenden."),
-            ("text", "film-quiz", "Filmquiz, Zitate und Trivia."),
+        ("📹 TECHNIK & POSTPRODUKTION", [
+            ("text", "kamera-licht-ton", "Tipps und Fragen zu Kamera, Licht, Ton und Equipment."),
+            ("text", "schnitt-editing", "Videoschnitt, Farbkorrektur, Effekte und Postproduktion."),
+            ("text", "musik-sounddesign", "Musik, Soundeffekte und Sounddesign für eigene Werke."),
+            ("text", "vfx-animation", "Visuelle Effekte, Animation, CGI und Motion Design."),
+            ("text", "technik-hilfe", "Hilfe bei Software, Export, Codecs und Renderproblemen."),
         ]),
-        ("🎥 GENRES", [
-            ("text", "action-abenteuer", "Action- und Abenteuerfilme."),
-            ("text", "horror-thriller", "Horror, Thriller und Mystery."),
-            ("text", "sci-fi-fantasy", "Science-Fiction und Fantasy."),
-            ("text", "komoedie-drama", "Komödien, Dramen und Romanzen."),
-            ("text", "animation-anime", "Animation, Zeichentrick und Anime."),
+        ("🍿 FILME & FEEDBACK", [
+            ("text", "eigene-filme", "Veröffentliche Links zu deinen fertigen Filmen und Videos."),
+            ("text", "feedback-runde", "Gib konstruktives Feedback zu Community-Projekten."),
+            ("text", "behind-the-scenes", "Making-ofs, Set-Fotos und Einblicke in den Dreh."),
+            ("text", "tutorials-ressourcen", "Teile hilfreiche Tutorials, Vorlagen und Lernmaterial."),
+            ("text", "erfolge-premieren", "Feiere Veröffentlichungen, Festivalteilnahmen und Erfolge."),
+            ("voice", "Filmabend", None),
         ]),
-        ("🔒 FILM-TEAM", [
-            ("text", "team-chat", "Interner Chat des Film-Teams."),
-            ("text", "moderations-log", "Interne Moderationsnotizen."),
+        ("🔒 PRODUKTIONS-TEAM", [
+            ("text", "team-chat", "Privater Bereich für Moderation und Projektorganisation."),
+            ("text", "interne-planung", "Interne Absprachen des Serverteams."),
         ]),
     ]
-    await _build_server_template(ctx, roles, channels, "Film- & Serienserver")
+    await _build_server_template(ctx, roles, channels, "Film- & Videoproduktionsserver")
 
 
 @filmserver.error
