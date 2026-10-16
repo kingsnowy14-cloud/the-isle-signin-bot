@@ -6320,19 +6320,27 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load IronWolf security suite: {type(exc).__name__}: {exc}")
 
-    # Discord allows at most 100 global application commands. Do not attempt to
-    # load an extension that would push an already-full tree over the limit.
+    # Discord allows at most 100 global application commands. The economy
+    # extension currently registers 15 slash commands, so reserve that capacity
+    # before loading it rather than letting add_cog fail part-way through.
     if not getattr(bot, "_economy_loaded", False):
         global_command_count = len(bot.tree.get_commands())
-        if global_command_count >= 100:
-            print(f"[ECONOMY] Skipping economy extension: {global_command_count} global slash commands already registered (Discord limit: 100). Consolidate commands into subcommands to enable it.", flush=True)
+        economy_slash_command_count = 15
+        if global_command_count + economy_slash_command_count > 100:
+            print(
+                f"[ECONOMY] Skipping economy extension: {global_command_count} global "
+                f"slash commands are registered and economy needs about "
+                f"{economy_slash_command_count} more (Discord limit: 100). "
+                "Reduce global commands or combine economy commands into subcommands.",
+                flush=True,
+            )
         else:
             try:
                 await bot.load_extension("economy")
                 bot._economy_loaded = True
                 print("IronWolf economy extension loaded.")
             except Exception as exc:
-                print(f"Could not load economy extension: {type(exc).__name__}: {exc}")
+                print(f"Could not load economy extension: {type(exc).__name__}: {exc}", flush=True)
 
     # Resume giveaway timers saved in data.json after a reconnect/restart.
     if not getattr(bot, "_giveaways_resumed", False):
