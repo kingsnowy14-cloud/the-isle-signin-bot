@@ -2935,7 +2935,7 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
 def _id_card_image(guild, member, card_number, answers=None):
     """Create one PNG ID card containing member data and application answers."""
     answers = answers or []
-    image = Image.new("RGB", (1200, 1000), "#172033")
+    image = Image.new("RGB", (1200, 1250), "#172033")
     draw = ImageDraw.Draw(image)
     try:
         font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
@@ -2947,7 +2947,7 @@ def _id_card_image(guild, member, card_number, answers=None):
     color = str(cfg.get("id_card_color", "5865F2")).lstrip("#")
     if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
         color = "5865F2"
-    draw.rounded_rectangle((18, 18, 1182, 982), radius=32, fill="#202b43", outline="#" + color, width=8)
+    draw.rounded_rectangle((18, 18, 1182, 1232), radius=32, fill="#202b43", outline="#" + color, width=8)
     draw.rounded_rectangle((18, 18, 1182, 125), radius=28, fill="#" + color)
     draw.text((48, 48), str(cfg.get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:42], font=font_title, fill="white")
     draw.text((48, 150), "MITGLIED", font=font_small, fill="#aebbd1")
@@ -2965,7 +2965,7 @@ def _id_card_image(guild, member, card_number, answers=None):
         answer = " ".join(str(item.get("answer", "—")).split())[:100] or "—"
         draw.text((70, y), answer, font=font_small, fill="white")
         y += 42
-    draw.text((48, 950), "IronWolf · Created by KingSnowy", font=font_small, fill="#aebbd1")
+    draw.text((48, 1200), "IronWolf · Created by KingSnowy", font=font_small, fill="#aebbd1")
     output = io.BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
