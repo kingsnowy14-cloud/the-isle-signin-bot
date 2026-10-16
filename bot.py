@@ -2932,68 +2932,206 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
     await interaction.response.send_message(f"✅ Nachricht wurde als Bot in {kanal.mention} gesendet.", ephemeral=True)
 
 
-@bot.tree.command(name="ausweis", description="Zeigt deinen digitalen IronWolf-Mitgliedsausweis")
+def _id_card_image(guild, member, card_number):
+    """Create a simple member ID card PNG in memory."""
+    image = Image.new("RGB", (1000, 560), "#172033")
+    draw = ImageDraw.Draw(image)
+    try:
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 42)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 26)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 20)
+    except OSError:
+        font_title = font_body = font_small = ImageFont.load_default()
+    color = str(guild_config(guild.id).get("id_card_color", "5865F2")).lstrip("#")
+    if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
+        color = "5865F2"
+    draw.rounded_rectangle((18, 18, 982, 542), radius=32, fill="#202b43", outline="#" + color, width=8)
+    draw.rounded_rectangle((18, 18, 982, 135), radius=28, fill="#" + color)
+    draw.text((55, 48), str(guild_config(guild.id).get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:36], font=font_title, fill="white")
+    draw.text((55, 175), "MITGLIED", font=font_small, fill="#aebbd1")
+    draw.text((55, 212), member.display_name[:32], font=font_body, fill="white")
+    draw.text((55, 285), "AUSWEISNUMMER", font=font_small, fill="#aebbd1")
+    draw.text((55, 322), str(card_number)[:40], font=font_body, fill="white")
+    draw.text((55, 395), "SERVER", font=font_small, fill="#aebbd1")
+    draw.text((55, 430), guild.name[:36], font=font_body, fill="white")
+    draw.text((55, 495), "IronWolf · Created by KingSnowy", font=font_small, fill="#aebbd1")
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
+def _id_card_issue(guild, member, application_id):
+    cfg = guild_config(guild.id)
+    card = discord.Embed(title=cfg.get("id_card_title", "🪪 Mitgliedsausweis"), description="Dein digitaler Mitgliedsausweis wurde ausgestellt.", color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)))
+    card.add_field(name="Mitglied", value=member.mention, inline=True)
+    card.add_field(name="Ausweisnummer", value=str(application_id), inline=True)
+    card.set_footer(text="IronWolf · Created by KingSnowy")
+    file = discord.File(_id_card_image(guild, member, application_id), filename="ironwolf-ausweis.png")
+    card.set_image(url="attachment://ironwolf-ausweis.png")
+    return card, file
+
+
+class IDCardApplicationModal(discord.ui.Modal):
+    def __init__(self, guild_id, questions, page=0, previous=None):
+        super().__init__(title="Ausweis beantragen" if page == 0 else "Ausweis beantragen · Teil 2", timeout=600)
+        self.guild_id = guild_id
+        self.questions = questions
+        self.page = page
+        self.previous = previous or []
+        start = page * 5
+        for idx, question in enumerate(questions[start:start + 5]):
+            self.add_item(discord.ui.TextInput(label=question[:45], custom_id="answer_" + str(start + idx), style=discord.TextStyle.paragraph, required=True, max_length=500))
+    async def on_submit(self, interaction: discord.Interaction):
+        answers = list(self.previous)
+        start = self.page * 5
+        for idx, question in enumerate(self.questions[start:start + 5]):
+            answers.append({"question": question, "answer": str(self.children[idx].value).strip()})
+        if self.page == 0 and len(self.questions) > 5:
+            await interaction.response.send_modal(IDCardApplicationModal(self.guild_id, self.questions, page=1, previous=answers))
+            return
+        guild = interaction.guild
+        if guild is None or guild.id != self.guild_id:
+            await interaction.response.send_message("Bitte nutze das Ausweis-Panel auf dem richtigen Server.", ephemeral=True)
+            return
+        cfg = guild_config(guild.id)
+        if not cfg.get("id_card_enabled", False):
+            await interaction.response.send_message("Das Ausweissystem ist derzeit ausgeschaltet.", ephemeral=True)
+            return
+        existing = next((row for row in RECORDS.setdefault("id_card_applications", {}).values() if row.get("guild_id") == guild.id and row.get("user_id") == interaction.user.id and row.get("status") == "pending"), None)
+        if existing:
+            await interaction.response.send_message("Du hast bereits einen offenen Ausweisantrag.", ephemeral=True)
+            return
+        app_id = str(guild.id) + "-" + str(interaction.user.id) + "-" + str(int(datetime.now(timezone.utc).timestamp()))
+        auto = bool(cfg.get("id_card_auto_approve", False))
+        row = {"id": app_id, "guild_id": guild.id, "user_id": interaction.user.id, "answers": answers, "status": "approved" if auto else "pending", "created_at": datetime.now(timezone.utc).isoformat()}
+        RECORDS["id_card_applications"][app_id] = row
+        save_records()
+        if auto:
+            member = guild.get_member(interaction.user.id)
+            role_id = cfg.get("id_card_role_id")
+            if member and role_id:
+                role = guild.get_role(int(role_id))
+                if role and role not in member.roles:
+                    try:
+                        await member.add_roles(role, reason="Automatisch ausgestellter IronWolf-Ausweis")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+            card, file = _id_card_issue(guild, interaction.user, app_id)
+            try:
+                await interaction.user.send(embed=card, file=file)
+                await interaction.response.send_message("✅ Dein Ausweis wurde automatisch erstellt und dir per DM geschickt.", ephemeral=True)
+            except (discord.Forbidden, discord.HTTPException):
+                await interaction.response.send_message("✅ Dein Antrag wurde automatisch genehmigt. Ich konnte dir den Ausweis nicht per DM senden; er wurde erstellt, aber bitte erlaube Server-DMs und beantrage ihn erneut nicht.", ephemeral=True)
+            return
+        channel = guild.get_channel(int(cfg.get("id_card_review_channel_id") or 0))
+        if not isinstance(channel, discord.TextChannel):
+            RECORDS["id_card_applications"].pop(app_id, None)
+            save_records()
+            await interaction.response.send_message("Das Team-Prüfverfahren ist aktiv, aber im Dashboard ist kein gültiger Prüfkanal eingestellt.", ephemeral=True)
+            return
+        embed = discord.Embed(title="🪪 Neuer Ausweisantrag", description=f"Antragsteller: {interaction.user.mention}\nAntragsnummer: {app_id}", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        for answer in answers:
+            embed.add_field(name=answer["question"][:256], value=answer["answer"][:1000] or "—", inline=False)
+        embed.set_footer(text="IronWolf · Created by KingSnowy")
+        try:
+            await channel.send(embed=embed, view=IDCardReviewView(app_id))
+        except (discord.Forbidden, discord.HTTPException):
+            RECORDS["id_card_applications"].pop(app_id, None)
+            save_records()
+            await interaction.response.send_message("Der Antrag konnte nicht an das Team gesendet werden. Bitte prüfe die Kanalrechte.", ephemeral=True)
+            return
+        await interaction.response.send_message("📨 Dein Ausweisantrag wurde an das Team gesendet.", ephemeral=True)
+
+
+class IDCardApplyView(discord.ui.View):
+    def __init__(self, guild_id):
+        super().__init__(timeout=None)
+        self.guild_id = guild_id
+    @discord.ui.button(label="Ausweis beantragen", emoji="🪪", style=discord.ButtonStyle.success, custom_id="ironwolf:idcard:apply")
+    async def apply(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.guild or interaction.guild.id != self.guild_id:
+            await interaction.response.send_message("Dieses Panel gehört zu einem anderen Server.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        if not cfg.get("id_card_enabled", False):
+            await interaction.response.send_message("Das Ausweissystem ist ausgeschaltet.", ephemeral=True)
+            return
+        questions = cfg.get("id_card_questions") or ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]
+        questions = [str(q).strip()[:45] for q in questions if str(q).strip()][:10]
+        await interaction.response.send_modal(IDCardApplicationModal(interaction.guild.id, questions))
+
+
+class IDCardReviewView(discord.ui.View):
+    def __init__(self, app_id):
+        super().__init__(timeout=None)
+        self.app_id = app_id
+    @discord.ui.button(label="Genehmigen & Ausweis erstellen", emoji="✅", style=discord.ButtonStyle.success, custom_id="ironwolf:idcard:approve")
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._decide(interaction, True)
+    @discord.ui.button(label="Ablehnen", emoji="❌", style=discord.ButtonStyle.danger, custom_id="ironwolf:idcard:reject")
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._decide(interaction, False)
+    async def _decide(self, interaction, approve):
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Nur das Serverteam kann Anträge bearbeiten.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        role_id = cfg.get("id_card_review_role_id")
+        if not (interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.manage_guild or (role_id and any(r.id == int(role_id) for r in interaction.user.roles))):
+            await interaction.response.send_message("Dir fehlt die Berechtigung für Ausweisanträge.", ephemeral=True)
+            return
+        row = RECORDS.setdefault("id_card_applications", {}).get(self.app_id)
+        if not row or row.get("guild_id") != interaction.guild.id or row.get("status") != "pending":
+            await interaction.response.send_message("Der Antrag ist nicht offen oder wurde nicht gefunden.", ephemeral=True)
+            return
+        row["status"] = "approved" if approve else "rejected"
+        row["reviewed_by"] = interaction.user.id
+        row["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        save_records()
+        if approve:
+            member = interaction.guild.get_member(int(row["user_id"]))
+            if member:
+                role_id = cfg.get("id_card_role_id")
+                if role_id:
+                    role = interaction.guild.get_role(int(role_id))
+                    if role and role not in member.roles:
+                        try:
+                            await member.add_roles(role, reason="Ausweisantrag genehmigt")
+                        except (discord.Forbidden, discord.HTTPException):
+                            pass
+                card, file = _id_card_issue(interaction.guild, member, self.app_id)
+                try:
+                    await member.send(embed=card, file=file)
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+        await interaction.response.edit_message(content=("✅ Genehmigt – Ausweis erstellt." if approve else "❌ Antrag abgelehnt."), view=None)
+        try:
+            applicant = interaction.guild.get_member(int(row["user_id"]))
+            if applicant:
+                await applicant.send("Dein Ausweisantrag auf **{}** wurde {}.".format(interaction.guild.name, "genehmigt" if approve else "abgelehnt"))
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+
+@bot.tree.command(name="ausweis", description="Zeigt das Ausweis-Antrags-Panel")
 @app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
 async def ausweis_command(interaction: discord.Interaction):
     if interaction.guild is None:
-        await interaction.response.send_message("Der Ausweis funktioniert nur auf einem Discord-Server.", ephemeral=True)
+        await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
         return
     cfg = guild_config(interaction.guild.id)
     if not cfg.get("id_card_enabled", False):
-        await interaction.response.send_message("🪪 Das Ausweissystem ist auf diesem Server ausgeschaltet. Bitte frage die Serververwaltung.", ephemeral=True)
+        await interaction.response.send_message("🪪 Das Ausweissystem ist ausgeschaltet. Aktiviere es zuerst im Dashboard.", ephemeral=True)
         return
-
-    member = interaction.user
-    title = str(cfg.get("id_card_title", "🪪 Mitgliedsausweis"))[:256]
-    description = str(cfg.get("id_card_description", "Offizieller Mitgliedsausweis für {server}."))
-    replacements = {
-        "{server}": interaction.guild.name,
-        "{user}": member.name,
-        "{display_name}": member.display_name,
-    }
-    for token, value in replacements.items():
-        description = description.replace(token, value)
-    try:
-        color = int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)
-    except (TypeError, ValueError):
-        color = 0x5865F2
-    embed = discord.Embed(title=title, description=description[:4096], color=color)
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="Mitglied", value=member.mention, inline=True)
-    if cfg.get("id_card_show_id", True):
-        embed.add_field(name="Discord-ID", value=str(member.id), inline=True)
-    if cfg.get("id_card_show_joined", True):
-        joined = member.joined_at
-        embed.add_field(name="Beigetreten", value=discord.utils.format_dt(joined, style="D") if joined else "Unbekannt", inline=True)
-    if cfg.get("id_card_show_created", False):
-        embed.add_field(name="Konto erstellt", value=discord.utils.format_dt(member.created_at, style="D"), inline=True)
-    if cfg.get("id_card_show_roles", True):
-        role_names = [role.mention for role in reversed(member.roles) if not role.is_default()]
-        role_text = ", ".join(role_names) if role_names else "Keine zusätzlichen Rollen"
-        if len(role_text) > 1024:
-            role_text = role_text[:1018] + "…"
-        embed.add_field(name="Server-Rollen", value=role_text, inline=False)
+    embed = discord.Embed(
+        title=str(cfg.get("id_card_title", "🪪 Mitgliedsausweis"))[:256],
+        description=str(cfg.get("id_card_description", "Beantrage hier deinen digitalen Mitgliedsausweis."))[:4000] + "\n\nKlicke auf **Ausweis beantragen**, um das Formular auszufüllen.",
+        color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16))
+    )
     embed.set_footer(text="IronWolf · Created by KingSnowy")
-
-    role_id = cfg.get("id_card_role_id")
-    if role_id:
-        role = interaction.guild.get_role(int(role_id))
-        if role is not None and role not in member.roles:
-            try:
-                await member.add_roles(role, reason="Digitaler Mitgliedsausweis über IronWolf")
-            except discord.Forbidden:
-                await interaction.response.send_message(
-                    "Dein Ausweis wurde erstellt, aber die Ausweisrolle konnte nicht vergeben werden. Prüfe die Bot-Rollenrechte und Rollenreihenfolge.",
-                    ephemeral=True,
-                )
-                return
-            except discord.HTTPException:
-                await interaction.response.send_message(
-                    "Dein Ausweis wurde erstellt, aber Discord konnte die Ausweisrolle gerade nicht vergeben.",
-                    ephemeral=True,
-                )
-                return
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, view=IDCardApplyView(interaction.guild.id))
 
 
 @bot.tree.command(name="verify", description="Richtet das Verifizierungs-Panel vollständig ein")
