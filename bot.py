@@ -3044,12 +3044,11 @@ class IDCardApplicationModal(discord.ui.Modal):
         await interaction.response.send_message("📨 Dein Ausweisantrag wurde an das Team gesendet.", ephemeral=True)
 
 
-class IDCardApplyView(discord.ui.View):
+class IDCardApplyButton(discord.ui.Button):
     def __init__(self, guild_id):
-        super().__init__(timeout=None)
+        super().__init__(label="Ausweis beantragen", emoji="🪪", style=discord.ButtonStyle.success, custom_id=f"ironwolf:idcard:apply:{guild_id}")
         self.guild_id = guild_id
-    @discord.ui.button(label="Ausweis beantragen", emoji="🪪", style=discord.ButtonStyle.success, custom_id="ironwolf:idcard:apply")
-    async def apply(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def callback(self, interaction: discord.Interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
             await interaction.response.send_message("Dieses Panel gehört zu einem anderen Server.", ephemeral=True)
             return
@@ -3057,21 +3056,31 @@ class IDCardApplyView(discord.ui.View):
         if not cfg.get("id_card_enabled", False):
             await interaction.response.send_message("Das Ausweissystem ist ausgeschaltet.", ephemeral=True)
             return
-        questions = cfg.get("id_card_questions") or ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]
-        questions = [str(q).strip()[:45] for q in questions if str(q).strip()][:10]
+        questions = [str(q).strip()[:45] for q in (cfg.get("id_card_questions") or ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]) if str(q).strip()][:10]
         await interaction.response.send_modal(IDCardApplicationModal(interaction.guild.id, questions))
+
+
+class IDCardApplyView(discord.ui.View):
+    def __init__(self, guild_id):
+        super().__init__(timeout=None)
+        self.add_item(IDCardApplyButton(guild_id))
+
+
+class IDCardReviewButton(discord.ui.Button):
+    def __init__(self, app_id, approve):
+        self.app_id = app_id
+        self.approve = approve
+        super().__init__(label="Genehmigen & Ausweis erstellen" if approve else "Ablehnen", emoji="✅" if approve else "❌", style=discord.ButtonStyle.success if approve else discord.ButtonStyle.danger, custom_id=f"ironwolf:idcard:{'approve' if approve else 'reject'}:{app_id}")
+    async def callback(self, interaction: discord.Interaction):
+        await IDCardReviewView(self.app_id)._decide(interaction, self.approve)
 
 
 class IDCardReviewView(discord.ui.View):
     def __init__(self, app_id):
         super().__init__(timeout=None)
         self.app_id = app_id
-    @discord.ui.button(label="Genehmigen & Ausweis erstellen", emoji="✅", style=discord.ButtonStyle.success, custom_id="ironwolf:idcard:approve")
-    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._decide(interaction, True)
-    @discord.ui.button(label="Ablehnen", emoji="❌", style=discord.ButtonStyle.danger, custom_id="ironwolf:idcard:reject")
-    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._decide(interaction, False)
+        self.add_item(IDCardReviewButton(app_id, True))
+        self.add_item(IDCardReviewButton(app_id, False))
     async def _decide(self, interaction, approve):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("Nur das Serverteam kann Anträge bearbeiten.", ephemeral=True)
@@ -3082,7 +3091,7 @@ class IDCardReviewView(discord.ui.View):
             await interaction.response.send_message("Dir fehlt die Berechtigung für Ausweisanträge.", ephemeral=True)
             return
         row = RECORDS.setdefault("id_card_applications", {}).get(self.app_id)
-        if not row or row.get("guild_id") != interaction.guild.id or row.get("status") != "pending":
+        if not row or int(row.get("guild_id", 0)) != interaction.guild.id or row.get("status") != "pending":
             await interaction.response.send_message("Der Antrag ist nicht offen oder wurde nicht gefunden.", ephemeral=True)
             return
         row["status"] = "approved" if approve else "rejected"
@@ -6159,6 +6168,19 @@ async def on_ready():
                 bot.add_view(panel_view, message_id=int(message_id))
             except Exception as exc:
                 print(f"[DASHBOARD] Could not restore message panel {message_id}: {type(exc).__name__}: {exc}")
+
+    # Restore persistent ID-card panels and pending review buttons after restart.
+    for guild_obj in bot.guilds:
+        try:
+            bot.add_view(IDCardApplyView(guild_obj.id))
+        except Exception as exc:
+            print(f"[ID CARD] Could not restore apply panel view for {guild_obj.id}: {type(exc).__name__}", flush=True)
+    for app_id, row in RECORDS.get("id_card_applications", {}).items():
+        if row.get("status") == "pending":
+            try:
+                bot.add_view(IDCardReviewView(app_id))
+            except Exception as exc:
+                print(f"[ID CARD] Could not restore review view {app_id}: {type(exc).__name__}", flush=True)
 
     # Register persistent views so old buttons keep working after restart.
     bot.add_view(BirthdayRegisterView())
