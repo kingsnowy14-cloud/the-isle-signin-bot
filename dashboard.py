@@ -1403,15 +1403,6 @@ def guild_page(guild_id):
                     if raw and raw not in category_ids:
                         abort(400, "Ungültige Kategorie ausgewählt.")
                     cfg["tempvoice_category"] = int(raw) if raw else None
-                if settings_section == "nickname":
-                    nickname_role_raw = request.form.get("nickname_role_id", "").strip()
-                    if nickname_role_raw and nickname_role_raw not in role_ids:
-                        abort(400, "Ungültige Nickname-Rolle ausgewählt.")
-                    cfg["nickname_role_id"] = int(nickname_role_raw) if nickname_role_raw else None
-                    nickname_template = request.form.get("nickname_template", "{role} | {name}").strip() or "{role} | {name}"
-                    if len(nickname_template) > 100 or not any(token in nickname_template for token in ("{name}", "{username}", "{role}")):
-                        abort(400, "Das Nickname-Format muss höchstens 100 Zeichen lang sein und {name}, {username} oder {role} enthalten.")
-                    cfg["nickname_template"] = nickname_template
                 if settings_section == "roles":
                     for key in ROLE_SETTINGS:
                         raw = request.form.get(key, "").strip()
@@ -1427,74 +1418,7 @@ def guild_page(guild_id):
                                 abort(400, f"Ungültige Level-Rolle für Level {level}.")
                             level_roles[str(level)] = int(raw)
                     cfg["level_roles"] = level_roles
-                    nickname_role_raw = request.form.get("nickname_role_id", "").strip()
-                    if nickname_role_raw and nickname_role_raw not in role_ids:
-                        abort(400, "Ungültige Nickname-Rolle ausgewählt.")
-                    cfg["nickname_role_id"] = int(nickname_role_raw) if nickname_role_raw else None
-                    nickname_template = request.form.get("nickname_template", "{role} | {name}").strip()
-                    if not nickname_template:
-                        nickname_template = "{role} | {name}"
-                    if len(nickname_template) > 100 or not any(token in nickname_template for token in ("{name}", "{username}", "{role}")):
-                        abort(400, "Das Nickname-Format muss höchstens 100 Zeichen lang sein und {name}, {username} oder {role} enthalten.")
-                    cfg["nickname_template"] = nickname_template
                 _save_json(data_path("config.json"), _config)
-                nickname_applied = None
-                if settings_section == "nickname" and request.form.get("nickname_action") == "apply":
-                    raw_role_id = cfg.get("nickname_role_id")
-                    if not raw_role_id:
-                        abort(400, "Wähle zuerst eine auslösende Rolle aus.")
-                    if not _bot or not getattr(_bot, "is_ready", lambda: False)():
-                        abort(503, "Der Discord-Bot ist gerade nicht bereit. Bitte später erneut versuchen.")
-                    async def _apply_nicknames_to_existing_members():
-                        target_guild = _bot.get_guild(int(gid))
-                        if target_guild is None:
-                            raise RuntimeError("Server ist im Bot-Cache nicht verfügbar.")
-                        role = target_guild.get_role(int(raw_role_id))
-                        if role is None:
-                            raise RuntimeError("Die ausgewählte Rolle wurde auf Discord nicht gefunden.")
-                        me = target_guild.me
-                        if me is None or not me.guild_permissions.manage_nicknames:
-                            raise PermissionError("Dem Bot fehlt die Berechtigung „Spitznamen verwalten“.")
-                        changed = 0
-                        skipped = 0
-                        matched = 0
-                        prefix = str(cfg.get("nickname_prefix") or "")
-                        suffix = str(cfg.get("nickname_suffix") or "")
-                        bases = cfg.setdefault("nickname_base_names", {})
-                        # Fetch members instead of relying only on role.members cache.
-                        # This requires the Server Members Intent to be enabled in the Discord Developer Portal.
-                        try:
-                            async for member in target_guild.fetch_members(limit=None):
-                                if role not in member.roles:
-                                    continue
-                                matched += 1
-                                if member == target_guild.owner or member.top_role >= me.top_role:
-                                    skipped += 1
-                                    continue
-                                base = bases.get(str(member.id)) or member.nick or member.name
-                                if prefix and base.startswith(prefix):
-                                    base = base[len(prefix):]
-                                if suffix and base.endswith(suffix):
-                                    base = base[:-len(suffix)]
-                                bases[str(member.id)] = base
-                                nickname = (prefix + base + suffix).strip()[:32] or member.name[:32]
-                                if member.nick == nickname:
-                                    continue
-                                try:
-                                    await member.edit(nick=nickname, reason=f"Dashboard: Nickname-Automatik für Rolle {role.name}")
-                                    changed += 1
-                                except (discord.Forbidden, discord.HTTPException):
-                                    skipped += 1
-                        except discord.Forbidden as fetch_exc:
-                            raise RuntimeError("Discord verweigert das Abrufen der Mitglieder. Aktiviere im Developer Portal unter Bot den Server Members Intent und prüfe die Bot-Berechtigungen.") from fetch_exc
-                        _save_json(data_path("config.json"), _config)
-                        return changed, skipped, matched
-                    future = asyncio.run_coroutine_threadsafe(_apply_nicknames_to_existing_members(), _bot.loop)
-                    try:
-                        nickname_applied = future.result(timeout=45)
-                    except Exception as apply_exc:
-                        future.cancel()
-                        raise RuntimeError("Nicknames konnten nicht angewendet werden: " + str(apply_exc)) from apply_exc
                 changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
                 _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
             except Exception as exc:
@@ -1509,7 +1433,7 @@ def guild_page(guild_id):
                 return _render("Speichern fehlgeschlagen", '<div class="card"><h1>Änderungen konnten nicht gespeichert werden</h1><p>Die Einstellungen wurden zurückgesetzt. Prüfe die Railway-Logs nach <code>[DASHBOARD] Failed to save settings</code>, um den genauen technischen Fehler zu sehen.</p><a class="button secondary" href="/guild/' + gid + '">Zurück zu den Einstellungen</a></div>', 500)
         else:
             abort(400, "Unbekannte Aktion.")
-        return redirect(url_for("guild_page", guild_id=gid, section=settings_section if action == "settings" else "overview", saved="1", applied=nickname_applied[0] if action == "settings" and settings_section == "nickname" and nickname_applied is not None else None, skipped=nickname_applied[1] if action == "settings" and settings_section == "nickname" and nickname_applied is not None else None, total=nickname_applied[2] if action == "settings" and settings_section == "nickname" and nickname_applied is not None else None))
+        return redirect(url_for("guild_page", guild_id=gid, section=settings_section if action == "settings" else "overview", saved="1"))
     channels = _guild_channels(guild)
     roles = _guild_roles(guild)
     def options(items, current):
@@ -1520,8 +1444,8 @@ def guild_page(guild_id):
         return "".join(out)
     section = request.args.get("section", "overview")
     settings_html = ""
-    if section in ("general", "channels", "roles", "nickname", "voice", "security"):
-        settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","nickname":"Automatischer Nickname","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
+    if section in ("general", "channels", "roles", "voice", "security"):
+        settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
@@ -1545,20 +1469,9 @@ def guild_page(guild_id):
                 if key == "ticket_category":
                     continue
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(channels, cfg.get(key))}</select>'
-        if section == "nickname":
-            settings_html += '<p>Lege fest, welche Discord-Rolle den automatischen Nickname auslöst. Die Einstellung gilt nur für diesen Server und kann jederzeit geändert oder deaktiviert werden.</p>'
-            settings_html += '<label for="nickname_role_id">Auslösende Rolle</label><select id="nickname_role_id" name="nickname_role_id">' + options(roles, cfg.get("nickname_role_id")) + '</select>'
-            settings_html += '<label for="nickname_prefix">Nickname-Präfix</label><input id="nickname_prefix" name="nickname_prefix" type="text" maxlength="24" value="' + html.escape(str(cfg.get("nickname_prefix") or ""), quote=True) + '" placeholder="[Team] ">'
-            settings_html += '<label for="nickname_suffix">Nickname-Suffix</label><input id="nickname_suffix" name="nickname_suffix" type="text" maxlength="24" value="' + html.escape(str(cfg.get("nickname_suffix") or ""), quote=True) + '" placeholder=" ★">'
-            settings_html += '<p class="muted">Ein Präfix und/oder Suffix wird um den bisherigen Nickname gesetzt. Beispiel: <code>[Team] </code> + <code>Alex</code> + <code> ★</code> ergibt <code>[Team] Alex ★</code>. Der ursprüngliche Nickname wird beim Entfernen der Rolle wiederhergestellt. Discord erlaubt maximal 32 Zeichen.</p>'
-            settings_html += '<p class="muted">Der Bot braucht „Spitznamen verwalten“ und seine höchste Rolle muss über der Rolle des Mitglieds liegen.</p>'
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
-            settings_html += '<h3>🏷️ Automatischer Nickname bei Rolle</h3><p class="muted">Sobald ein Mitglied diese Rolle erhält, setzt IronWolf automatisch seinen Nickname. Wird die Rolle entfernt, setzt der Bot den Nickname auf den Discord-Benutzernamen zurück. Platzhalter: {name} = Benutzername, {username} = Benutzername, {role} = Rollenname. Discord erlaubt maximal 32 Zeichen.</p>'
-            settings_html += '<label for="nickname_role_id">Auslösende Rolle</label><select id="nickname_role_id" name="nickname_role_id">' + options(roles, cfg.get("nickname_role_id")) + '</select>'
-            settings_html += '<label for="nickname_template">Nickname-Format</label><input id="nickname_template" name="nickname_template" type="text" maxlength="100" value="' + html.escape(str(cfg.get("nickname_template") or "{role} | {name}"), quote=True) + '" placeholder="{role} | {name}">'
-            settings_html += '<p class="muted">Beispiel: Rolle „Admin“ und Format <code>{role} | {name}</code> ergibt <code>Admin | Benutzername</code>.</p>'
             settings_html += '<h3>🏆 Level-Rollen</h3><p class="muted">Wähle optional eine Rolle für Level 1 bis 50. Beim Erreichen des Levels versucht IronWolf, die passende Rolle zu vergeben. Die Bot-Rolle muss darüber liegen.</p>'
             configured_level_roles = cfg.get("level_roles", {}) if isinstance(cfg.get("level_roles", {}), dict) else {}
             for level in range(1, 51):
@@ -1601,12 +1514,6 @@ def guild_page(guild_id):
             settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
         if request.args.get("saved") == "1":
             settings_html += '<div class="notice">✅ Änderungen wurden gespeichert.</div>'
-        if section == "nickname" and request.args.get("applied") is not None:
-            settings_html += '<div class="notice">🏷️ Nickname-Anwendung abgeschlossen: ' + html.escape(request.args.get("applied", "0")) + ' geändert, ' + html.escape(request.args.get("skipped", "0")) + ' übersprungen, ' + html.escape(request.args.get("total", "0")) + ' Mitglieder mit dieser Rolle.</div>'
-        if section == "nickname":
-            settings_html += '<button type="submit" name="nickname_action" value="save">💾 Einstellungen speichern</button> <button type="submit" name="nickname_action" value="apply">💾 Speichern &amp; Nicknames jetzt anwenden</button>'
-        else:
-            settings_html += '<button type="submit">💾 Änderungen speichern</button>'
         settings_html += '</form></section>'
         if section == "roles":
             settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
@@ -1626,11 +1533,103 @@ def guild_page(guild_id):
         ("voice", "🔊 Temporäre Voice-Kanäle", "Trigger und Zielkategorie für temporäre Räume"),
     ]
     settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Einstellungen öffnen →</span></a>' for key, title, desc in section_links)
-    if section != "overview" and section not in {"general", "channels", "roles", "nickname", "voice", "security", "modules", "template"}:
+    if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a> <a class="button secondary" href="/guild/{gid}/messages">✉️ Bot-Nachrichten →</a> <a class="button secondary" href="/guild/{gid}/branding">🎨 Server-Design →</a> <a class="button secondary" href="/guild/{gid}/teamlist">👥 Teamliste →</a> <a class="button secondary" href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz →</a> <a class="button secondary" href="/guild/{gid}/ausweis">🪪 Ausweissystem →</a></div><h2 class="dashboard-group-title">⭐ Wichtigste Funktionen</h2><p class="muted">Die am häufigsten benötigten Einstellungen stehen ganz oben.</p><div class="grid"><a class="card dashboard-card" href="/guild/{gid}?section=nickname#settings-panel"><h2>🏷️ Automatischer Nickname</h2><p>Auslösende Rolle und Nickname-Format einstellen oder jederzeit bearbeiten.</p><span class="card-link">Nickname-Automatik einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}?section=general#settings-panel"><h2>👋 Willkommen & Begrüßung</h2><p>Willkommensnachrichten und grundlegende Serveroptionen zuerst konfigurieren.</p><span class="card-link">Willkommen einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungsnachricht, Kanal und Rolle einrichten.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/voice-support"><h2>🎧 Voice-Support</h2><p>Support-Warteraum, Team-Rolle und private Support-Räume verwalten.</p><span class="card-link">Support einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/tickets"><h2>🎟️ Support-Tickets</h2><p>Ticket-Panel, Support-Team und Ticket-Kategorie konfigurieren.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/messages"><h2>✉️ Nachrichten & Buttons</h2><p>Bot-Nachrichten, Rollen-Buttons und Link-Buttons erstellen.</p><span class="card-link">Nachricht erstellen →</span></a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general#settings-panel">👋 Willkommen</a><a href="/guild/{gid}/voice-support">🎧 Support</a><a href="/guild/{gid}/verification">🔐 Verifizierung</a><a href="/guild/{gid}/tickets">🎟️ Tickets</a><a href="/guild/{gid}/messages">✉️ Nachrichten</a><a href="/guild/{gid}/branding">🎨 Server-Design</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a><a href="/guild/{gid}?section=security#settings-panel">🛡️ Sicherheit</a><a href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz</a><a href="/guild/{gid}/ausweis">🪪 Ausweis</a><a href="/guild/{gid}?section=channels#settings-panel">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles#settings-panel">🎭 Rollen</a><a href="/guild/{gid}?section=nickname#settings-panel">🏷️ Nickname-Automatik</a><a href="/guild/{gid}?section=voice#settings-panel">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/birthdays">🎂 Geburtstage</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/messages">✉️ Bot-Nachrichten</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}/audit-log">📜 Audit-Log</a><a href="/guild/{gid}/backup">🗄️ Backup & Wiederherstellung</a><a href="/guild/{gid}/health">🩺 Systemdiagnose</a><a href="/guild/{gid}/stats">📊 Live-Statistiken</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/birthdays"><h2>🎂 Geburtstagskalender</h2><p>Geburtstagskanal, Nachricht und gespeicherte Geburtstage verwalten.</p><span class="card-link">Geburtstage verwalten →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/backup"><h2>🗄️ Backup & Wiederherstellung</h2><p>Serverkonfiguration exportieren und mit ausdrücklicher Bestätigung wiederherstellen.</p><span class="card-link">Backups verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/health"><h2>🩺 Systemdiagnose</h2><p>Bot-Verbindung und wichtige Serverberechtigungen überprüfen.</p><span class="card-link">System prüfen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/audit-log"><h2>📜 Dashboard-Audit-Log</h2><p>Nachvollziehen, welche Einstellungen im Dashboard geändert wurden.</p><span class="card-link">Audit-Log öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/stats"><h2>📊 Live-Statistiken</h2><p>Mitglieder, Befehle, Nachrichtenaktivität und gespeicherte Voice-Zeit.</p><span class="card-link">Statistiken öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/messages"><h2>✉️ Bot-Nachrichten & Buttons</h2><p>Nachrichten senden und HTTPS-Link- oder Rollen-Buttons ergänzen.</p><span class="card-link">Nachricht erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/voice-support"><h2>🎧 Sprach-Support</h2><p>Warteraum, Team-Rolle, Benachrichtigungen und private Sprachkanäle konfigurieren.</p><span class="card-link">Sprach-Support einstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a> <a class="button secondary" href="/guild/{gid}/messages">✉️ Bot-Nachrichten →</a> <a class="button secondary" href="/guild/{gid}/branding">🎨 Server-Design →</a> <a class="button secondary" href="/guild/{gid}/teamlist">👥 Teamliste →</a> <a class="button secondary" href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz →</a> <a class="button secondary" href="/guild/{gid}/ausweis">🪪 Ausweissystem →</a></div><h2 class="dashboard-group-title">⭐ Wichtigste Funktionen</h2><p class="muted">Die am häufigsten benötigten Einstellungen stehen ganz oben.</p><div class="grid"><a class="card dashboard-card" href="/guild/{gid}/reaction-roles"><h2>🎭 Reaktionsrollen</h2><p>Rollen automatisch vergeben, wenn Mitglieder auf eine festgelegte Nachricht reagieren.</p><span class="card-link">Reaktionsrollen verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}?section=general#settings-panel"><h2>👋 Willkommen & Begrüßung</h2><p>Willkommensnachrichten und grundlegende Serveroptionen zuerst konfigurieren.</p><span class="card-link">Willkommen einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungsnachricht, Kanal und Rolle einrichten.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/voice-support"><h2>🎧 Voice-Support</h2><p>Support-Warteraum, Team-Rolle und private Support-Räume verwalten.</p><span class="card-link">Support einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/tickets"><h2>🎟️ Support-Tickets</h2><p>Ticket-Panel, Support-Team und Ticket-Kategorie konfigurieren.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/messages"><h2>✉️ Nachrichten & Buttons</h2><p>Bot-Nachrichten, Rollen-Buttons und Link-Buttons erstellen.</p><span class="card-link">Nachricht erstellen →</span></a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general#settings-panel">👋 Willkommen</a><a href="/guild/{gid}/voice-support">🎧 Support</a><a href="/guild/{gid}/verification">🔐 Verifizierung</a><a href="/guild/{gid}/tickets">🎟️ Tickets</a><a href="/guild/{gid}/messages">✉️ Nachrichten</a><a href="/guild/{gid}/branding">🎨 Server-Design</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a><a href="/guild/{gid}?section=security#settings-panel">🛡️ Sicherheit</a><a href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz</a><a href="/guild/{gid}/ausweis">🪪 Ausweis</a><a href="/guild/{gid}?section=channels#settings-panel">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles#settings-panel">🎭 Rollen</a><a href="/guild/{gid}/reaction-roles">🎭 Reaktionsrollen</a><a href="/guild/{gid}?section=voice#settings-panel">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/birthdays">🎂 Geburtstage</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/messages">✉️ Bot-Nachrichten</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}/audit-log">📜 Audit-Log</a><a href="/guild/{gid}/backup">🗄️ Backup & Wiederherstellung</a><a href="/guild/{gid}/health">🩺 Systemdiagnose</a><a href="/guild/{gid}/stats">📊 Live-Statistiken</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/birthdays"><h2>🎂 Geburtstagskalender</h2><p>Geburtstagskanal, Nachricht und gespeicherte Geburtstage verwalten.</p><span class="card-link">Geburtstage verwalten →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/backup"><h2>🗄️ Backup & Wiederherstellung</h2><p>Serverkonfiguration exportieren und mit ausdrücklicher Bestätigung wiederherstellen.</p><span class="card-link">Backups verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/health"><h2>🩺 Systemdiagnose</h2><p>Bot-Verbindung und wichtige Serverberechtigungen überprüfen.</p><span class="card-link">System prüfen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/audit-log"><h2>📜 Dashboard-Audit-Log</h2><p>Nachvollziehen, welche Einstellungen im Dashboard geändert wurden.</p><span class="card-link">Audit-Log öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/stats"><h2>📊 Live-Statistiken</h2><p>Mitglieder, Befehle, Nachrichtenaktivität und gespeicherte Voice-Zeit.</p><span class="card-link">Statistiken öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/messages"><h2>✉️ Bot-Nachrichten & Buttons</h2><p>Nachrichten senden und HTTPS-Link- oder Rollen-Buttons ergänzen.</p><span class="card-link">Nachricht erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/voice-support"><h2>🎧 Sprach-Support</h2><p>Warteraum, Team-Rolle, Benachrichtigungen und private Sprachkanäle konfigurieren.</p><span class="card-link">Sprach-Support einstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
     return _render(guild.name + " · Control Center", body)
 
+
+
+
+@app.route("/guild/<guild_id>/reaction-roles", methods=["GET", "POST"])
+def guild_reaction_roles(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_roles):
+            abort(403, "Du brauchst Administrator- oder Rollen-verwalten-Rechte.")
+        action = request.form.get("action", "add").strip()
+        records = cfg.setdefault("reaction_roles", [])
+        if not isinstance(records, list):
+            records = []
+            cfg["reaction_roles"] = records
+        if action == "delete":
+            record_id = request.form.get("record_id", "").strip()
+            cfg["reaction_roles"] = [item for item in records if str(item.get("id")) != record_id]
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Reaktionsrollen", session.get("user_id"), "Reaktionsrolle gelöscht: " + record_id[:80])
+            return redirect(url_for("guild_reaction_roles", guild_id=gid, saved="deleted"))
+        if action != "add":
+            abort(400, "Unbekannte Aktion.")
+        channel_raw = request.form.get("channel_id", "").strip()
+        message_raw = request.form.get("message_id", "").strip()
+        role_raw = request.form.get("role_id", "").strip()
+        emoji = request.form.get("emoji", "").strip()
+        valid_channels = {str(item.id): item for item in guild.text_channels}
+        valid_roles = {str(item.id): item for item in guild.roles}
+        if channel_raw not in valid_channels:
+            abort(400, "Bitte einen gültigen Textkanal auswählen.")
+        if role_raw not in valid_roles or not role_raw:
+            abort(400, "Bitte eine gültige Rolle auswählen.")
+        if not message_raw.isdigit():
+            abort(400, "Bitte die numerische Nachrichten-ID eintragen.")
+        if not emoji or len(emoji) > 100:
+            abort(400, "Bitte ein Emoji eingeben, z. B. ✅ oder <:name:123456789012345678>.")
+        role = valid_roles[role_raw]
+        me = guild.me
+        if me is None or not me.guild_permissions.manage_roles or role >= me.top_role:
+            abort(400, "Der Bot benötigt „Rollen verwalten“ und seine höchste Rolle muss über der ausgewählten Rolle liegen.")
+        channel = valid_channels[channel_raw]
+        async def _configure_reaction_role():
+            message = await channel.fetch_message(int(message_raw))
+            await message.add_reaction(emoji)
+        try:
+            asyncio.run_coroutine_threadsafe(_configure_reaction_role(), _bot.loop).result(timeout=20)
+        except discord.NotFound:
+            abort(400, "Die Nachricht wurde in diesem Kanal nicht gefunden.")
+        except discord.Forbidden:
+            abort(403, "Der Bot darf die Nachricht nicht lesen oder darauf reagieren.")
+        except (discord.HTTPException, ValueError) as exc:
+            abort(400, "Emoji oder Nachricht konnte nicht verarbeitet werden: " + str(exc)[:200])
+        records.append({"id": secrets.token_hex(8), "channel_id": int(channel_raw), "message_id": int(message_raw), "emoji": emoji, "role_id": int(role_raw)})
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Reaktionsrollen", session.get("user_id"), f"Reaktionsrolle eingerichtet: {emoji} -> {role.name} auf Nachricht {message_raw}")
+        return redirect(url_for("guild_reaction_roles", guild_id=gid, saved="added"))
+    records = cfg.get("reaction_roles", [])
+    if not isinstance(records, list):
+        records = []
+    channels = _guild_channels(guild)
+    roles = _guild_roles(guild)
+    channel_options = '<option value="">— Textkanal auswählen —</option>' + ''.join(f'<option value="{cid}">{html.escape(name)}</option>' for cid, name in channels)
+    role_options = '<option value="">— Rolle auswählen —</option>' + ''.join(f'<option value="{rid}">{html.escape(name)}</option>' for rid, name in roles)
+    body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🎭 Reaktionsrollen</h1><p class="muted">Mitglieder erhalten eine Rolle, wenn sie auf die konfigurierte Nachricht mit dem festgelegten Emoji reagieren. Entfernen sie die Reaktion, wird die Rolle wieder entfernt.</p>'
+    if request.args.get("saved") == "added":
+        body += '<div class="notice">✅ Reaktionsrolle gespeichert und Emoji zur Nachricht hinzugefügt.</div>'
+    elif request.args.get("saved") == "deleted":
+        body += '<div class="notice">✅ Reaktionsrolle gelöscht.</div>'
+    body += '<section class="card"><h2>＋ Reaktionsrolle hinzufügen</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add">'
+    body += '<label for="channel_id">Textkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
+    body += '<label for="message_id">Nachrichten-ID</label><input id="message_id" name="message_id" type="text" inputmode="numeric" required placeholder="123456789012345678"><small>Discord-Entwicklermodus aktivieren und „Nachrichten-ID kopieren“ verwenden.</small>'
+    body += '<label for="emoji">Emoji</label><input id="emoji" name="emoji" type="text" required maxlength="100" placeholder="✅ oder <:emoji:123456789012345678>">'
+    body += '<label for="role_id">Zu vergebende Rolle</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">💾 Reaktionsrolle speichern</button></form></section>'
+    body += '<section class="card"><h2>📋 Konfigurierte Reaktionsrollen</h2>'
+    if not records:
+        body += '<p class="muted">Noch keine Reaktionsrollen eingerichtet.</p>'
+    else:
+        body += '<div style="overflow-x:auto"><table><thead><tr><th>Emoji</th><th>Rolle</th><th>Kanal</th><th>Nachrichten-ID</th><th>Aktion</th></tr></thead><tbody>'
+        for item in records:
+            role = guild.get_role(int(item.get("role_id", 0))) if str(item.get("role_id", "")).isdigit() else None
+            channel = guild.get_channel(int(item.get("channel_id", 0))) if str(item.get("channel_id", "")).isdigit() else None
+            body += '<tr><td>' + html.escape(str(item.get("emoji", ""))) + '</td><td>' + html.escape(role.name if role else "Gelöschte Rolle") + '</td><td>' + html.escape("#" + channel.name if channel else "Gelöschter Kanal") + '</td><td><code>' + html.escape(str(item.get("message_id", ""))) + '</code></td><td><form method="post" style="margin:0" onsubmit="return confirm(\'Diese Reaktionsrolle löschen?\')">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="record_id" value="' + html.escape(str(item.get("id", "")), quote=True) + '"><button type="submit" class="secondary">Löschen</button></form></td></tr>'
+        body += '</tbody></table></div>'
+    body += '</section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
+    return _render(guild.name + " · Reaktionsrollen", body)
 
 
 @app.route("/guild/<guild_id>/roles/create", methods=["POST"])
