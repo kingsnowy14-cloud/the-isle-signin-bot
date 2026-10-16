@@ -3096,8 +3096,15 @@ async def _id_card_dm_application(guild_id, user):
         for answer in answers:
             embed.add_field(name=answer["question"][:256], value=answer["answer"][:1000] or "—", inline=False)
         embed.set_footer(text="IronWolf · Created by KingSnowy")
-        await channel.send(embed=embed, view=IDCardReviewView(app_id))
-        await user.send("📨 Danke! Deine Antworten wurden vollständig eingereicht und an das Serverteam zur Prüfung gesendet.")
+        # Show the proposed card in the private review channel before it is approved.
+        preview_member = guild.get_member(user.id) or user
+        preview_file = discord.File(
+            _id_card_image(guild, preview_member, app_id, answers),
+            filename="ironwolf-ausweis-vorschau.png",
+        )
+        embed.set_image(url="attachment://ironwolf-ausweis-vorschau.png")
+        await channel.send(embed=embed, file=preview_file, view=IDCardReviewView(app_id))
+        await user.send("📨 Danke! Deine Antworten wurden eingereicht. Das Serverteam prüft deinen Antrag und sieht vor der Freigabe eine Ausweis-Vorschau.")
     except (discord.Forbidden, discord.HTTPException) as exc:
         print(f"[ID CARD] DM workflow failed for {getattr(user, 'id', 'unknown')}: {type(exc).__name__}", flush=True)
         try:
