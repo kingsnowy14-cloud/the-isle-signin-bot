@@ -100,9 +100,10 @@ def register():
             '<p>Mitglieder treten dem Warteraum bei. IronWolf benachrichtigt das Team; ein Supporter übernimmt per Button und erhält einen privaten Sprachkanal.</p>'
             + saved + '<form method="post">' + d._csrf_field()
             + '<div class="check"><input type="checkbox" id="enabled" name="enabled"' + checked + '><label for="enabled">Sprach-Support aktivieren</label></div>'
-            + '<label for="waiting_channels">Warteräume (max. ' + str(max_waiting) + ')</label><select id="waiting_channels" name="waiting_channels" multiple size="6" required>' + waiting_opts + '</select>'
+            + '<label for="waiting_channels">Voice-Support-Warteräume (max. ' + str(max_waiting) + ')</label><select id="waiting_channels" name="waiting_channels" multiple size="6" required data-max-selections="' + str(max_waiting) + '">' + waiting_opts + '</select>'
             + waiting_limit_note
-            + '<p>Mehrere Warteräume gleichzeitig auswählen: Strg (Windows) bzw. Cmd (Mac) gedrückt halten.</p>'
+            + '<p id="waiting_channels_help">Wähle bis zu ' + str(max_waiting) + ' Warteräume aus. Mehrere Auswahlmöglichkeiten: Strg (Windows) bzw. Cmd (Mac) gedrückt halten.</p>'
+            + '<script>(function(){const select=document.getElementById("waiting_channels");if(!select)return;const max=Number(select.dataset.maxSelections||1);select.addEventListener("change",function(){const chosen=Array.from(select.options).filter(o=>o.selected);if(chosen.length>max){const last=chosen[chosen.length-1];last.selected=false;const help=document.getElementById("waiting_channels_help");if(help)help.textContent="Dein Tarif erlaubt maximal "+max+" Warteraum/Warteräume. Für bis zu 5 Warteräume brauchst du Premium Voice Support.";}});})();</script>'
             + '<label for="notification_channel">Benachrichtigungskanal</label><select id="notification_channel" name="notification_channel" required>' + notification_opts + '</select>'
             + '<label for="support_role">Support-Team-Rolle</label><select id="support_role" name="support_role" required>' + role_opts + '</select>'
             + '<label for="support_category">Kategorie für neu erstellte Räume (optional)</label><select id="support_category" name="support_category">' + category_opts + '</select>'
