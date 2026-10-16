@@ -6348,10 +6348,7 @@ async def on_app_command_error(interaction: discord.Interaction, error):
         pass
 
 
-if __name__ == "__main__":
-    if not TOKEN:
-        raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
-    bot.run(TOKEN)
+
 
 @bot.command(name="filmserver")
 @commands.guild_only()
@@ -6412,3 +6409,8 @@ async def filmserver_error(ctx, error):
     else:
         await ctx.reply(f"❌ Fehler bei !filmserver: {error}", mention_author=False)
 
+
+if __name__ == "__main__":
+    if not TOKEN:
+        raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
+    bot.run(TOKEN)
