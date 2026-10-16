@@ -1550,7 +1550,7 @@ def guild_page(guild_id):
             settings_html += '<label for="nickname_role_id">Auslösende Rolle</label><select id="nickname_role_id" name="nickname_role_id">' + options(roles, cfg.get("nickname_role_id")) + '</select>'
             settings_html += '<label for="nickname_prefix">Nickname-Präfix</label><input id="nickname_prefix" name="nickname_prefix" type="text" maxlength="24" value="' + html.escape(str(cfg.get("nickname_prefix") or ""), quote=True) + '" placeholder="[Team] ">'
             settings_html += '<label for="nickname_suffix">Nickname-Suffix</label><input id="nickname_suffix" name="nickname_suffix" type="text" maxlength="24" value="' + html.escape(str(cfg.get("nickname_suffix") or ""), quote=True) + '" placeholder=" ★">'
-            settings_html += '<p class="muted">SCNX-inspiriert: Ein Präfix und/oder Suffix wird um den bisherigen Nickname gesetzt. Beispiel: <code>[Team] </code> + <code>Alex</code> + <code> ★</code> ergibt <code>[Team] Alex ★</code>. Der ursprüngliche Nickname wird beim Entfernen der Rolle wiederhergestellt. Discord erlaubt maximal 32 Zeichen.</p>'
+            settings_html += '<p class="muted">Ein Präfix und/oder Suffix wird um den bisherigen Nickname gesetzt. Beispiel: <code>[Team] </code> + <code>Alex</code> + <code> ★</code> ergibt <code>[Team] Alex ★</code>. Der ursprüngliche Nickname wird beim Entfernen der Rolle wiederhergestellt. Discord erlaubt maximal 32 Zeichen.</p>'
             settings_html += '<p class="muted">Der Bot braucht „Spitznamen verwalten“ und seine höchste Rolle muss über der Rolle des Mitglieds liegen.</p>'
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
