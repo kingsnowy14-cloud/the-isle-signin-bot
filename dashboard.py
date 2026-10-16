@@ -773,9 +773,22 @@ def guild_automation(guild_id):
             selected = " selected" if str(job.get("channel_id") or "") == str(channel.id) else ""
             channel_options += '<option value="' + str(channel.id) + '"' + selected + '>' + html.escape(channel.name) + '</option>'
         checked = " checked" if job.get("enabled") else ""
+        last_run = html.escape(str(job.get("last_run_at", "Noch kein Lauf")).replace("T", " ")[:19])
+        next_run = html.escape(str(job.get("next_run_at", "Nicht geplant")).replace("T", " ")[:19])
+        run_status = str(job.get("last_status", "pending"))
+        status_label = {"success": "Letzter Lauf erfolgreich", "error": "Letzter Lauf mit Fehler", "pending": "Noch kein Lauf protokolliert"}.get(run_status, "Status unbekannt")
+        status_color = "#3fbf91" if run_status == "success" else ("#e6a23c" if run_status == "error" else "#8ca0b3")
+        last_error = html.escape(str(job.get("last_error", ""))[:300])
+        run_summary = (
+            '<div class="notice"><strong>Automationsstatus</strong><p>Letzter Lauf: ' + last_run
+            + '<br>Nächster Lauf: ' + next_run + '<br><span style="color:' + status_color + '">' + status_label + '</span>'
+            + (('<br>Fehler: ' + last_error) if last_error else '')
+            + '</p></div>'
+        )
         body = (
             '<section class="card hero"><span class="pill">PREMIUM+</span><h1 style="margin-top:14px">⚙️ Automation Pro</h1>'
             '<p>Veröffentliche automatisch wiederkehrende Server-Ankündigungen. Die erste Nachricht wird erst nach dem gewählten Intervall gesendet.</p>'
+            + run_summary +
             '<div class="notice">Mindestens 60 Minuten zwischen Nachrichten; maximale Nachrichtenlänge 1800 Zeichen. Erwähnungen werden standardmäßig deaktiviert.</div>'
             '<form method="post">' + _csrf_field() +
             '<label for="channel_id">Zielkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
