@@ -6311,15 +6311,6 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not register IronWolf feature cogs: {type(exc).__name__}: {exc}")
 
-    # Load the mention-based OpenAI assistant once; it registers no slash commands.
-    if not getattr(bot, "_ai_assistant_loaded", False):
-        try:
-            await bot.load_extension("ai_assistant")
-            bot._ai_assistant_loaded = True
-            print("IronWolf OpenAI assistant loaded (mention-based; no slash commands).", flush=True)
-        except Exception as exc:
-            print(f"Could not load IronWolf OpenAI assistant: {type(exc).__name__}: {exc}", flush=True)
-
     # Load the opt-in security suite once before slash-command sync.
     if not getattr(bot, "_security_suite_loaded", False):
         try:
