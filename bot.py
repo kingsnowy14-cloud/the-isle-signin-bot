@@ -2934,108 +2934,107 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
 
 
 def _id_card_image(guild, member, card_number, answers=None):
-    """Create a polished, security-style membership card as a single PNG."""
+    """Create a landscape citizen-style ID card inspired by the supplied reference."""
     answers = answers or []
-    image = Image.new("RGB", (1200, 1250), "#101827")
+    image = Image.new("RGB", (1200, 760), "#edf4f7")
     draw = ImageDraw.Draw(image)
     try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
-        font_heading = ImageFont.truetype("DejaVuSans-Bold.ttf", 30)
-        font_body = ImageFont.truetype("DejaVuSans-Bold.ttf", 30)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 22)
-        font_tiny = ImageFont.truetype("DejaVuSans-Bold.ttf", 17)
+        font_title = ImageFont.truetype("DejaVuSans.ttf", 36)
+        font_heading = ImageFont.truetype("DejaVuSans.ttf", 23)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 25)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 20)
+        font_tiny = ImageFont.truetype("DejaVuSans.ttf", 15)
     except OSError:
         font_title = font_heading = font_body = font_small = font_tiny = ImageFont.load_default()
 
     cfg = guild_config(guild.id)
-    color = str(cfg.get("id_card_color", "5865F2")).lstrip("#")
-    if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
-        color = "5865F2"
-    accent = "#" + color
     display_name = str(getattr(member, "display_name", getattr(member, "name", "Mitglied")))[:36]
     server_name = str(guild.name)[:48]
+    accent = "#2c9fa7"
 
-    # Layered edges and subtle security-line texture make the card feel like a
-    # premium printed credential, while keeping every field legible.
-    draw.rounded_rectangle((12, 12, 1188, 1238), radius=38, fill="#080d17", outline="#9ba9bd", width=3)
-    draw.rounded_rectangle((22, 22, 1178, 1228), radius=31, fill="#182438", outline=accent, width=5)
-    for x in range(35, 1170, 22):
-        draw.line((x, 135, min(x + 240, 1165), 385), fill="#22334a", width=2)
-        draw.line((x, 385, min(x + 180, 1165), 135), fill="#1d2d42", width=1)
-    draw.rounded_rectangle((26, 26, 1174, 132), radius=26, fill="#263b56")
-    draw.rectangle((26, 100, 1174, 132), fill=accent)
-    # Abstract crest and concentric security seal (not an official emblem).
-    draw.ellipse((48, 39, 124, 115), fill="#101827", outline="#d6e1ef", width=3)
-    draw.ellipse((57, 48, 115, 106), outline=accent, width=3)
-    draw.polygon([(86, 55), (104, 72), (98, 94), (86, 103), (74, 94), (68, 72)], fill=accent)
-    draw.text((145, 42), str(cfg.get("id_card_title", "IRONWOLF · MITGLIEDSAUSWEIS"))[:42], font=font_title, fill="#ffffff")
-    draw.text((148, 84), "DIGITALER MITGLIEDSAUSWEIS  /  MEMBER CREDENTIAL", font=font_tiny, fill="#d8e2f0")
+    # Heller, leicht strukturierter Kartenhintergrund mit dunklem Kopfbereich.
+    draw.rounded_rectangle((8, 8, 1192, 752), radius=34, fill="#ffffff", outline="#8da8b5", width=4)
+    for x in range(18, 1180, 24):
+        draw.line((x, 170, min(x + 260, 1180), 735), fill="#edf3f6", width=2)
+    draw.rounded_rectangle((12, 12, 1188, 166), radius=28, fill="#132d40")
+    draw.rectangle((12, 126, 1188, 166), fill=accent)
+    title = str(cfg.get("id_card_title", "Notruf Craftopia RP"))[:42]
+    draw.text((38, 35), title, font=font_title, fill="#ffffff")
+    draw.text((40, 91), "BÜRGERAUSWEIS  /  ROLEPLAY-DOKUMENT", font=font_tiny, fill="#c4d3dd")
+    draw.ellipse((1060, 36, 1138, 114), outline="#61c4c8", width=4)
+    initials = "".join(part[0] for part in display_name.split()[:2]).upper() or "NC"
+    try:
+        bb = draw.textbbox((0, 0), initials, font=font_small)
+        draw.text((1099 - (bb[2]-bb[0])/2, 75 - (bb[3]-bb[1])/2), initials, font=font_small, fill="#ffffff")
+    except Exception:
+        draw.text((1080, 60), initials, font=font_small, fill="#ffffff")
 
-    # Member identity panel.
-    draw.rounded_rectangle((44, 158, 1156, 375), radius=22, fill="#202f45", outline="#425570", width=2)
-    # Use the card holder's real Discord avatar as the ID portrait.
-    draw.rounded_rectangle((66, 180, 220, 334), radius=18, fill="#111c2d", outline="#8294ad", width=2)
+    # Portrait links im Stil eines gedruckten Ausweises.
+    draw.rounded_rectangle((38, 205, 282, 535), radius=12, fill="#dce6eb", outline="#8fa7b4", width=3)
+    draw.rounded_rectangle((44, 211, 276, 529), radius=8, fill="#101820")
     avatar_drawn = False
     try:
         avatar_url = str(member.display_avatar.with_size(256).url)
-        request = urllib.request.Request(avatar_url, headers={"User-Agent": "IronWolf-IDCard/1.0"})
+        request = urllib.request.Request(avatar_url, headers={"User-Agent": "Roleplay-IDCard/1.0"})
         with urllib.request.urlopen(request, timeout=4) as response:
             avatar_bytes = response.read(2_000_000)
-        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGB")
-        avatar = avatar.resize((140, 140), Image.Resampling.LANCZOS)
-        mask = Image.new("L", (140, 140), 0)
-        ImageDraw.Draw(mask).rounded_rectangle((0, 0, 139, 139), radius=14, fill=255)
-        image.paste(avatar, (73, 187), mask)
-        draw.rounded_rectangle((70, 184, 216, 330), radius=15, outline="#d6e1ef", width=3)
+        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGB").resize((220, 300), Image.Resampling.LANCZOS)
+        image.paste(avatar, (50, 220))
         avatar_drawn = True
     except Exception:
         pass
     if not avatar_drawn:
-        initials = "".join(part[0] for part in display_name.split()[:2]).upper() or "M"
-        draw.ellipse((108, 198, 178, 268), fill=accent, outline="#e5edf7", width=3)
+        draw.ellipse((110, 280, 210, 380), fill=accent, outline="#ffffff", width=3)
         try:
-            bounds = draw.textbbox((0, 0), initials, font=font_heading)
-            tw, th = bounds[2] - bounds[0], bounds[3] - bounds[1]
-        except AttributeError:
-            tw, th = draw.textsize(initials, font=font_heading)
-        draw.text((143 - tw / 2, 232 - th / 2), initials, font=font_heading, fill="#ffffff")
-    draw.text((88, 336), "FOTO / MITGLIED", font=font_tiny, fill="#b8c7db")
-    draw.text((250, 180), "NAME / MITGLIED", font=font_tiny, fill="#b8c7db")
-    draw.text((250, 207), display_name[:30], font=font_body, fill="#ffffff")
-    draw.text((250, 251), "AUSWEISNUMMER", font=font_tiny, fill="#b8c7db")
-    draw.text((250, 275), str(card_number)[:34], font=font_small, fill="#ffffff")
-    draw.rounded_rectangle((850, 180, 1118, 226), radius=18, fill="#173e35", outline="#4caa8a", width=2)
-    draw.ellipse((870, 195, 886, 211), fill="#6ce0b1")
-    draw.text((900, 190), "STATUS: AKTIV", font=font_tiny, fill="#d7ffed")
-    draw.text((850, 251), "AUSSTELLER", font=font_tiny, fill="#b8c7db")
-    draw.text((850, 275), server_name[:24], font=font_small, fill="#ffffff")
+            bb = draw.textbbox((0, 0), initials, font=font_title)
+            draw.text((160-(bb[2]-bb[0])/2, 330-(bb[3]-bb[1])/2), initials, font=font_title, fill="#ffffff")
+        except Exception:
+            draw.text((125, 310), initials, font=font_title, fill="#ffffff")
+    draw.text((50, 500), "RP-PORTRÄT", font=font_tiny, fill="#c6d6df")
 
-    # Decorative security band.
-    draw.rounded_rectangle((44, 395, 1156, 431), radius=10, fill="#111c2d", outline="#344861", width=1)
-    for x in range(58, 1145, 16):
-        draw.line((x, 400, x + 20, 426), fill=accent if (x // 16) % 3 == 0 else "#50637d", width=2)
-    draw.text((48, 450), "ANTRAGSANGABEN", font=font_heading, fill="#ffffff")
-    draw.text((48, 484), "Vom Mitglied übermittelte Informationen", font=font_small, fill="#b8c7db")
-    draw.line((48, 520, 1152, 520), fill=accent, width=3)
+    # Personendaten als übersichtliches zweispaltiges Raster.
+    draw.text((320, 204), "PERSONENDATEN", font=font_heading, fill="#28495c")
+    draw.line((320, 245, 1148, 245), fill=accent, width=3)
+    fields = []
+    for item in answers[:8]:
+        question = " ".join(str(item.get("question", "Angabe")).split()).strip(" ?:")
+        answer = " ".join(str(item.get("answer", "—")).split()) or "—"
+        if answer:
+            fields.append((question[:28].upper(), answer[:32]))
+    defaults = [
+        ("VORNAME", display_name),
+        ("NACHNAME", server_name),
+        ("GEBURTSDATUM", "Nicht angegeben"),
+        ("ALTER", "—"),
+        ("WOHNORT", "Nicht angegeben"),
+        ("STAATSANGEHÖRIGKEIT", "—"),
+    ]
+    # Antworten aus dem Ausweisantrag zuerst anzeigen; übrige Felder sinnvoll ergänzen.
+    display_fields = (fields + defaults)[:6]
+    positions = [(320, 272), (730, 272), (320, 368), (730, 368), (320, 464), (730, 464)]
+    for (label, value), (x, y) in zip(display_fields, positions):
+        draw.text((x, y), label[:30], font=font_tiny, fill="#6b8491")
+        draw.text((x, y + 29), value[:34], font=font_body, fill="#203746")
+        draw.line((x, y + 70, x + 375, y + 70), fill="#d5e0e5", width=2)
 
-    y = 540
-    for idx, item in enumerate(answers[:10]):
-        question = " ".join(str(item.get("question", "Frage")).split())[:76]
-        answer = " ".join(str(item.get("answer", "—")).split())[:100] or "—"
-        draw.rounded_rectangle((48, y, 1152, y + 57), radius=12, fill="#202f45", outline="#344861", width=1)
-        draw.text((65, y + 5), f"{idx + 1:02d}  {question[:66]}", font=font_tiny, fill="#b8c7db")
-        draw.text((85, y + 27), answer[:90], font=font_small, fill="#ffffff")
-        y += 64
+    draw.rounded_rectangle((320, 565, 1148, 655), radius=16, fill="#e6eff3", outline="#d3e0e5", width=2)
+    draw.text((342, 578), "DOKUMENTENNUMMER", font=font_tiny, fill="#6b8491")
+    draw.text((342, 607), str(card_number)[:32], font=font_small, fill="#203746")
+    draw.text((720, 578), "ROBLOX-NAME / DISCORD", font=font_tiny, fill="#6b8491")
+    draw.text((720, 607), display_name[:30], font=font_small, fill="#203746")
+    # Barcodeartige Sicherheitsmarkierung.
+    x = 40
+    for idx in range(35):
+        width = 2 if idx % 3 else 5
+        draw.rectangle((x, 584, x + width, 642), fill="#29495b")
+        x += width + 3
+    draw.text((40, 690), "FIKTIVES RP-DOKUMENT  ·  KEIN AMTLICHER IDENTITÄTSNACHWEIS", font=font_tiny, fill="#718792")
+    draw.text((890, 690), "AUSSTELLER: " + server_name[:24], font=font_tiny, fill="#718792")
 
-    # Bottom authentication strip and microprint-style footer.
-    draw.line((48, 1190, 1152, 1190), fill="#425570", width=2)
-    draw.text((48, 1202), "IRONWOLF  •  COMMUNITY ID", font=font_tiny, fill="#d5deea")
-    draw.text((790, 1202), "DIGITAL CREDENTIAL  /  VERIFIED MEMBER", font=font_tiny, fill="#aabbd0")
     output = io.BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
     return output
-
 
 def _id_card_issue(guild, member, application_id, answers=None):
     cfg = guild_config(guild.id)
