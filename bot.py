@@ -3670,6 +3670,200 @@ async def record_nuke_action(guild: discord.Guild, action_name: str, action: dis
             )
 
 
+
+
+# ----------------------------- VOICE SUPPORT -----------------------------
+_support_pending = set()
+
+
+def _support_embed_field(embed, name):
+    if embed is None:
+        return None
+    for field in embed.fields:
+        if field.name == name:
+            try:
+                return int(field.value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+class ClaimVoiceSupportView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Support übernehmen", style=discord.ButtonStyle.primary, emoji="🎧", custom_id="ironwolf:voice_support:claim")
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        if guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            return
+        cfg = guild_config(guild.id)
+        role_id = cfg.get("voice_support_role")
+        role = guild.get_role(int(role_id)) if role_id else None
+        if not (interaction.user.guild_permissions.manage_channels or (role and role in interaction.user.roles)):
+            await interaction.response.send_message("Du brauchst die konfigurierte Support-Rolle.", ephemeral=True)
+            return
+        embed = interaction.message.embeds[0] if interaction.message.embeds else None
+        requester_id = _support_embed_field(embed, "requester_id")
+        waiting_id = _support_embed_field(embed, "waiting_channel_id")
+        if not requester_id or not waiting_id:
+            await interaction.response.send_message("Die Support-Anfrage ist unvollständig.", ephemeral=True)
+            return
+        requester = guild.get_member(requester_id)
+        if requester is None or requester.voice is None or requester.voice.channel is None or requester.voice.channel.id != waiting_id:
+            await interaction.response.send_message("Das Mitglied ist nicht mehr im Warteraum. Die Anfrage ist abgelaufen.", ephemeral=True)
+            try:
+                await interaction.message.delete()
+            except discord.HTTPException:
+                pass
+            return
+        if embed and _support_embed_field(embed, "support_channel_id"):
+            await interaction.response.send_message("Dieser Fall wurde bereits übernommen.", ephemeral=True)
+            return
+        category_id = cfg.get("voice_support_category")
+        category = guild.get_channel(int(category_id)) if category_id else requester.voice.channel.category
+        if category is not None and not isinstance(category, discord.CategoryChannel):
+            category = requester.voice.channel.category
+        prefix = str(cfg.get("voice_support_prefix") or "Support")[:40]
+        safe_name = re.sub(r"[^a-zA-Z0-9\\-]", "-", requester.display_name.lower()).strip("-")[:60] or "mitglied"
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
+            requester: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
+        }
+        if guild.me:
+            overwrites[guild.me] = discord.PermissionOverwrite(view_channel=True, connect=True, manage_channels=True, move_members=True)
+        try:
+            support_channel = await guild.create_voice_channel(
+                name=f"{prefix}-{safe_name}"[:100],
+                category=category,
+                overwrites=overwrites,
+                reason=f"Voice-Support übernommen von {interaction.user}",
+            )
+            previous_voice_id = interaction.user.voice.channel.id if interaction.user.voice and interaction.user.voice.channel else 0
+            await requester.move_to(support_channel, reason="Voice-Support gestartet")
+            await interaction.user.move_to(support_channel, reason="Voice-Support übernommen")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            channel = guild.get_channel(locals().get("support_channel", 0))
+            if channel:
+                try:
+                    await channel.delete(reason="Support konnte nicht gestartet werden")
+                except discord.HTTPException:
+                    pass
+            await interaction.response.send_message(
+                f"Support-Raum konnte nicht erstellt/bezogen werden ({type(exc).__name__}). Prüfe Kanal- und Verschiebe-Rechte.",
+                ephemeral=True,
+            )
+            return
+        updated = embed.copy() if embed else discord.Embed(title="🎧 Voice-Support")
+        updated.title = "🎧 Voice-Support · In Bearbeitung"
+        updated.add_field(name="support_channel_id", value=str(support_channel.id), inline=False)
+        updated.add_field(name="supporter_id", value=str(interaction.user.id), inline=False)
+        updated.add_field(name="supporter_previous_voice_id", value=str(previous_voice_id), inline=False)
+        updated.add_field(name="Support-Raum", value=support_channel.mention, inline=False)
+        await interaction.response.edit_message(embed=updated, view=ActiveVoiceSupportView())
+        _support_pending.discard((guild.id, requester.id))
+
+
+class ActiveVoiceSupportView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Support beenden", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="ironwolf:voice_support:close")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        if guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            return
+        cfg = guild_config(guild.id)
+        role_id = cfg.get("voice_support_role")
+        role = guild.get_role(int(role_id)) if role_id else None
+        embed = interaction.message.embeds[0] if interaction.message.embeds else None
+        supporter_id = _support_embed_field(embed, "supporter_id")
+        channel_id = _support_embed_field(embed, "support_channel_id")
+        previous_id = _support_embed_field(embed, "supporter_previous_voice_id")
+        requester_id = _support_embed_field(embed, "requester_id")
+        if not (interaction.user.guild_permissions.manage_channels or (role and role in interaction.user.roles) or interaction.user.id == supporter_id):
+            await interaction.response.send_message("Nur der zuständige Supporter oder ein Moderator kann den Fall beenden.", ephemeral=True)
+            return
+        support_channel = guild.get_channel(channel_id) if channel_id else None
+        supporter = guild.get_member(supporter_id) if supporter_id else None
+        requester = guild.get_member(requester_id) if requester_id else None
+        if supporter and previous_id:
+            previous = guild.get_channel(previous_id)
+            if isinstance(previous, discord.VoiceChannel) and supporter.voice and supporter.voice.channel == support_channel:
+                try:
+                    await supporter.move_to(previous, reason="Voice-Support beendet")
+                except discord.HTTPException:
+                    pass
+        if requester and requester.voice and requester.voice.channel == support_channel:
+            try:
+                await requester.move_to(None, reason="Voice-Support beendet")
+            except discord.HTTPException:
+                pass
+        if isinstance(support_channel, discord.VoiceChannel):
+            try:
+                await support_channel.delete(reason=f"Voice-Support beendet von {interaction.user}")
+            except discord.HTTPException:
+                pass
+        closed = discord.Embed(
+            title="🔒 Voice-Support beendet",
+            description=f"Der Support-Fall wurde von {interaction.user.mention} beendet.",
+            color=discord.Color.dark_grey(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        await interaction.response.edit_message(embed=closed, view=None)
+
+
+@bot.listen("on_ready")
+async def register_voice_support_views():
+    if getattr(bot, "_voice_support_views_registered", False):
+        return
+    bot.add_view(ClaimVoiceSupportView())
+    bot.add_view(ActiveVoiceSupportView())
+    bot._voice_support_views_registered = True
+
+
+@bot.listen("on_voice_state_update")
+async def voice_support_waiting_room(member, before, after):
+    if member.bot or after.channel is None or (before.channel and before.channel.id == after.channel.id):
+        return
+    cfg = guild_config(member.guild.id)
+    if not cfg.get("voice_support_enabled", False):
+        return
+    waiting_id = cfg.get("voice_support_waiting_channel")
+    if not waiting_id or after.channel.id != int(waiting_id):
+        return
+    key = (member.guild.id, member.id)
+    if key in _support_pending:
+        return
+    notification_id = cfg.get("voice_support_notification_channel")
+    notification = member.guild.get_channel(int(notification_id)) if notification_id else None
+    if not isinstance(notification, discord.TextChannel):
+        return
+    role_id = cfg.get("voice_support_role")
+    role = member.guild.get_role(int(role_id)) if role_id else None
+    _support_pending.add(key)
+    embed = create_embed(
+        title="🎧 Neue Voice-Support-Anfrage",
+        description=f"**Mitglied:** {member.mention}\\n**Warteraum:** {after.channel.mention}\\nEin Supporter kann den Fall mit dem Button übernehmen.",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="requester_id", value=str(member.id), inline=False)
+    embed.add_field(name="waiting_channel_id", value=str(after.channel.id), inline=False)
+    try:
+        await notification.send(
+            content=role.mention if role else None,
+            embed=embed,
+            view=ClaimVoiceSupportView(),
+            allowed_mentions=discord.AllowedMentions(roles=True, users=False, everyone=False),
+        )
+    except (discord.Forbidden, discord.HTTPException):
+        _support_pending.discard(key)
+
+
 @bot.event
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
