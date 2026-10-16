@@ -76,6 +76,7 @@ PREMIUM_FEATURES = {
     "security": "Security Pro",
     "automation": "Automation Pro",
     "invite_tracker": "Invite Tracker",
+    "voice_support": "Premium Voice Support (bis zu 5 Warteräume)",
 }
 
 PLAN_FEATURES = {
