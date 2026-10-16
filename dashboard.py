@@ -212,8 +212,94 @@ label{{font-size:13px;margin:13px 0 6px}}
 table{{border-collapse:collapse;width:100%;overflow:hidden;border-radius:10px}}
 th,td{{border-color:var(--border);padding:10px 12px}}
 @media(max-width:760px){{main{{margin:20px auto;padding:0 14px 34px}}.card{{padding:17px;border-radius:12px}}nav{{gap:6px}}nav a:not(:first-child){{font-size:12px;padding:6px 8px}}}}
-{custom_theme_css}</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main></body></html>"""
+.select-search-wrap{{margin:8px 0 7px;position:relative}}
+.select-search-wrap input{{width:100%;padding:9px 12px 9px 36px;border:1px solid var(--border);border-radius:9px;background:#0c1322;color:var(--text);font:inherit;font-size:13px}}
+.select-search-wrap:before{{content:"⌕";position:absolute;left:12px;top:3px;color:var(--muted);font-size:21px;pointer-events:none}}
+.select-search-count{{display:block;color:var(--muted);font-size:11px;margin:3px 2px 7px}}
+.role-picker{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:8px;margin-top:10px}}
+.role-option{{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:0;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.02);cursor:pointer;font-size:13px;min-width:0;overflow-wrap:anywhere}}
+.role-option:hover{{border-color:rgba(139,157,255,.42);background:rgba(139,157,255,.06)}}
+.role-option input{{width:17px;height:17px;flex-shrink:0;accent-color:#818cf8}}
+.role-option[hidden]{{display:none}}
+.role-picker-tools{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}}
+.role-picker-tools button{{margin:0;padding:7px 10px}}
+.selection-summary{{font-size:12px;color:var(--muted);margin-left:auto}}
+{custom_theme_css}</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
 
+
+
+def _selection_menu_script():
+    """Add lightweight search to long select menus across every dashboard module."""
+    return r"""<script>
+(function () {
+  document.querySelectorAll('select:not([multiple]):not([data-no-search])').forEach(function (select) {
+    if (select.options.length < 7 || select.dataset.searchReady === '1') return;
+    select.dataset.searchReady = '1';
+    var wrap = document.createElement('div');
+    wrap.className = 'select-search-wrap';
+    var input = document.createElement('input');
+    input.type = 'search';
+    input.placeholder = 'Optionen suchen …';
+    input.setAttribute('aria-label', 'Auswahloptionen durchsuchen');
+    input.autocomplete = 'off';
+    var count = document.createElement('small');
+    count.className = 'select-search-count';
+    wrap.appendChild(input);
+    wrap.appendChild(count);
+    select.parentNode.insertBefore(wrap, select);
+    function filterOptions() {
+      var query = input.value.trim().toLocaleLowerCase();
+      var visible = 0;
+      Array.prototype.forEach.call(select.options, function (option) {
+        var match = !query || option.text.toLocaleLowerCase().indexOf(query) !== -1;
+        option.hidden = !match;
+        if (match) visible++;
+      });
+      count.textContent = query ? visible + ' passende Optionen' : select.options.length + ' Optionen';
+    }
+    input.addEventListener('input', filterOptions);
+    filterOptions();
+  });
+
+  document.querySelectorAll('[data-role-picker]').forEach(function (picker) {
+    var input = picker.querySelector('[data-role-search]');
+    var options = Array.prototype.slice.call(picker.querySelectorAll('.role-option'));
+    var count = picker.querySelector('[data-role-count]');
+    var summary = picker.querySelector('[data-role-summary]');
+    var clear = picker.querySelector('[data-role-clear]');
+    var selectAll = picker.querySelector('[data-role-select-visible]');
+    function update() {
+      var query = input.value.trim().toLocaleLowerCase();
+      var visible = 0;
+      options.forEach(function (label) {
+        var match = !query || label.dataset.search.indexOf(query) !== -1;
+        label.hidden = !match;
+        if (match) visible++;
+      });
+      var selected = options.filter(function (label) {
+        return label.querySelector('input').checked;
+      }).length;
+      count.textContent = visible + ' Rollen angezeigt';
+      summary.textContent = selected + ' ausgewählt';
+    }
+    input.addEventListener('input', update);
+    options.forEach(function (label) {
+      label.querySelector('input').addEventListener('change', update);
+    });
+    clear.addEventListener('click', function () {
+      options.forEach(function (label) { label.querySelector('input').checked = false; });
+      update();
+    });
+    selectAll.addEventListener('click', function () {
+      options.forEach(function (label) {
+        if (!label.hidden) label.querySelector('input').checked = true;
+      });
+      update();
+    });
+    update();
+  });
+})();
+</script>"""
 
 def _module_command_footer():
     """Render the commands relevant to the current dashboard module at its bottom."""
@@ -1133,17 +1219,19 @@ def teamlist_dashboard(guild_id):
 
     selected_roles = {str(value) for value in cfg.get("teamlist_role_ids", [])}
     selected_channel = str(cfg.get("teamlist_channel_id") or "")
-    form = '<section class="card"><h2>⚙️ Teamliste konfigurieren</h2><p class="muted">Wähle den Discord-Kanal, in den die Liste gesendet werden soll, und eine oder mehrere Rollen.</p><form method="post">' + _csrf_field()
+    form = '<section class="card"><span class="pill">STAFF LIST</span><h2 style="margin-top:10px">👥 Teamliste erstellen</h2><p class="muted">Wähle einen Zielkanal und markiere die Rollen, deren Mitglieder in der Teamliste erscheinen sollen. Du kannst Rollen direkt suchen, ohne Strg oder Cmd gedrückt zu halten.</p><form method="post">' + _csrf_field()
     channel_options = ['<option value="">— Zielkanal auswählen —</option>']
     for channel in sorted(guild.text_channels, key=lambda item: item.position):
         chosen = " selected" if str(channel.id) == selected_channel else ""
         channel_options.append(f'<option value="{channel.id}"{chosen}>#{html.escape(channel.name)}</option>')
     form += '<label for="teamlist_channel_id">Kanal für die Teamliste</label><select id="teamlist_channel_id" name="teamlist_channel_id">' + "".join(channel_options) + '</select>'
-    form += '<label for="teamlist_role_ids">Teamrollen (Mehrfachauswahl möglich)</label><select id="teamlist_role_ids" name="teamlist_role_ids" multiple size="8" style="min-height:180px">'
+    form += '<label for="teamlist_role_search">Teamrollen auswählen</label><div data-role-picker><div class="select-search-wrap"><input id="teamlist_role_search" data-role-search type="search" placeholder="Rolle suchen …" autocomplete="off" aria-label="Teamrollen durchsuchen"></div><div class="role-picker-tools"><button type="button" class="secondary" data-role-select-visible>Alle sichtbaren auswählen</button><button type="button" class="secondary" data-role-clear>Auswahl leeren</button><span class="selection-summary" data-role-summary>0 ausgewählt</span></div><small data-role-count class="select-search-count"></small><div class="role-picker">'
     for role_id, role in sorted(valid_roles.items(), key=lambda item: item[1].position, reverse=True):
-        chosen = " selected" if role_id in selected_roles else ""
-        form += f'<option value="{role_id}"{chosen}>{html.escape(role.name)}</option>'
-    form += '</select><small>Mehrere Rollen auswählen: Strg (Windows) bzw. Cmd (Mac) gedrückt halten.</small><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button type="submit" name="teamlist_action" value="save">Einstellungen speichern</button><button type="submit" name="teamlist_action" value="publish">💬 Speichern & Teamliste in Discord senden</button></div></form></section>'
+        chosen = " checked" if role_id in selected_roles else ""
+        role_label = html.escape(role.name)
+        role_search = html.escape(role.name.casefold(), quote=True)
+        form += f'<label class="role-option" data-search="{role_search}"><input type="checkbox" name="teamlist_role_ids" value="{role_id}"{chosen}><span>{role_label}</span></label>'
+    form += '</div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button type="submit" name="teamlist_action" value="save">Einstellungen speichern</button><button type="submit" name="teamlist_action" value="publish">💬 Speichern & Teamliste in Discord senden</button></div></form></section>'
 
     members_html = '<section class="card"><h2>👥 Vorschau der Teammitglieder</h2>'
     if request.args.get("saved") == "1":
