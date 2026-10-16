@@ -879,6 +879,33 @@ class TicketPanelView(discord.ui.View):
             self.add_item(button)
 
 
+class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
+    note = discord.ui.TextInput(
+        label="Notiz (nur für das Support-Team)",
+        style=discord.TextStyle.paragraph,
+        placeholder="Interne Zusammenfassung oder nächste Schritte …",
+        min_length=2,
+        max_length=1000,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta or not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Nur das Support-Team kann interne Notizen speichern.", ephemeral=True)
+            return
+        notes = meta.setdefault("internal_notes", [])
+        notes.append({
+            "author_id": interaction.user.id,
+            "author": str(interaction.user)[:100],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "text": str(self.note.value).strip()[:1000],
+        })
+        del notes[:-100]
+        save_json(DATA_FILE, data)
+        await interaction.response.send_message("🔒 Interne Teamnotiz wurde privat gespeichert.", ephemeral=True)
+
+
 class TicketControlView(discord.ui.View):
     def __init__(self, claimed: bool = False):
         super().__init__(timeout=None)
@@ -910,6 +937,21 @@ class TicketControlView(discord.ui.View):
         )
         priority_button.callback = self.priority
         self.add_item(priority_button)
+
+        note_button = discord.ui.Button(
+            label="Teamnotiz",
+            style=discord.ButtonStyle.secondary,
+            emoji="📝",
+            custom_id="ticket:internal-note",
+        )
+        async def add_note(interaction: discord.Interaction):
+            meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+            if not meta or not is_support(interaction.user, meta, interaction.guild):
+                await interaction.response.send_message("Nur das Support-Team kann interne Notizen hinzufügen.", ephemeral=True)
+                return
+            await interaction.response.send_modal(TicketInternalNoteModal())
+        note_button.callback = add_note
+        self.add_item(note_button)
 
         close_button = discord.ui.Button(
             label="Close ticket",
@@ -1068,6 +1110,7 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
 <p>Claimed by: {html.escape(str(claimer) if claimer else str(meta.get('claimed_by') or 'Nobody'))}</p>
 <p>Closed by: {html.escape(str(closed_by))}</p>
 <p>Reason: {html.escape(meta.get('reason', ''))}</p>
+<h2>Interne Teamnotizen</h2><ul>{''.join("<li><b>" + html.escape(str(note.get("author", "Team"))[:100]) + "</b> <small>" + html.escape(str(note.get("created_at", ""))[:30]) + "</small><p>" + html.escape(str(note.get("text", ""))[:1000]) + "</p></li>" for note in meta.get("internal_notes", []) if isinstance(note, dict)) or "<li>Keine internen Notizen.</li>"}</ul>
 <hr>{''.join(messages)}</body></html>"""
     # HTML in a ZIP prevents Discord from showing the raw HTML source as a preview.
     archive_buffer = io.BytesIO()
