@@ -804,25 +804,22 @@ def guild_automation(guild_id):
 
 @app.route("/guild/<guild_id>/ausweis", methods=["GET", "POST"])
 def guild_ausweis(guild_id):
-    """Configure the member ID card module."""
+    """Configure the member ID application and card."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     gid = str(guild.id)
     cfg = _config.setdefault(gid, {})
     defaults = {
-        "id_card_enabled": False,
-        "id_card_title": "🪪 Mitgliedsausweis",
-        "id_card_description": "Offizieller Mitgliedsausweis für {server}.",
-        "id_card_color": "5865F2",
-        "id_card_show_id": True,
-        "id_card_show_joined": True,
-        "id_card_show_created": False,
-        "id_card_show_roles": True,
-        "id_card_role_id": None,
+        "id_card_enabled": False, "id_card_title": "🪪 Mitgliedsausweis",
+        "id_card_description": "Beantrage hier deinen digitalen Mitgliedsausweis für {server}.",
+        "id_card_color": "5865F2", "id_card_show_id": True, "id_card_show_joined": True,
+        "id_card_show_created": False, "id_card_show_roles": True, "id_card_role_id": None,
+        "id_card_auto_approve": False, "id_card_review_channel_id": None, "id_card_review_role_id": None,
+        "id_card_questions": ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"],
     }
     for key, value in defaults.items():
-        cfg.setdefault(key, value)
+        cfg.setdefault(key, value.copy() if isinstance(value, list) else value)
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
@@ -832,55 +829,76 @@ def guild_ausweis(guild_id):
         title = request.form.get("title", "").strip()
         description = request.form.get("description", "").strip()
         color = request.form.get("color", "5865F2").strip().lstrip("#")
-        if not title or len(title) > 256:
-            abort(400, "Der Ausweis-Titel muss 1–256 Zeichen lang sein.")
-        if len(description) > 3500:
-            abort(400, "Die Beschreibung darf höchstens 3500 Zeichen lang sein.")
+        if not title or len(title) > 256 or len(description) > 3500:
+            abort(400, "Titel oder Beschreibung sind zu lang oder leer.")
         if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
             abort(400, "Bitte eine gültige Ausweisfarbe auswählen.")
+        questions = [line.strip() for line in request.form.get("questions", "").splitlines() if line.strip()]
+        if len(questions) > 10:
+            abort(400, "Es sind maximal 10 Ausweisfragen erlaubt.")
+        if any(len(question) > 45 for question in questions):
+            abort(400, "Jede Frage darf höchstens 45 Zeichen lang sein.")
+        if not questions:
+            questions = defaults["id_card_questions"]
         role_value = request.form.get("id_card_role_id", "").strip()
+        review_role_value = request.form.get("id_card_review_role_id", "").strip()
+        channel_value = request.form.get("id_card_review_channel_id", "").strip()
         valid_roles = {str(role.id) for role in guild.roles if not role.is_default() and not role.managed}
+        valid_channels = {str(channel.id) for channel in guild.text_channels}
         if role_value and role_value not in valid_roles:
-            abort(400, "Ungültige Ausweisrolle ausgewählt.")
-        cfg["id_card_enabled"] = request.form.get("id_card_enabled") == "on"
-        cfg["id_card_title"] = title
-        cfg["id_card_description"] = description
-        cfg["id_card_color"] = color.upper()
-        cfg["id_card_show_id"] = request.form.get("show_id") == "on"
-        cfg["id_card_show_joined"] = request.form.get("show_joined") == "on"
-        cfg["id_card_show_created"] = request.form.get("show_created") == "on"
-        cfg["id_card_show_roles"] = request.form.get("show_roles") == "on"
-        cfg["id_card_role_id"] = int(role_value) if role_value else None
+            abort(400, "Ungültige Ausweisrolle.")
+        if review_role_value and review_role_value not in valid_roles:
+            abort(400, "Ungültige Teamrolle.")
+        if channel_value and channel_value not in valid_channels:
+            abort(400, "Ungültiger Prüfkanal.")
+        auto = request.form.get("id_card_auto_approve") == "on"
+        if not auto and (not channel_value or not review_role_value):
+            abort(400, "Für manuelle Prüfung bitte einen Prüfkanal und eine Teamrolle auswählen oder automatische Ausstellung aktivieren.")
+        cfg.update({
+            "id_card_enabled": request.form.get("id_card_enabled") == "on",
+            "id_card_title": title, "id_card_description": description, "id_card_color": color.upper(),
+            "id_card_show_id": request.form.get("show_id") == "on",
+            "id_card_show_joined": request.form.get("show_joined") == "on",
+            "id_card_show_created": request.form.get("show_created") == "on",
+            "id_card_show_roles": request.form.get("show_roles") == "on",
+            "id_card_role_id": int(role_value) if role_value else None,
+            "id_card_auto_approve": auto,
+            "id_card_review_channel_id": int(channel_value) if channel_value else None,
+            "id_card_review_role_id": int(review_role_value) if review_role_value else None,
+            "id_card_questions": questions,
+        })
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Ausweissystem", session.get("user_id"),
-            ("aktiviert" if cfg["id_card_enabled"] else "deaktiviert") + "; Ausweis-Layout gespeichert")
+            ("aktiviert" if cfg["id_card_enabled"] else "deaktiviert") + f"; Fragen: {len(questions)}; Modus: {'automatisch' if auto else 'Teamprüfung'}")
         return redirect(url_for("guild_ausweis", guild_id=gid, saved="1"))
     roles = [(role.id, role.name) for role in sorted(guild.roles, key=lambda item: item.position, reverse=True) if not role.is_default() and not role.managed]
-    role_options = '<option value="">Keine Rolle vergeben</option>' + ''.join(
-        '<option value="' + str(role_id) + '"' + (' selected' if str(cfg.get("id_card_role_id") or "") == str(role_id) else '') + '>' + html.escape(name) + '</option>'
-        for role_id, name in roles
-    )
+    role_options = '<option value="">Keine Rolle vergeben</option>' + ''.join('<option value="' + str(rid) + '"' + (' selected' if str(cfg.get("id_card_role_id") or "") == str(rid) else '') + '>' + html.escape(name) + '</option>' for rid, name in roles)
+    review_role_options = '<option value="">Teamrolle auswählen</option>' + ''.join('<option value="' + str(rid) + '"' + (' selected' if str(cfg.get("id_card_review_role_id") or "") == str(rid) else '') + '>' + html.escape(name) + '</option>' for rid, name in roles)
+    channel_options = '<option value="">Prüfkanal auswählen</option>' + ''.join('<option value="' + str(ch.id) + '"' + (' selected' if str(cfg.get("id_card_review_channel_id") or "") == str(ch.id) else '') + '>' + html.escape(ch.name) + '</option>' for ch in guild.text_channels)
     def checked(key):
         return " checked" if cfg.get(key, defaults.get(key, False)) else ""
     success = '<div class="notice">✅ Ausweis-Einstellungen gespeichert.</div>' if request.args.get("saved") == "1" else ""
     body = (
         '<section class="card"><span class="pill">IRONWOLF · ID CENTER</span><h1>🪪 Ausweissystem</h1>'
-        '<p class="muted">Passe den digitalen Mitgliedsausweis an. Das Modul ist standardmäßig ausgeschaltet und muss hier manuell aktiviert werden. Mitglieder rufen ihren Ausweis anschließend mit /ausweis ab.</p>' + success +
+        '<p class="muted">/ausweis veröffentlicht das Antrags-Panel. Mitglieder klicken auf „Ausweis beantragen“ und füllen das Formular aus. Standardmäßig ist das System aus.</p>' + success +
         '<form method="post">' + _csrf_field() +
         '<div class="check"><input type="checkbox" id="id_card_enabled" name="id_card_enabled"' + checked("id_card_enabled") + '><label for="id_card_enabled">Ausweissystem aktivieren</label></div>'
         '<label for="title">Ausweis-Titel</label><input id="title" name="title" maxlength="256" required value="' + html.escape(str(cfg.get("id_card_title", defaults["id_card_title"])), quote=True) + '">'
-        '<label for="description">Beschreibung</label><textarea id="description" name="description" maxlength="3500">' + html.escape(str(cfg.get("id_card_description", defaults["id_card_description"]))) + '</textarea>'
-        '<small class="muted">Platzhalter: {server}, {user}, {display_name}</small>'
+        '<label for="description">Panel-Beschreibung</label><textarea id="description" name="description" maxlength="3500">' + html.escape(str(cfg.get("id_card_description", defaults["id_card_description"]))) + '</textarea>'
         '<label for="color">Ausweisfarbe</label><input id="color" name="color" type="color" value="#' + html.escape(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), quote=True) + '">'
+        '<h3>Ausstellung</h3><div class="check"><input type="checkbox" id="id_card_auto_approve" name="id_card_auto_approve"' + checked("id_card_auto_approve") + '><label for="id_card_auto_approve">Anträge automatisch genehmigen und Ausweis direkt erstellen</label></div>'
+        '<label for="id_card_review_role_id">Teamrolle für manuelle Prüfung</label><select id="id_card_review_role_id" name="id_card_review_role_id">' + review_role_options + '</select>'
+        '<label for="id_card_review_channel_id">Kanal für Ausweisanträge</label><select id="id_card_review_channel_id" name="id_card_review_channel_id">' + channel_options + '</select>'
+        '<small class="muted">Wenn automatische Ausstellung aus ist, müssen Teamrolle und Prüfkanal gesetzt sein. Admins und Server-Verwalter können ebenfalls prüfen.</small>'
+        '<label for="id_card_role_id">Optionale Ausweisrolle nach Genehmigung</label><select id="id_card_role_id" name="id_card_role_id">' + role_options + '</select>'
+        '<h3>Formularfragen (maximal 10)</h3><label for="questions">Eine Frage pro Zeile, maximal 45 Zeichen je Frage</label><textarea id="questions" name="questions" rows="10" maxlength="500">' + html.escape("\n".join(cfg.get("id_card_questions", defaults["id_card_questions"]))) + '</textarea>'
         '<h3>Informationen auf dem Ausweis</h3>'
         '<div class="check"><input type="checkbox" id="show_id" name="show_id"' + checked("id_card_show_id") + '><label for="show_id">Discord-ID anzeigen</label></div>'
         '<div class="check"><input type="checkbox" id="show_joined" name="show_joined"' + checked("id_card_show_joined") + '><label for="show_joined">Server-Beitrittsdatum anzeigen</label></div>'
         '<div class="check"><input type="checkbox" id="show_created" name="show_created"' + checked("id_card_show_created") + '><label for="show_created">Discord-Konto-Erstellungsdatum anzeigen</label></div>'
         '<div class="check"><input type="checkbox" id="show_roles" name="show_roles"' + checked("id_card_show_roles") + '><label for="show_roles">Rollen anzeigen</label></div>'
-        '<label for="id_card_role_id">Optionale Ausweisrolle</label><select id="id_card_role_id" name="id_card_role_id">' + role_options + '</select>'
-        '<small class="muted">Wenn ausgewählt, versucht /ausweis die Rolle dem Mitglied zu geben. Der Bot braucht dafür „Rollen verwalten“ und seine höchste Rolle muss über der Ausweisrolle liegen.</small>'
         '<button type="submit">💾 Ausweissystem speichern</button></form>'
-        '<p class="notice">Der Ausweis ist ein Discord-Mitgliedsausweis und kein amtlicher Identitätsnachweis.</p>'
+        '<p class="notice">Der Ausweis ist ein digitaler Server-Ausweis, kein amtlicher Identitätsnachweis. Der Bot benötigt passende Rollen- und Kanalrechte.</p>'
         '<p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Ausweissystem", body)
