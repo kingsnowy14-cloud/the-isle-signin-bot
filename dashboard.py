@@ -1418,6 +1418,16 @@ def guild_page(guild_id):
                                 abort(400, f"Ungültige Level-Rolle für Level {level}.")
                             level_roles[str(level)] = int(raw)
                     cfg["level_roles"] = level_roles
+                    nickname_role_raw = request.form.get("nickname_role_id", "").strip()
+                    if nickname_role_raw and nickname_role_raw not in role_ids:
+                        abort(400, "Ungültige Nickname-Rolle ausgewählt.")
+                    cfg["nickname_role_id"] = int(nickname_role_raw) if nickname_role_raw else None
+                    nickname_template = request.form.get("nickname_template", "{role} | {name}").strip()
+                    if not nickname_template:
+                        nickname_template = "{role} | {name}"
+                    if len(nickname_template) > 100 or not any(token in nickname_template for token in ("{name}", "{username}", "{role}")):
+                        abort(400, "Das Nickname-Format muss höchstens 100 Zeichen lang sein und {name}, {username} oder {role} enthalten.")
+                    cfg["nickname_template"] = nickname_template
                 _save_json(data_path("config.json"), _config)
                 changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
                 _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
@@ -1472,6 +1482,10 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+            settings_html += '<h3>🏷️ Automatischer Nickname bei Rolle</h3><p class="muted">Sobald ein Mitglied diese Rolle erhält, setzt IronWolf automatisch seinen Nickname. Wird die Rolle entfernt, setzt der Bot den Nickname auf den Discord-Benutzernamen zurück. Platzhalter: {name} = Benutzername, {username} = Benutzername, {role} = Rollenname. Discord erlaubt maximal 32 Zeichen.</p>'
+            settings_html += '<label for="nickname_role_id">Auslösende Rolle</label><select id="nickname_role_id" name="nickname_role_id">' + options(roles, cfg.get("nickname_role_id")) + '</select>'
+            settings_html += '<label for="nickname_template">Nickname-Format</label><input id="nickname_template" name="nickname_template" type="text" maxlength="100" value="' + html.escape(str(cfg.get("nickname_template") or "{role} | {name}"), quote=True) + '" placeholder="{role} | {name}">'
+            settings_html += '<p class="muted">Beispiel: Rolle „Admin“ und Format <code>{role} | {name}</code> ergibt <code>Admin | Benutzername</code>.</p>'
             settings_html += '<h3>🏆 Level-Rollen</h3><p class="muted">Wähle optional eine Rolle für Level 1 bis 50. Beim Erreichen des Levels versucht IronWolf, die passende Rolle zu vergeben. Die Bot-Rolle muss darüber liegen.</p>'
             configured_level_roles = cfg.get("level_roles", {}) if isinstance(cfg.get("level_roles", {}), dict) else {}
             for level in range(1, 51):
