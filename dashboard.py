@@ -1057,13 +1057,14 @@ def birthday_dashboard(guild_id):
 
 @app.route("/guild/<guild_id>/teamlist", methods=["GET", "POST"])
 def teamlist_dashboard(guild_id):
-    """Configure team roles and list all guild members who hold at least one selected role."""
+    """Configure team roles and publish matching members to a selected Discord channel."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     valid_roles = {str(role.id): role for role in guild.roles if not role.is_default() and not role.managed}
+    valid_channels = {str(channel.id): channel for channel in guild.text_channels}
 
     if request.method == "POST":
         if not _csrf_ok():
@@ -1071,27 +1072,86 @@ def teamlist_dashboard(guild_id):
         selected = request.form.getlist("teamlist_role_ids")
         if any(value not in valid_roles for value in selected):
             abort(400, "Ungültige Rolle ausgewählt.")
+        channel_raw = request.form.get("teamlist_channel_id", "").strip()
+        if channel_raw and channel_raw not in valid_channels:
+            abort(400, "Bitte einen gültigen Textkanal für die Teamliste auswählen.")
         cfg["teamlist_role_ids"] = sorted(set(selected), key=lambda value: int(value))
+        cfg["teamlist_channel_id"] = int(channel_raw) if channel_raw else None
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Teamliste", session.get("user_id"),
-            f"{len(cfg['teamlist_role_ids'])} Teamrollen gespeichert")
+            f"{len(cfg['teamlist_role_ids'])} Teamrollen gespeichert; Zielkanal {channel_raw or 'nicht festgelegt'}")
+
+        if request.form.get("teamlist_action") == "publish":
+            if not channel_raw:
+                abort(400, "Wähle zuerst einen Zielkanal aus und speichere die Einstellungen.")
+            if not selected:
+                abort(400, "Wähle mindestens eine Rolle aus, um die Teamliste zu senden.")
+            try:
+                if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
+                    raise RuntimeError("Der Bot ist nicht online.")
+                target_channel = valid_channels[channel_raw]
+                async def _publish_teamlist():
+                    members = [member async for member in guild.fetch_members(limit=None)]
+                    matching = []
+                    selected_set = set(selected)
+                    for member in members:
+                        matching_roles = [role for role in member.roles if str(role.id) in selected_set]
+                        if matching_roles:
+                            matching.append((member, matching_roles))
+                    matching.sort(key=lambda item: (item[0].display_name or item[0].name).casefold())
+                    lines = [f"👥 **Teamliste – {guild.name}**", f"Mitglieder: {len(matching)}"]
+                    if matching:
+                        lines.extend(
+                            f"• {member.mention} — " + ", ".join(role.name for role in member_roles)
+                            for member, member_roles in matching
+                        )
+                    else:
+                        lines.append("Aktuell wurden keine Mitglieder mit den ausgewählten Rollen gefunden.")
+                    chunks = []
+                    current = ""
+                    for line in lines:
+                        if len(current) + len(line) + 1 > 1850:
+                            chunks.append(current)
+                            current = ""
+                        current += ( "\\n" if current else "" ) + line
+                    if current:
+                        chunks.append(current)
+                    for index, chunk in enumerate(chunks):
+                        if len(chunks) > 1:
+                            chunk = f"**Teamliste ({index + 1}/{len(chunks)})**\\n" + chunk
+                        await target_channel.send(chunk, allowed_mentions=discord.AllowedMentions.none())
+                    return len(matching)
+                count = asyncio.run_coroutine_threadsafe(_publish_teamlist(), _bot.loop).result(timeout=90)
+                _audit_dashboard_change(guild.id, "Teamliste gesendet", session.get("user_id"),
+                    f"{count} Mitglieder nach #{target_channel.name} gesendet")
+                return redirect(url_for("teamlist_dashboard", guild_id=gid, sent="1", count=str(count)))
+            except Exception as exc:
+                print(f"[DASHBOARD] Teamliste konnte für Guild {gid} nicht gesendet werden: {type(exc).__name__}: {exc}", flush=True)
+                return _render("Teamliste konnte nicht gesendet werden",
+                    '<section class="card"><h1>Teamliste konnte nicht gesendet werden</h1><p>Prüfe, ob der Bot im ausgewählten Kanal Nachrichten senden darf und der Server Members Intent aktiviert ist.</p><p class="muted">Technischer Fehler: ' + html.escape(type(exc).__name__) + '</p><a class="button secondary" href="/guild/' + gid + '/teamlist">Zurück zur Teamliste</a></section>', 500)
         return redirect(url_for("teamlist_dashboard", guild_id=gid, saved="1"))
 
     selected_roles = {str(value) for value in cfg.get("teamlist_role_ids", [])}
-    form = '<section class="card"><h2>⚙️ Teamrollen auswählen</h2><p class="muted">Wähle eine oder mehrere Rollen. Unten erscheinen alle Servermitglieder, die mindestens eine dieser Rollen besitzen.</p><form method="post">' + _csrf_field()
-    if valid_roles:
-        for role_id, role in sorted(valid_roles.items(), key=lambda item: item[1].position, reverse=True):
-            checked = " checked" if role_id in selected_roles else ""
-            form += f'<div class="check"><input type="checkbox" id="teamrole_{role_id}" name="teamlist_role_ids" value="{role_id}"{checked}><label for="teamrole_{role_id}">{html.escape(role.name)} <span class="muted">({role_id})</span></label></div>'
-    else:
-        form += '<p class="muted">Auf diesem Server wurden keine auswählbaren Rollen gefunden.</p>'
-    form += '<button type="submit">Teamliste speichern und aktualisieren</button></form></section>'
+    selected_channel = str(cfg.get("teamlist_channel_id") or "")
+    form = '<section class="card"><h2>⚙️ Teamliste konfigurieren</h2><p class="muted">Wähle den Discord-Kanal, in den die Liste gesendet werden soll, und eine oder mehrere Rollen.</p><form method="post">' + _csrf_field()
+    channel_options = ['<option value="">— Zielkanal auswählen —</option>']
+    for channel in sorted(guild.text_channels, key=lambda item: item.position):
+        chosen = " selected" if str(channel.id) == selected_channel else ""
+        channel_options.append(f'<option value="{channel.id}"{chosen}>#{html.escape(channel.name)}</option>')
+    form += '<label for="teamlist_channel_id">Kanal für die Teamliste</label><select id="teamlist_channel_id" name="teamlist_channel_id">' + "".join(channel_options) + '</select>'
+    form += '<label for="teamlist_role_ids">Teamrollen (Mehrfachauswahl möglich)</label><select id="teamlist_role_ids" name="teamlist_role_ids" multiple size="8" style="min-height:180px">'
+    for role_id, role in sorted(valid_roles.items(), key=lambda item: item[1].position, reverse=True):
+        chosen = " selected" if role_id in selected_roles else ""
+        form += f'<option value="{role_id}"{chosen}>{html.escape(role.name)}</option>'
+    form += '</select><small>Mehrere Rollen auswählen: Strg (Windows) bzw. Cmd (Mac) gedrückt halten.</small><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button type="submit" name="teamlist_action" value="save">Einstellungen speichern</button><button type="submit" name="teamlist_action" value="publish">💬 Speichern & Teamliste in Discord senden</button></div></form></section>'
 
-    members_html = '<section class="card"><h2>👥 Teammitglieder</h2>'
+    members_html = '<section class="card"><h2>👥 Vorschau der Teammitglieder</h2>'
     if request.args.get("saved") == "1":
-        members_html += '<div class="notice">✅ Teamrollen gespeichert.</div>'
+        members_html += '<div class="notice">✅ Teamliste-Einstellungen gespeichert.</div>'
+    if request.args.get("sent") == "1":
+        members_html += '<div class="notice">✅ Teamliste wurde in Discord gesendet (' + html.escape(request.args.get("count", "0")) + ' Mitglieder).</div>'
     if not selected_roles:
-        members_html += '<p class="muted">Wähle oben mindestens eine Rolle aus und speichere die Auswahl, um die Teamliste zu sehen.</p>'
+        members_html += '<p class="muted">Wähle oben mindestens eine Rolle aus und speichere die Auswahl, um die Vorschau zu sehen.</p>'
     else:
         try:
             if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
@@ -1120,9 +1180,9 @@ def teamlist_dashboard(guild_id):
                 members_html += '<p class="muted">Kein Mitglied besitzt aktuell eine der ausgewählten Rollen.</p>'
         except Exception as exc:
             print(f"[DASHBOARD] Teamliste konnte Mitglieder für Guild {gid} nicht abrufen: {type(exc).__name__}: {exc}", flush=True)
-            members_html += '<div class="notice">Die Mitgliederliste konnte nicht geladen werden. Prüfe, ob der Discord-Bot online ist und der privilegierte „Server Members Intent“ im Discord Developer Portal aktiviert ist. Danach muss der Bot neu gestartet werden.</div>'
+            members_html += '<div class="notice">Die Mitgliederliste konnte nicht geladen werden. Prüfe, ob der Bot online ist und der privilegierte „Server Members Intent“ im Discord Developer Portal aktiviert ist.</div>'
     members_html += '</section>'
-    body = f'<span class="pill">IRONWOLF · TEAMLISTE</span><h1 style="margin-top:12px">👥 Teamliste · {html.escape(guild.name)}</h1><p class="muted">Mitglieder werden anhand ihrer aktuellen Discord-Rollen gelistet.</p><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a></div>' + form + members_html
+    body = f'<span class="pill">IRONWOLF · TEAMLISTE</span><h1 style="margin-top:12px">👥 Teamliste · {html.escape(guild.name)}</h1><p class="muted">Die Teamliste nutzt die aktuellen Discord-Rollen und kann in einen Kanal gesendet werden.</p><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a></div>' + form + members_html
     return _render("Teamliste", body)
 
 
