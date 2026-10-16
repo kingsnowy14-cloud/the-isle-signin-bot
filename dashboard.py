@@ -1487,7 +1487,7 @@ def guild_page(guild_id):
                                     skipped += 1
                         except discord.Forbidden as fetch_exc:
                             raise RuntimeError("Discord verweigert das Abrufen der Mitglieder. Aktiviere im Developer Portal unter Bot den Server Members Intent und prüfe die Bot-Berechtigungen.") from fetch_exc
-                        save_json(data_path("config.json"), _config)
+                        _save_json(data_path("config.json"), _config)
                         return changed, skipped, matched
                     future = asyncio.run_coroutine_threadsafe(_apply_nicknames_to_existing_members(), _bot.loop)
                     try:
