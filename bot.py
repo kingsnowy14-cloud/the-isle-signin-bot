@@ -3851,7 +3851,7 @@ async def voice_support_waiting_room(member, before, after):
     _support_pending.add(key)
     embed = create_embed(
         title="🎧 Neue Voice-Support-Anfrage",
-        description=f"**Mitglied:** {member.mention}\\n**Warteraum:** {after.channel.mention}\\nEin Supporter kann den Fall mit dem Button übernehmen.",
+        description=f"**Mitglied:** {member.mention}\n**Warteraum:** {after.channel.mention}\nEin Supporter kann den Fall mit dem Button übernehmen.",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
