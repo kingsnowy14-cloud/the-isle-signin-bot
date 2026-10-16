@@ -5432,12 +5432,23 @@ async def _apply_role_nickname(member: discord.Member):
     try:
         role_id = int(raw_role_id)
     except (TypeError, ValueError):
+        print(f"[role-nickname] Invalid nickname_role_id in guild config for guild {member.guild.id}: {raw_role_id!r}", flush=True)
         return
     role = member.guild.get_role(role_id)
-    if role is None or role not in member.roles:
+    if role is None:
+        print(f"[role-nickname] Configured role {role_id} was not found in guild {member.guild.id}.", flush=True)
+        return
+    if role not in member.roles:
         return
     me = member.guild.me
-    if me is None or not me.guild_permissions.manage_nicknames:
+    if me is None:
+        print(f"[role-nickname] Bot member is unavailable in guild {member.guild.id}.", flush=True)
+        return
+    if not me.guild_permissions.manage_nicknames:
+        print(f"[role-nickname] Missing Manage Nicknames permission in guild {member.guild.id}.", flush=True)
+        return
+    if member == member.guild.owner or member.top_role >= me.top_role:
+        print(f"[role-nickname] Cannot edit member {member.id} in guild {member.guild.id}: their highest role is equal to or above the bot's role.", flush=True)
         return
     template = str(cfg.get("nickname_template") or "{role} | {name}")[:200]
     nickname = template.replace("{name}", member.name).replace("{username}", member.name).replace("{role}", role.name)
@@ -5446,9 +5457,9 @@ async def _apply_role_nickname(member: discord.Member):
         return
     try:
         await member.edit(nick=nickname, reason=f"Automatischer Nickname für Rolle {role.name}")
-        print(f"[role-nickname] Set nickname for member {member.id} in guild {member.guild.id}.")
+        print(f"[role-nickname] Set nickname for member {member.id} in guild {member.guild.id}.", flush=True)
     except (discord.Forbidden, discord.HTTPException) as exc:
-        print(f"[role-nickname] Could not set nickname for member {member.id}: {type(exc).__name__}: {exc}")
+        print(f"[role-nickname] Could not set nickname for member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
 
 @bot.event
