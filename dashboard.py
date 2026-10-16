@@ -1438,6 +1438,48 @@ def guild_page(guild_id):
                         abort(400, "Das Nickname-Format muss höchstens 100 Zeichen lang sein und {name}, {username} oder {role} enthalten.")
                     cfg["nickname_template"] = nickname_template
                 _save_json(data_path("config.json"), _config)
+                nickname_applied = None
+                if settings_section == "nickname" and request.form.get("nickname_action") == "apply":
+                    raw_role_id = cfg.get("nickname_role_id")
+                    if not raw_role_id:
+                        abort(400, "Wähle zuerst eine auslösende Rolle aus.")
+                    if not _bot or not getattr(_bot, "is_ready", lambda: False)():
+                        abort(503, "Der Discord-Bot ist gerade nicht bereit. Bitte später erneut versuchen.")
+                    async def _apply_nicknames_to_existing_members():
+                        target_guild = _bot.get_guild(int(gid))
+                        if target_guild is None:
+                            raise RuntimeError("Server ist im Bot-Cache nicht verfügbar.")
+                        role = target_guild.get_role(int(raw_role_id))
+                        if role is None:
+                            raise RuntimeError("Die ausgewählte Rolle wurde auf Discord nicht gefunden.")
+                        me = target_guild.me
+                        if me is None or not me.guild_permissions.manage_nicknames:
+                            raise PermissionError("Dem Bot fehlt die Berechtigung „Spitznamen verwalten“.")
+                        changed = 0
+                        skipped = 0
+                        template = str(cfg.get("nickname_template") or "{role} | {name}")
+                        for member in list(role.members):
+                            if member.bot or member == target_guild.owner or member.top_role >= me.top_role:
+                                skipped += 1
+                                continue
+                            nickname = template.replace("{name}", member.name).replace("{username}", member.name).replace("{role}", role.name).strip()[:32]
+                            nickname = nickname or member.name[:32]
+                            if member.nick == nickname:
+                                continue
+                            try:
+                                await member.edit(nick=nickname, reason=f"Dashboard: Nickname-Automatik für Rolle {role.name}")
+                                changed += 1
+                            except discord.Forbidden:
+                                skipped += 1
+                            except discord.HTTPException:
+                                skipped += 1
+                        return changed, skipped, len(role.members)
+                    future = asyncio.run_coroutine_threadsafe(_apply_nicknames_to_existing_members(), _bot.loop)
+                    try:
+                        nickname_applied = future.result(timeout=45)
+                    except Exception as apply_exc:
+                        future.cancel()
+                        raise RuntimeError("Nicknames konnten nicht angewendet werden: " + str(apply_exc)) from apply_exc
                 changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
                 _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
             except Exception as exc:
@@ -1452,7 +1494,7 @@ def guild_page(guild_id):
                 return _render("Speichern fehlgeschlagen", '<div class="card"><h1>Änderungen konnten nicht gespeichert werden</h1><p>Die Einstellungen wurden zurückgesetzt. Prüfe die Railway-Logs nach <code>[DASHBOARD] Failed to save settings</code>, um den genauen technischen Fehler zu sehen.</p><a class="button secondary" href="/guild/' + gid + '">Zurück zu den Einstellungen</a></div>', 500)
         else:
             abort(400, "Unbekannte Aktion.")
-        return redirect(url_for("guild_page", guild_id=gid, section=settings_section if action == "settings" else "overview", saved="1"))
+        return redirect(url_for("guild_page", guild_id=gid, section=settings_section if action == "settings" else "overview", saved="1", applied=nickname_applied[0] if action == "settings" and settings_section == "nickname" and nickname_applied is not None else None, skipped=nickname_applied[1] if action == "settings" and settings_section == "nickname" and nickname_applied is not None else None, total=nickname_applied[2] if action == "settings" and settings_section == "nickname" and nickname_applied is not None else None))
     channels = _guild_channels(guild)
     roles = _guild_roles(guild)
     def options(items, current):
@@ -1544,7 +1586,13 @@ def guild_page(guild_id):
             settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
         if request.args.get("saved") == "1":
             settings_html += '<div class="notice">✅ Änderungen wurden gespeichert.</div>'
-        settings_html += '<button type="submit">💾 Änderungen speichern</button></form></section>'
+        if section == "nickname" and request.args.get("applied") is not None:
+            settings_html += '<div class="notice">🏷️ Nickname-Anwendung abgeschlossen: ' + html.escape(request.args.get("applied", "0")) + ' geändert, ' + html.escape(request.args.get("skipped", "0")) + ' übersprungen, ' + html.escape(request.args.get("total", "0")) + ' Mitglieder mit dieser Rolle.</div>'
+        if section == "nickname":
+            settings_html += '<button type="submit" name="nickname_action" value="save">💾 Einstellungen speichern</button> <button type="submit" name="nickname_action" value="apply">💾 Speichern &amp; Nicknames jetzt anwenden</button>'
+        else:
+            settings_html += '<button type="submit">💾 Änderungen speichern</button>'
+        settings_html += '</form></section>'
         if section == "roles":
             settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
     module_records = _module_records(guild.id)
