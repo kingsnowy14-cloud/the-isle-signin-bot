@@ -826,6 +826,7 @@ class TicketCreateModal(discord.ui.Modal):
             return
 
         ticket_meta = {
+            "guild_id": guild.id,
             "owner_id": interaction.user.id,
             "claimed_by": None,
             "created_at": datetime.now(timezone.utc).isoformat(),
