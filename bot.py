@@ -3827,15 +3827,19 @@ async def register_voice_support_views():
 
 @bot.listen("on_voice_state_update")
 async def voice_support_waiting_room(member, before, after):
-    if member.bot or after.channel is None or (before.channel and before.channel.id == after.channel.id):
+    if member.bot:
         return
     cfg = guild_config(member.guild.id)
+    waiting_id = cfg.get("voice_support_waiting_channel")
+    key = (member.guild.id, member.id)
+    if before.channel and waiting_id and before.channel.id == int(waiting_id) and (after.channel is None or after.channel.id != before.channel.id):
+        _support_pending.discard(key)
+    if after.channel is None or (before.channel and before.channel.id == after.channel.id):
+        return
     if not cfg.get("voice_support_enabled", False):
         return
-    waiting_id = cfg.get("voice_support_waiting_channel")
     if not waiting_id or after.channel.id != int(waiting_id):
         return
-    key = (member.guild.id, member.id)
     if key in _support_pending:
         return
     notification_id = cfg.get("voice_support_notification_channel")
