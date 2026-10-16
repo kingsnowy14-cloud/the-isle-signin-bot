@@ -6352,3 +6352,63 @@ if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
     bot.run(TOKEN)
+
+@bot.command(name="filmserver")
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True)
+async def filmserver(ctx):
+    """Create a film and movie community server layout in the current Discord server."""
+    roles = [
+        ("Film-Administrator", discord.Colour.from_rgb(190, 35, 45), discord.Permissions(administrator=True)),
+        ("Film-Moderator", discord.Colour.from_rgb(230, 125, 45), discord.Permissions(moderate_members=True, manage_messages=True, kick_members=True)),
+        ("Kritiker", discord.Colour.from_rgb(220, 175, 65), discord.Permissions.none()),
+        ("Filmfan", discord.Colour.from_rgb(70, 145, 220), discord.Permissions.none()),
+        ("Serienfan", discord.Colour.from_rgb(125, 85, 200), discord.Permissions.none()),
+        ("Neu im Kino", discord.Colour.from_rgb(100, 190, 125), discord.Permissions.none()),
+    ]
+    channels = [
+        ("🎬 START & INFOS", [
+            ("text", "willkommen", "Willkommen in der Film-Community!"),
+            ("text", "film-regeln", "Regeln für Spoiler, Reviews und respektvolle Diskussionen."),
+            ("text", "ankündigungen", "Filmnews, Serverneuigkeiten und wichtige Ankündigungen."),
+            ("text", "neuerscheinungen", "Kommende Kinofilme und neue Streaming-Veröffentlichungen."),
+            ("text", "rollen-auswahl", "Wähle Rollen für deine Lieblingsgenres."),
+        ]),
+        ("🍿 FILM-LOUNGE", [
+            ("text", "film-talk", "Diskutiere über Filme aller Genres."),
+            ("text", "serien-talk", "Sprich über Serien und Staffeln."),
+            ("text", "film-empfehlungen", "Empfiehl Filme und Serien, die sich lohnen."),
+            ("text", "was-schaust-du", "Teile, was du gerade ansiehst."),
+            ("text", "off-topic", "Alles rund um Filme hinaus."),
+            ("voice", "Film-Lounge", None),
+        ]),
+        ("⭐ REVIEWS & ABSTIMMUNGEN", [
+            ("text", "film-rezensionen", "Bewertungen und ausführliche Filmkritiken."),
+            ("text", "bewertung-des-tages", "Bewerte Filme und vergleiche eure Meinungen."),
+            ("text", "umfragen", "Abstimmungen zu Lieblingsfilmen und Filmabenden."),
+            ("text", "film-quiz", "Filmquiz, Zitate und Trivia."),
+        ]),
+        ("🎥 GENRES", [
+            ("text", "action-abenteuer", "Action- und Abenteuerfilme."),
+            ("text", "horror-thriller", "Horror, Thriller und Mystery."),
+            ("text", "sci-fi-fantasy", "Science-Fiction und Fantasy."),
+            ("text", "komoedie-drama", "Komödien, Dramen und Romanzen."),
+            ("text", "animation-anime", "Animation, Zeichentrick und Anime."),
+        ]),
+        ("🔒 FILM-TEAM", [
+            ("text", "team-chat", "Interner Chat des Film-Teams."),
+            ("text", "moderations-log", "Interne Moderationsnotizen."),
+        ]),
+    ]
+    await _build_server_template(ctx, roles, channels, "Film- & Serienserver")
+
+
+@filmserver.error
+async def filmserver_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("❌ Für !filmserver brauchst du die Berechtigung **Server verwalten**.", mention_author=False)
+    elif isinstance(error, commands.NoPrivateMessage):
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+    else:
+        await ctx.reply(f"❌ Fehler bei !filmserver: {error}", mention_author=False)
+
