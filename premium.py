@@ -76,7 +76,6 @@ PREMIUM_FEATURES = {
     "security": "Security Pro",
     "automation": "Automation Pro",
     "invite_tracker": "Invite Tracker",
-    "seasonal_events": "Saison-Events (Halloween & Weihnachten)",
 }
 
 PLAN_FEATURES = {
