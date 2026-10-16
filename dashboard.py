@@ -1463,7 +1463,7 @@ def guild_page(guild_id):
                         # This requires the Server Members Intent to be enabled in the Discord Developer Portal.
                         try:
                             async for member in target_guild.fetch_members(limit=None):
-                                if member.bot or role not in member.roles:
+                                if role not in member.roles:
                                     continue
                                 matched += 1
                                 if member == target_guild.owner or member.top_role >= me.top_role:
