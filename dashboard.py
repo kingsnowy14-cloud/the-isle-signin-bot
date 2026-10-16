@@ -1854,6 +1854,11 @@ def start_dashboard(bot, config, save_json, guild_config):
     if getattr(bot, "_dashboard_started", False):
         return
     _bot, _config, _save_json, _guild_config = bot, config, save_json, guild_config
+    try:
+        import voice_support_dashboard
+        voice_support_dashboard.register()
+    except Exception as exc:
+        print(f"[DASHBOARD] Voice support settings route could not be registered: {type(exc).__name__}: {exc}", flush=True)
     app.secret_key = _env("DASHBOARD_SECRET_KEY") or app.secret_key
     if not _env("DASHBOARD_SECRET_KEY"):
         print("[DASHBOARD] WARNING: DASHBOARD_SECRET_KEY is not set; sessions will reset on restart.", flush=True)
