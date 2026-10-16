@@ -1556,7 +1556,13 @@ def guild_verification(guild_id):
             view_cls = getattr(sys.modules.get("__main__"), "VerifyView", None) or getattr(sys.modules.get("bot"), "VerifyView", None)
             if view_cls is None:
                 raise RuntimeError("VerifyView wurde nicht gefunden.")
-            embed = discord.Embed(title=title, description=description, color=discord.Color.green())
+            raw_embed_color = str(cfg.get("default_embed_color", "5865F2")).strip().lstrip("#")
+            if not re.fullmatch(r"[0-9a-fA-F]{6}", raw_embed_color):
+                raw_embed_color = "5865F2"
+            embed = discord.Embed(title=title, description=description, color=discord.Color(int(raw_embed_color, 16)))
+            brand_footer = str(cfg.get("brand_footer_text", "")).strip()[:100]
+            if brand_footer:
+                embed.set_footer(text=brand_footer)
             if old_verify_message_id and str(old_verify_channel_id) == str(channel.id):
                 try:
                     old_message = await channel.fetch_message(int(old_verify_message_id))
@@ -1749,7 +1755,9 @@ def guild_tickets(guild_id):
                 embed.set_thumbnail(url=f"attachment://{logo_path.name}")
             elif isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
                 embed.set_thumbnail(url=logo_url)
-            embed.set_footer(text=f"IronWolf Ticket-Panel · ID {panel_key}")
+            brand_footer = str(cfg.get("brand_footer_text", "")).strip()[:100]
+            footer_prefix = brand_footer + " · " if brand_footer else ""
+            embed.set_footer(text=f"{footer_prefix}IronWolf Ticket-Panel · ID {panel_key}")
             view = view_cls(panel_key, labels)
             old_channel_id = panel.get("channel_id")
             old_message_id = panel.get("message_id")
