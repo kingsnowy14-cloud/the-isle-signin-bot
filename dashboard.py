@@ -1094,11 +1094,8 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
-            settings_html += '</form>'
             if request.args.get("role_created") == "1":
                 settings_html += '<div class="notice">✅ Discord-Rolle erstellt. Du kannst sie jetzt im Nachrichten-Editor für einen Rollen-Button auswählen.</div>'
-            settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
-            settings_html += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="roles">'
         if section == "voice":
             voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
             category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
@@ -1117,6 +1114,8 @@ def guild_page(guild_id):
         if section == "channels":
             settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
         settings_html += '<button type="submit">Änderungen speichern</button></form></section>'
+        if section == "roles":
+            settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
     module_records = _module_records(guild.id)
     modules_html = '<section class="card" id="modules"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
     for item in module_records:
