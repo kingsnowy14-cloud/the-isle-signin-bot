@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 import discord
 from discord import app_commands
 import requests
-from flask import Flask, abort, redirect, request, session, url_for, make_response
+from flask import Flask, abort, redirect, request, session, url_for, make_response, send_file
 from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 
@@ -1637,6 +1637,69 @@ def guild_health_center(guild_id):
         '<a class="button secondary" href="/guild/' + str(guild.id) + '/stats">Statistiken →</a></p></section>'
     )
     return _render(guild.name + " · Systemzustand", body)
+
+
+@app.route("/guild/<guild_id>/backup", methods=["GET", "POST"])
+def guild_config_backup(guild_id):
+    """Export or explicitly restore a single server's dashboard configuration."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Zum Wiederherstellen brauchst du Administrator- oder Server-verwalten-Rechte.")
+        if request.form.get("confirm_restore", "").strip() != "WIEDERHERSTELLEN":
+            abort(400, "Gib WIEDERHERSTELLEN ein, um den Import ausdrücklich zu bestätigen.")
+        uploaded = request.files.get("backup_file")
+        if uploaded is None or not uploaded.filename:
+            abort(400, "Bitte wähle eine zuvor exportierte JSON-Sicherungsdatei.")
+        if not uploaded.filename.lower().endswith(".json"):
+            abort(400, "Es sind nur JSON-Sicherungsdateien erlaubt.")
+        raw = uploaded.stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            abort(413, "Die Sicherungsdatei darf höchstens 2 MB groß sein.")
+        try:
+            backup = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            abort(400, "Die Datei enthält kein gültiges UTF-8-JSON.")
+        if not isinstance(backup, dict):
+            abort(400, "Die Sicherung muss ein JSON-Objekt für einen einzelnen Server enthalten.")
+        # Preserve the server ID boundary and avoid replacing the whole global config.
+        forbidden = {"dashboard_audit_log"}
+        backup = {str(k): v for k, v in backup.items() if isinstance(k, str) and k not in forbidden}
+        if not backup:
+            abort(400, "Die Sicherungsdatei enthält keine wiederherstellbaren Einstellungen.")
+        _config[str(guild.id)] = backup
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Konfiguration wiederhergestellt", session.get("user_id"), "Serverkonfiguration aus JSON-Sicherung importiert")
+        return redirect(url_for("guild_config_backup", guild_id=guild.id))
+
+    if request.args.get("download") == "1":
+        payload = json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8")
+        response = make_response(payload)
+        response.headers["Content-Type"] = "application/json; charset=utf-8"
+        response.headers["Content-Disposition"] = 'attachment; filename="ironwolf-server-' + str(guild.id) + '-backup.json"'
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    body = (
+        '<section class="card"><span class="pill">VERWALTUNG & SICHERUNG</span><h1>🗄️ Konfigurations-Backup</h1>'
+        '<p>Exportiere die Einstellungen dieses Servers oder stelle sie aus einer JSON-Sicherung wieder her. '
+        'Die Wiederherstellung ersetzt die aktuelle Konfiguration dieses Servers; lade vorher bei Bedarf eine Sicherung herunter.</p>'
+        '<p><a class="button" href="/guild/' + str(guild.id) + '/backup?download=1">⬇️ Backup herunterladen</a></p>'
+        '<h2>Backup wiederherstellen</h2><form method="post" enctype="multipart/form-data">' + _csrf_field()
+        + '<label for="backup_file">JSON-Sicherungsdatei</label><input id="backup_file" name="backup_file" type="file" accept=".json,application/json" required>'
+        + '<label for="confirm_restore">Bestätigung (WIEDERHERSTELLEN)</label><input id="confirm_restore" name="confirm_restore" required maxlength="30" autocomplete="off">'
+        + '<p class="notice">Achtung: Die aktuelle Serverkonfiguration wird ersetzt. Das globale Konfigurations- und Audit-Log anderer Server bleibt erhalten.</p>'
+        + '<button type="submit" class="danger">Sicherung wiederherstellen</button></form>'
+        '<p><a class="button secondary" href="/guild/' + str(guild.id) + '/audit-log">Audit-Log öffnen →</a> '
+        '<a class="button secondary" href="/guild/' + str(guild.id) + '">Zur Serververwaltung</a></p></section>'
+    )
+    return _render(guild.name + " · Konfigurations-Backup", body)
 
 
 @app.route("/guild/<guild_id>/stats", methods=["GET"])
