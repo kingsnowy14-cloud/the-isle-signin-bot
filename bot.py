@@ -5494,6 +5494,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                             save_json(CONFIG_FILE, config)
                         except (discord.Forbidden, discord.HTTPException) as exc:
                             print(f"[role-nickname] Could not restore nickname for member {after.id}: {type(exc).__name__}: {exc}", flush=True)
+            elif role_id is not None and cfg.get("nickname_enforce", False):
+                if any(role.id == role_id for role in after.roles) and before.nick != after.nick:
+                    await _apply_role_nickname(after)
 
     if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
         return
