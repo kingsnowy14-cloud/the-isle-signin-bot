@@ -1184,6 +1184,22 @@ def guild_ping_protection(guild_id):
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+
+        # The X next to a protected role removes it immediately from the protection list.
+        remove_role_id = request.form.get("remove_protected_role_id", "").strip()
+        if remove_role_id:
+            if not remove_role_id.isdigit():
+                abort(400, "Ungültige Rolle.")
+            current_roles = {str(value) for value in cfg.get("ping_protected_role_ids", [])}
+            if remove_role_id not in current_roles:
+                abort(400, "Diese Rolle ist nicht als geschützt eingetragen.")
+            cfg["ping_protected_role_ids"] = sorted(
+                int(value) for value in current_roles if value != remove_role_id
+            )
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Ping-Schutz", session.get("user_id"), f"Geschützte Rolle {remove_role_id} entfernt")
+            return redirect(url_for("guild_ping_protection", guild_id=gid, saved="1"))
+
         valid_role_ids = {str(role.id) for role in guild.roles if not role.is_default() and not role.managed}
         valid_member_ids = {str(member.id) for member in guild.members if not member.bot}
         selected_roles = request.form.getlist("protected_role_ids")
@@ -1192,6 +1208,8 @@ def guild_ping_protection(guild_id):
             abort(400, "Ungültige geschützte Rolle ausgewählt.")
         if any(value not in valid_member_ids for value in selected_members):
             abort(400, "Ungültige geschützte Person ausgewählt. Falls sie fehlt, muss der Bot die Mitgliederliste laden können.")
+
+        # Protection starts fully off and with no protected roles or members.
         cfg["ping_protection_enabled"] = request.form.get("ping_protection_enabled") == "on"
         cfg["ping_protected_role_ids"] = sorted({int(value) for value in selected_roles})
         cfg["ping_protected_member_ids"] = sorted({int(value) for value in selected_members})
@@ -1200,22 +1218,40 @@ def guild_ping_protection(guild_id):
             ("aktiviert" if cfg["ping_protection_enabled"] else "deaktiviert") +
             f"; {len(selected_roles)} Rollen, {len(selected_members)} Personen geschützt")
         return redirect(url_for("guild_ping_protection", guild_id=gid, saved="1"))
+
     protected_roles = {str(value) for value in cfg.get("ping_protected_role_ids", [])}
     protected_members = {str(value) for value in cfg.get("ping_protected_member_ids", [])}
     role_options = ''.join('<option value="' + str(role.id) + '"' + (' selected' if str(role.id) in protected_roles else '') + '>' + html.escape(role.name) + '</option>' for role in sorted(guild.roles, key=lambda item: item.position, reverse=True) if not role.is_default() and not role.managed)
     member_options = ''.join('<option value="' + str(member.id) + '"' + (' selected' if str(member.id) in protected_members else '') + '>' + html.escape(member.display_name) + ' (' + str(member.id) + ')</option>' for member in sorted(guild.members, key=lambda item: item.display_name.casefold()) if not member.bot)
+    protected_role_rows = ''.join(
+        '<div class="check" style="display:flex;align-items:center;justify-content:space-between;gap:12px">'
+        '<span>' + html.escape(guild.get_role(int(role_id)).name if role_id.isdigit() and guild.get_role(int(role_id)) else "Unbekannte Rolle") + '</span>'
+        '<button type="submit" name="remove_protected_role_id" value="' + html.escape(role_id) + '" class="button secondary" formnovalidate aria-label="Rolle aus Ping-Schutz entfernen" title="Nicht mehr schützen">✕</button></div>'
+        for role_id in sorted(protected_roles)
+    )
+    if not protected_role_rows:
+        protected_role_rows = '<p class="muted">Noch keine geschützten Rollen hinzugefügt.</p>'
+    protected_member_names = [
+        html.escape(member.display_name) for member in guild.members
+        if not member.bot and str(member.id) in protected_members
+    ]
+    if not protected_member_names:
+        protected_member_summary = '<p class="muted">Noch keine geschützten Personen hinzugefügt.</p>'
+    else:
+        protected_member_summary = '<p class="muted">Geschützte Personen: ' + ', '.join(protected_member_names) + '</p>'
     enabled = " checked" if cfg.get("ping_protection_enabled", False) else ""
     success = '<div class="notice">✅ Ping-Schutz-Einstellungen gespeichert.</div>' if request.args.get("saved") == "1" else ""
     body = (
         '<section class="card"><span class="pill">IRONWOLF · SECURITY</span><h1>🛡️ Ping-Schutz</h1>'
-        '<p class="muted">Schütze ausgewählte Rollen und einzelne Mitglieder vor Erwähnungen. Wenn jemand eine geschützte Rolle oder Person pingt, löscht IronWolf die Nachricht und versucht, dem Verfasser eine Erklärung per DM zu senden.</p>' + success +
+        '<p class="muted">Standardmäßig ist der Ping-Schutz ausgeschaltet und es sind keine Rollen oder Personen geschützt. Schalte ihn manuell ein und wähle die gewünschten Rollen oder Personen aus.</p>' + success +
         '<form method="post">' + _csrf_field() +
         '<div class="check"><input type="checkbox" id="ping_protection_enabled" name="ping_protection_enabled"' + enabled + '><label for="ping_protection_enabled">Ping-Schutz aktivieren</label></div>'
-        '<label for="protected_role_ids">Geschützte Rollen</label><select id="protected_role_ids" name="protected_role_ids" multiple size="8" style="min-height:170px">' + role_options + '</select>'
-        '<small class="muted">Mehrere Rollen mit Strg (Windows) oder Cmd (Mac) auswählen.</small>'
-        '<label for="protected_member_ids">Geschützte Personen</label><select id="protected_member_ids" name="protected_member_ids" multiple size="8" style="min-height:170px">' + member_options + '</select>'
-        '<small class="muted">Mehrere Personen mit Strg (Windows) oder Cmd (Mac) auswählen. Die Mitgliederliste hängt davon ab, welche Mitglieder IronWolf kennt.</small>'
-        '<p class="notice">Hinweis: Mitglieder mit „Nachrichten verwalten“ sind ausgenommen. IronWolf braucht im betroffenen Kanal „Nachrichten verwalten“, um Pings löschen zu können. DMs können durch die Privatsphäre-Einstellungen blockiert sein.</p>'
+        '<label for="protected_role_ids">Rollen zum Schützen auswählen</label><select id="protected_role_ids" name="protected_role_ids" multiple size="8" style="min-height:170px">' + role_options + '</select>'
+        '<small class="muted">Mehrere Rollen mit Strg (Windows) oder Cmd (Mac) auswählen. Die Auswahl wird erst nach „Speichern“ übernommen.</small>'
+        '<h3>Aktuell geschützte Rollen</h3>' + ''.join(protected_role_rows) +
+        '<label for="protected_member_ids">Personen zum Schützen auswählen</label><select id="protected_member_ids" name="protected_member_ids" multiple size="8" style="min-height:170px">' + member_options + '</select>'
+        '<small class="muted">Mehrere Personen mit Strg (Windows) oder Cmd (Mac) auswählen.</small>' + protected_member_summary +
+        '<p class="notice">Hinweis: Mitglieder mit „Nachrichten verwalten“ sind ausgenommen. IronWolf braucht im betroffenen Kanal „Nachrichten verwalten“, um Pings zu löschen. DMs können durch Privatsphäre-Einstellungen blockiert sein.</p>'
         '<button type="submit">💾 Ping-Schutz speichern</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Ping-Schutz", body)
