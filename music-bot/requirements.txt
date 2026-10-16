@@ -1,2 +1,0 @@
-discord.py[voice]>=2.4,<3.0
-spotipy>=2.24,<3.0
