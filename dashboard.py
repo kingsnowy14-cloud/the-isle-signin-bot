@@ -1568,7 +1568,7 @@ def guild_reaction_roles(guild_id):
         if action != "add":
             abort(400, "Unbekannte Aktion.")
         channel_raw = request.form.get("channel_id", "").strip()
-        message_raw = request.form.get("message_id", "").strip()
+        message_text = request.form.get("message_text", "").strip()
         role_raw = request.form.get("role_id", "").strip()
         emoji = request.form.get("emoji", "").strip()
         valid_channels = {str(item.id): item for item in guild.text_channels}
@@ -1577,8 +1577,8 @@ def guild_reaction_roles(guild_id):
             abort(400, "Bitte einen gültigen Textkanal auswählen.")
         if role_raw not in valid_roles or not role_raw:
             abort(400, "Bitte eine gültige Rolle auswählen.")
-        if not message_raw.isdigit():
-            abort(400, "Bitte die numerische Nachrichten-ID eintragen.")
+        if not message_text or len(message_text) > 2000:
+            abort(400, "Bitte gib eine Nachricht mit 1 bis 2000 Zeichen ein.")
         if not emoji or len(emoji) > 100:
             abort(400, "Bitte ein Emoji eingeben, z. B. ✅ oder <:name:123456789012345678>.")
         role = valid_roles[role_raw]
@@ -1587,17 +1587,17 @@ def guild_reaction_roles(guild_id):
             abort(400, "Der Bot benötigt „Rollen verwalten“ und seine höchste Rolle muss über der ausgewählten Rolle liegen.")
         channel = valid_channels[channel_raw]
         async def _configure_reaction_role():
-            message = await channel.fetch_message(int(message_raw))
+            message = await channel.send(message_text, allowed_mentions=discord.AllowedMentions.none())
             await message.add_reaction(emoji)
+            return message.id
         try:
-            asyncio.run_coroutine_threadsafe(_configure_reaction_role(), _bot.loop).result(timeout=20)
-        except discord.NotFound:
-            abort(400, "Die Nachricht wurde in diesem Kanal nicht gefunden.")
+            message_id = asyncio.run_coroutine_threadsafe(_configure_reaction_role(), _bot.loop).result(timeout=20)
         except discord.Forbidden:
-            abort(403, "Der Bot darf die Nachricht nicht lesen oder darauf reagieren.")
+            abort(403, "Der Bot darf in diesem Kanal keine Nachricht senden oder darauf reagieren.")
         except (discord.HTTPException, ValueError) as exc:
-            abort(400, "Emoji oder Nachricht konnte nicht verarbeitet werden: " + str(exc)[:200])
-        records.append({"id": secrets.token_hex(8), "channel_id": int(channel_raw), "message_id": int(message_raw), "emoji": emoji, "role_id": int(role_raw)})
+            abort(400, "Nachricht oder Emoji konnte nicht verarbeitet werden: " + str(exc)[:200])
+        message_raw = str(message_id)
+        records.append({"id": secrets.token_hex(8), "channel_id": int(channel_raw), "message_id": message_id, "emoji": emoji, "role_id": int(role_raw)})
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Reaktionsrollen", session.get("user_id"), f"Reaktionsrolle eingerichtet: {emoji} -> {role.name} auf Nachricht {message_raw}")
         return redirect(url_for("guild_reaction_roles", guild_id=gid, saved="added"))
@@ -1608,16 +1608,16 @@ def guild_reaction_roles(guild_id):
     roles = _guild_roles(guild)
     channel_options = '<option value="">— Textkanal auswählen —</option>' + ''.join(f'<option value="{cid}">{html.escape(name)}</option>' for cid, name in channels)
     role_options = '<option value="">— Rolle auswählen —</option>' + ''.join(f'<option value="{rid}">{html.escape(name)}</option>' for rid, name in roles)
-    body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🎭 Reaktionsrollen</h1><p class="muted">Mitglieder erhalten eine Rolle, wenn sie auf die konfigurierte Nachricht mit dem festgelegten Emoji reagieren. Entfernen sie die Reaktion, wird die Rolle wieder entfernt.</p>'
+    body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🎭 Reaktionsrollen</h1><p class="muted">Schreibe deine Nachricht, wähle Kanal, Emoji und Rolle aus. Der Bot sendet die Nachricht und fügt das Emoji automatisch hinzu. Bei Reaktion wird die Rolle vergeben; beim Entfernen der Reaktion wird sie entfernt.</p>'
     if request.args.get("saved") == "added":
         body += '<div class="notice">✅ Reaktionsrolle gespeichert und Emoji zur Nachricht hinzugefügt.</div>'
     elif request.args.get("saved") == "deleted":
         body += '<div class="notice">✅ Reaktionsrolle gelöscht.</div>'
-    body += '<section class="card"><h2>＋ Reaktionsrolle hinzufügen</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add">'
+    body += '<section class="card"><h2>＋ Reaktionsrolle erstellen & Nachricht senden</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add">'
     body += '<label for="channel_id">Textkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
-    body += '<label for="message_id">Nachrichten-ID</label><input id="message_id" name="message_id" type="text" inputmode="numeric" required placeholder="123456789012345678"><small>Discord-Entwicklermodus aktivieren und „Nachrichten-ID kopieren“ verwenden.</small>'
+    body += '<label for="message_text">Deine Nachricht</label><textarea id="message_text" name="message_text" required maxlength="2000" rows="5" placeholder="Schreibe hier die Nachricht, die im ausgewählten Kanal erscheinen soll …"></textarea><small>Maximal 2000 Zeichen. Die Nachricht wird vom Bot gesendet.</small>'
     body += '<label for="emoji">Emoji</label><input id="emoji" name="emoji" type="text" required maxlength="100" placeholder="✅ oder <:emoji:123456789012345678>">'
-    body += '<label for="role_id">Zu vergebende Rolle</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">💾 Reaktionsrolle speichern</button></form></section>'
+    body += '<label for="role_id">Zu vergebende Rolle</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">📨 Nachricht senden & Reaktionsrolle erstellen</button></form></section>'
     body += '<section class="card"><h2>📋 Konfigurierte Reaktionsrollen</h2>'
     if not records:
         body += '<p class="muted">Noch keine Reaktionsrollen eingerichtet.</p>'
