@@ -1134,9 +1134,17 @@ def guild_message_builder(guild_id):
                     abort(400, "Link-Buttons benötigen eine gültige HTTPS-URL.")
                 button_records.append({"type": "link", "label": label, "url": url})
             elif kind == "role":
+                # Eine Rollen-Zeile ohne ausgewählte Rolle ist optional:
+                # Nachricht senden muss auch ganz ohne Rollen-Buttons funktionieren.
+                if not raw_role:
+                    continue
                 role = guild.get_role(int(raw_role)) if raw_role.isdigit() else None
-                if role is None or role.is_default() or role.managed or role >= bot_member.top_role:
-                    abort(400, "Wähle eine gültige Rolle aus, die unter der höchsten Bot-Rolle liegt.")
+                if role is None or role.is_default() or role.managed:
+                    abort(400, "Bitte wähle eine gültige, normale Discord-Rolle aus.")
+                if bot_member is None or role >= bot_member.top_role:
+                    abort(400, "Diese Rolle liegt über der höchsten Bot-Rolle. Verschiebe die Bot-Rolle in den Servereinstellungen höher.")
+                if not bot_member.guild_permissions.manage_roles:
+                    abort(400, "Der Bot benötigt die Berechtigung „Rollen verwalten“, damit Rollen-Buttons funktionieren.")
                 button_records.append({"type": "role", "label": label, "role_id": role.id})
         embed = None
         if title or description:
@@ -1159,13 +1167,13 @@ def guild_message_builder(guild_id):
         _audit_dashboard_change(guild.id, "Bot-Nachricht gesendet", session.get("user_id"), f"Kanal {channel.name}; {len(button_records)} Buttons")
         return redirect(url_for("guild_message_builder", guild_id=gid, sent="1"))
     channels = ''.join(f'<option value="{ch.id}">{html.escape(ch.name)}</option>' for ch in guild.text_channels)
-    roles = ''.join(f'<option value="{role.id}">{html.escape(role.name)}</option>' for role in guild.roles if not role.is_default() and not role.managed)
+    roles = '<option value="">— Keine Rolle (optional) —</option>' + ''.join(f'<option value="{role.id}">{html.escape(role.name)}</option>' for role in reversed(guild.roles) if not role.is_default() and not role.managed)
     button_fields = '<div id="button-fields" class="scnx-button-list">'
     for index in range(1, 6):
         default_type = "role" if index == 1 else "link"
         hidden = "" if index == 1 else ' hidden'
-        button_fields += f'<div class="scnx-button-item manual-button-row" data-button-row="{index}"{hidden}><div class="scnx-button-heading"><strong><span class="scnx-button-number">{index}</span> Button {index}</strong><button type="button" class="secondary scnx-remove-button" onclick="removeManualButton({index})">Entfernen</button></div><label>Button-Typ</label><select name="button_type" class="scnx-button-type" onchange="updateButtonType(this)"><option value="role" {"selected" if default_type == "role" else ""}>🎭 Rolle vergeben</option><option value="link" {"selected" if default_type == "link" else ""}>🔗 Link öffnen</option></select><label>Button-Text</label><input name="button_label" maxlength="80" placeholder="z. B. Jetzt verifizieren"><div class="scnx-link-fields"><label>HTTPS-Link</label><input name="button_url" type="url" placeholder="https://deine-seite.de" disabled></div><div class="scnx-role-fields"><label>Rolle auswählen</label><select name="button_role" disabled><option value="">— Discord-Rolle wählen —</option>{roles}</select></div></div>'
-    button_fields += '</div><button type="button" id="add-button-row" class="secondary" onclick="addManualButton()">＋ Weiteren Button hinzufügen</button><p class="muted">Bis zu 5 Buttons. Rollen-Buttons vergeben oder entfernen die gewählte Rolle; Link-Buttons öffnen eine HTTPS-Seite.</p>'
+        button_fields += f'<div class="scnx-button-item manual-button-row" data-button-row="{index}"{hidden}><div class="scnx-button-heading"><strong><span class="scnx-button-number">{index}</span> Button {index}</strong><button type="button" class="secondary scnx-remove-button" onclick="removeManualButton({index})">Entfernen</button></div><label>Button-Typ</label><select name="button_type" class="scnx-button-type" onchange="updateButtonType(this)"><option value="role" {"selected" if default_type == "role" else ""}>🎭 Rolle vergeben</option><option value="link" {"selected" if default_type == "link" else ""}>🔗 Link öffnen</option></select><label>Button-Text</label><input name="button_label" maxlength="80" placeholder="z. B. Jetzt verifizieren"><div class="scnx-link-fields"><label>HTTPS-Link</label><input name="button_url" type="url" placeholder="https://deine-seite.de" disabled></div><div class="scnx-role-fields"><label>Rolle auswählen (optional)</label><select name="button_role" disabled>{roles}</select></div></div>'
+    button_fields += '</div><button type="button" id="add-button-row" class="secondary" onclick="addManualButton()">＋ Weiteren Button hinzufügen</button><p class="muted">Bis zu 5 Buttons. Rollen-Buttons sind optional und benötigen „Rollen verwalten“ für den Bot. Du kannst die Nachricht auch ganz ohne Buttons senden. Link-Buttons öffnen eine HTTPS-Seite.</p>'
     button_fields += """<style>
 .scnx-builder{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:18px;align-items:start}
 .scnx-panel{border:1px solid var(--border-color,rgba(148,163,184,.25));border-radius:14px;padding:18px;margin:14px 0;background:var(--card-bg,rgba(127,127,127,.035))}
