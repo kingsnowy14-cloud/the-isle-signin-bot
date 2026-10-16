@@ -530,10 +530,16 @@ async def premium_automation_worker():
                     raise ValueError("Configured automation message is empty or too long")
                 await channel.send(message, allowed_mentions=discord.AllowedMentions.none())
                 interval = _safe_automation_interval(job)
+                job["last_run_at"] = now.isoformat()
+                job["last_status"] = "success"
+                job["last_error"] = ""
                 job["next_run_at"] = (now + timedelta(minutes=interval)).isoformat()
                 save_json(CONFIG_FILE, config)
                 print(f"[AUTOMATION] Sent scheduled announcement in guild {guild.id}.", flush=True)
             except (discord.Forbidden, discord.HTTPException, ValueError, TypeError) as exc:
+                job["last_run_at"] = now.isoformat()
+                job["last_status"] = "error"
+                job["last_error"] = f"{type(exc).__name__}: {exc}"[:300]
                 job["next_run_at"] = (now + timedelta(minutes=15)).isoformat()
                 save_json(CONFIG_FILE, config)
                 print(f"[AUTOMATION] Could not send announcement in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
