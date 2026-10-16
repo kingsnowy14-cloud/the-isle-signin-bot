@@ -3892,6 +3892,39 @@ async def on_message(message: discord.Message):
     if message.guild and not message.author.bot:
         guild = message.guild
         cfg = guild_config(guild.id)
+
+        # Delete pings to configured protected roles or members.
+        if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:
+            protected_role_ids = {int(value) for value in cfg.get("ping_protected_role_ids", []) if str(value).isdigit()}
+            protected_member_ids = {int(value) for value in cfg.get("ping_protected_member_ids", []) if str(value).isdigit()}
+            hit_roles = {role.id for role in message.role_mentions} & protected_role_ids
+            hit_members = {member.id for member in message.mentions} & protected_member_ids
+            if hit_roles or hit_members:
+                target_names = ["@" + role.name for role in message.role_mentions if role.id in hit_roles]
+                target_names.extend("@" + member.display_name for member in message.mentions if member.id in hit_members)
+                try:
+                    await message.delete()
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+                else:
+                    targets_text = ", ".join(target_names) or "eine geschützte Rolle/Person"
+                    try:
+                        await message.author.send(
+                            f"🐺 **IronWolf – Ping-Schutz**\nDeine Nachricht auf **{guild.name}** wurde gelöscht, "
+                            f"weil du {targets_text} gepingt hast. Diese Rolle bzw. Person ist geschützt. "
+                            "Bitte vermeide solche Erwähnungen."
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+                    try:
+                        await security_log(guild, "🛡️ Ping-Schutz ausgelöst",
+                            f"**Mitglied:** {message.author.mention} (`{message.author.id}`)\n**Kanal:** {message.channel.mention}\n"
+                            f"**Geschützte Ziele:** {discord.utils.escape_markdown(targets_text)}\n**Nachricht gelöscht:** Ja",
+                            discord.Color.orange())
+                    except Exception:
+                        pass
+                    return
+
         if cfg.get("automod_enabled", False):
             now_mono = time.monotonic()
             key = (guild.id, message.author.id)
