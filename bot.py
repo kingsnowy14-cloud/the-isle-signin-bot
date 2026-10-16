@@ -1145,6 +1145,28 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
                 )
             except (discord.Forbidden, discord.HTTPException):
                 pass
+    closed_at = datetime.now(timezone.utc)
+    try:
+        created_at = datetime.fromisoformat(str(meta.get("created_at", "")).replace("Z", "+00:00"))
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        resolution_minutes = max(0, round((closed_at - created_at).total_seconds() / 60))
+    except (TypeError, ValueError):
+        resolution_minutes = None
+    history = data.setdefault("ticket_history", [])
+    history.append({
+        "guild_id": guild.id,
+        "ticket_number": meta.get("ticket_number"),
+        "owner_id": meta.get("owner_id"),
+        "claimed_by": meta.get("claimed_by"),
+        "closed_by": getattr(closed_by, "id", None),
+        "created_at": meta.get("created_at"),
+        "closed_at": closed_at.isoformat(),
+        "resolution_minutes": resolution_minutes,
+        "reason": str(meta.get("reason", ""))[:500],
+        "label": str(meta.get("label", ""))[:100],
+    })
+    del history[:-1000]
     data.setdefault("tickets", {}).pop(str(channel.id), None)
     save_json(DATA_FILE, data)
     await channel.delete(reason=f"Ticket closed by {closed_by}")
