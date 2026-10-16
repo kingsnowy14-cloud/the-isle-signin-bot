@@ -1540,9 +1540,9 @@ def guild_page(guild_id):
         if section == "nickname":
             settings_html += '<p>Lege fest, welche Discord-Rolle den automatischen Nickname auslöst. Die Einstellung gilt nur für diesen Server und kann jederzeit geändert oder deaktiviert werden.</p>'
             settings_html += '<label for="nickname_role_id">Auslösende Rolle</label><select id="nickname_role_id" name="nickname_role_id">' + options(roles, cfg.get("nickname_role_id")) + '</select>'
-            settings_html += '<label for="nickname_template">Nickname-Format</label><input id="nickname_template" name="nickname_template" type="text" maxlength="100" value="' + html.escape(str(cfg.get("nickname_template") or "{role} | {name}"), quote=True) + '" placeholder="{role} | {name}">'
-            settings_html += '<p class="muted">Platzhalter: <code>{name}</code> oder <code>{username}</code> für den Benutzernamen, <code>{role}</code> für den Rollennamen. Discord-Nicknames sind auf 32 Zeichen begrenzt.</p>'
-            settings_html += '<div class="notice">Beispiel: <code>{role} | {name}</code> wird zu <code>Admin | Spielername</code>.</div>'
+            settings_html += '<label for="nickname_prefix">Nickname-Präfix</label><input id="nickname_prefix" name="nickname_prefix" type="text" maxlength="24" value="' + html.escape(str(cfg.get("nickname_prefix") or ""), quote=True) + '" placeholder="[Team] ">'
+            settings_html += '<label for="nickname_suffix">Nickname-Suffix</label><input id="nickname_suffix" name="nickname_suffix" type="text" maxlength="24" value="' + html.escape(str(cfg.get("nickname_suffix") or ""), quote=True) + '" placeholder=" ★">'
+            settings_html += '<p class="muted">SCNX-inspiriert: Ein Präfix und/oder Suffix wird um den bisherigen Nickname gesetzt. Beispiel: <code>[Team] </code> + <code>Alex</code> + <code> ★</code> ergibt <code>[Team] Alex ★</code>. Der ursprüngliche Nickname wird beim Entfernen der Rolle wiederhergestellt. Discord erlaubt maximal 32 Zeichen.</p>'
             settings_html += '<p class="muted">Der Bot braucht „Spitznamen verwalten“ und seine höchste Rolle muss über der Rolle des Mitglieds liegen.</p>'
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
