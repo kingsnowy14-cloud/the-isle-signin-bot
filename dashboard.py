@@ -212,7 +212,7 @@ label{{font-size:13px;margin:13px 0 6px}}
 table{{border-collapse:collapse;width:100%;overflow:hidden;border-radius:10px}}
 th,td{{border-color:var(--border);padding:10px 12px}}
 @media(max-width:760px){{main{{margin:20px auto;padding:0 14px 34px}}.card{{padding:17px;border-radius:12px}}nav{{gap:6px}}nav a:not(:first-child){{font-size:12px;padding:6px 8px}}}}
-{custom_theme_css}</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf Control Center · Änderungen gelten serverbezogen. Neue Python-Module werden nicht automatisch ausgeführt.</small></p></main></body></html>"""
+{custom_theme_css}</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main></body></html>"""
 
 
 def _module_command_footer():
@@ -1094,6 +1094,11 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
+            settings_html += '</form>'
+            if request.args.get("role_created") == "1":
+                settings_html += '<div class="notice">✅ Discord-Rolle erstellt. Du kannst sie jetzt im Nachrichten-Editor für einen Rollen-Button auswählen.</div>'
+            settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
+            settings_html += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="roles">'
         if section == "voice":
             voice_options = options([(channel.id, channel.name) for channel in guild.voice_channels], cfg.get("tempvoice_trigger"))
             category_options = options([(category.id, category.name) for category in guild.categories], cfg.get("tempvoice_category"))
@@ -1135,6 +1140,37 @@ def guild_page(guild_id):
 
 
 
+@app.route("/guild/<guild_id>/roles/create", methods=["POST"])
+def guild_create_role(guild_id):
+    """Create a Discord role from the dashboard so it can be used in role buttons."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    if not _csrf_ok():
+        abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+    actor = guild.get_member(int(session.get("user_id", "0")))
+    if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_roles):
+        abort(403, "Du brauchst Administrator- oder Rollen-verwalten-Rechte.")
+    bot_member = guild.me
+    if bot_member is None or not bot_member.guild_permissions.manage_roles:
+        abort(403, "Der Bot benötigt die Discord-Berechtigung „Rollen verwalten“.")
+    name = request.form.get("role_name", "").strip()[:100]
+    if not name:
+        abort(400, "Bitte gib einen Namen für die neue Rolle ein.")
+    color_raw = request.form.get("role_color", "#5865F2").strip().lstrip("#")
+    if not re.fullmatch(r"[0-9a-fA-F]{6}", color_raw):
+        abort(400, "Bitte wähle eine gültige Rollenfarbe.")
+    async def _create():
+        return await guild.create_role(name=name, colour=discord.Colour(int(color_raw, 16)), reason=f"Dashboard-Rolle erstellt von {actor}")
+    try:
+        created = asyncio.run_coroutine_threadsafe(_create(), _bot.loop).result(timeout=20)
+    except Exception as exc:
+        print(f"[DASHBOARD] Role creation failed in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
+        abort(502, "Die Rolle konnte nicht erstellt werden. Prüfe Bot-Rechte und die Rollenposition in Discord.")
+    _audit_dashboard_change(guild.id, "Discord-Rolle erstellt", session.get("user_id"), created.name)
+    return redirect(url_for("guild_page", guild_id=str(guild.id), section="roles", role_created="1"))
+
+
 @app.route("/guild/<guild_id>/branding", methods=["GET", "POST"])
 def guild_branding(guild_id):
     """Per-server dashboard accent and default embed branding."""
@@ -1150,40 +1186,26 @@ def guild_branding(guild_id):
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         dashboard_color = request.form.get("dashboard_brand_color", "8B9DFF").strip().lstrip("#")
-        embed_color = request.form.get("default_embed_color", "5865F2").strip().lstrip("#")
         if not re.fullmatch(r"[0-9a-fA-F]{6}", dashboard_color):
             abort(400, "Bitte eine gültige Dashboard-Farbe auswählen.")
-        if not re.fullmatch(r"[0-9a-fA-F]{6}", embed_color):
-            abort(400, "Bitte eine gültige Embed-Farbe auswählen.")
         cfg["dashboard_brand_color"] = dashboard_color.upper()
-        cfg["default_embed_color"] = embed_color.upper()
-        cfg["brand_server_label"] = request.form.get("brand_server_label", "").strip()[:60]
-        cfg["brand_footer_text"] = request.form.get("brand_footer_text", "").strip()[:100]
         _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Server-Design", session.get("user_id"), "Dashboard-Farbe #" + dashboard_color.upper() + "; Embed-Farbe #" + embed_color.upper())
+        _audit_dashboard_change(guild.id, "Dashboard-Design", session.get("user_id"), "Dashboard-Akzentfarbe #" + dashboard_color.upper())
         return redirect(url_for("guild_branding", guild_id=gid, saved="1"))
     dashboard_color = str(cfg.get("dashboard_brand_color", "8B9DFF")).strip().lstrip("#")
-    embed_color = str(cfg.get("default_embed_color", "5865F2")).strip().lstrip("#")
-    label = html.escape(str(cfg.get("brand_server_label", "")))
-    footer = html.escape(str(cfg.get("brand_footer_text", "")))
-    success = '<div class="notice">✅ Design gespeichert. Die Dashboard-Farbe wird auf dieser Serverseite angewendet; die Embed-Farbe gilt für neu erstellte Nachrichten.</div>' if request.args.get("saved") == "1" else ""
+
+    success = '<div class="notice">✅ Dashboard-Design gespeichert. Die Änderung betrifft ausschließlich die Darstellung im Dashboard und verändert keine Discord-Nachrichten.</div>' if request.args.get("saved") == "1" else ""
     body = (
         '<section class="card"><span class="pill">IRONWOLF · SERVER DESIGN</span><h1>🎨 Server-Design</h1>'
         '<p class="muted">Passe die Akzentfarbe des Dashboards und die Standardfarbe neuer Bot-Nachrichten für diesen Server an.</p>'
         + success +
         '<form method="post">' + _csrf_field() +
-        '<div class="grid"><section class="card"><h2>🖥️ Dashboard-Farbe</h2>'
+        '<div class="grid"><section class="card"><h2>🖥️ Dashboard-Design</h2>'
         '<label for="dashboard_brand_color">Akzentfarbe</label><input id="dashboard_brand_color" name="dashboard_brand_color" type="color" value="#' + html.escape(dashboard_color) + '" style="height:54px;padding:5px">'
-        '<p class="muted">Ändert Akzentlinien, Links und Markierungen auf den Dashboard-Seiten dieses Servers.</p></section>'
-        '<section class="card"><h2>💬 Standard-Embed-Farbe</h2><label for="default_embed_color">Farbe neuer Nachrichten</label>'
-        '<input id="default_embed_color" name="default_embed_color" type="color" value="#' + html.escape(embed_color) + '" style="height:54px;padding:5px">'
-        '<p class="muted">Wird für neu erstellte Embeds im Nachrichten-Editor verwendet. Bereits gesendete Nachrichten werden nicht rückwirkend geändert.</p></section></div>'
-        '<label for="brand_server_label">Server-Kurzname (optional)</label><input id="brand_server_label" name="brand_server_label" maxlength="60" value="' + label + '" placeholder="z. B. IronWolf Community">'
-        '<label for="brand_footer_text">Standard-Footer (optional)</label><input id="brand_footer_text" name="brand_footer_text" maxlength="100" value="' + footer + '" placeholder="z. B. IronWolf • Community">'
-        '<p class="muted">Kurzname und Footer werden gespeichert und stehen für weitere Branding-Integrationen bereit. Sie werden noch nicht automatisch an jede bestehende Begrüßungs-, Ticket- oder Verifizierungsnachricht angehängt.</p>'
-        '<button type="submit">💾 Design speichern</button></form></section>'
-        '<section class="card"><h2>👀 Farbvorschau</h2><div style="border-radius:12px;padding:18px;background:#111827;color:#f3f6fc;border-left:5px solid #' + html.escape(embed_color) + '">'
-        '<strong>' + (label or html.escape(guild.name)) + '</strong><p>So wirkt die Standard-Embed-Farbe bei einer neuen Bot-Nachricht.</p><small>' + (footer or "Standard-Footer") + '</small></div>'
+        '<p class="muted">Ändert ausschließlich Akzentlinien, Links und Markierungen im IronWolf-Dashboard dieses Servers. Discord-Rollen, Embeds und Nachrichten bleiben unverändert.</p>'
+        '<button type="submit">💾 Dashboard-Design speichern</button></form></section>'
+        '<section class="card"><h2>👀 Vorschau</h2><div style="border-radius:12px;padding:18px;background:#111827;color:#f3f6fc;border-left:5px solid #' + html.escape(dashboard_color) + '">'
+        '<strong>IronWolf Control Center</strong><p>So sieht die Akzentfarbe im Dashboard aus.</p><small>IronWolf · Created by KingSnowy</small></div>'
         '<p><a class="button secondary" href="/guild/' + gid + '/messages">✉️ Nachricht mit Vorschau erstellen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Server-Design", body)
@@ -1265,13 +1287,8 @@ def guild_message_builder(guild_id):
                 button_records.append({"type": "role", "label": label, "role_id": role.id})
         embed = None
         if title or description:
-            raw_embed_color = str(cfg.get("default_embed_color", "5865F2")).strip().lstrip("#")
-            if not re.fullmatch(r"[0-9a-fA-F]{6}", raw_embed_color):
-                raw_embed_color = "5865F2"
-            embed = discord.Embed(title=title or None, description=description or None, color=discord.Color(int(raw_embed_color, 16)))
-            footer_text = str(cfg.get("brand_footer_text", "")).strip()[:100]
-            if footer_text:
-                embed.set_footer(text=footer_text)
+            embed = discord.Embed(title=title or None, description=description or None, color=discord.Color.blurple())
+            embed.set_footer(text="IronWolf · Created by KingSnowy")
         view = _bot.build_dashboard_message_view(guild.id, button_records) if _bot and hasattr(_bot, "build_dashboard_message_view") else None
         async def _send():
             return await channel.send(content=content or None, embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
@@ -1561,9 +1578,7 @@ def guild_verification(guild_id):
             if not re.fullmatch(r"[0-9a-fA-F]{6}", raw_embed_color):
                 raw_embed_color = "5865F2"
             embed = discord.Embed(title=title, description=description, color=discord.Color(int(raw_embed_color, 16)))
-            brand_footer = str(cfg.get("brand_footer_text", "")).strip()[:100]
-            if brand_footer:
-                embed.set_footer(text=brand_footer)
+            embed.set_footer(text="IronWolf · Created by KingSnowy")
             if old_verify_message_id and str(old_verify_channel_id) == str(channel.id):
                 try:
                     old_message = await channel.fetch_message(int(old_verify_message_id))
@@ -1756,9 +1771,7 @@ def guild_tickets(guild_id):
                 embed.set_thumbnail(url=f"attachment://{logo_path.name}")
             elif isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
                 embed.set_thumbnail(url=logo_url)
-            brand_footer = str(cfg.get("brand_footer_text", "")).strip()[:100]
-            footer_prefix = brand_footer + " · " if brand_footer else ""
-            embed.set_footer(text=f"{footer_prefix}IronWolf Ticket-Panel · ID {panel_key}")
+            embed.set_footer(text=f"IronWolf · Created by KingSnowy · Ticket-Panel ID {panel_key}")
             view = view_cls(panel_key, labels)
             old_channel_id = panel.get("channel_id")
             old_message_id = panel.get("message_id")
