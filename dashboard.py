@@ -149,6 +149,7 @@ def _page(title, body):
         '<nav><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
         + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
@@ -3372,3 +3373,86 @@ def guild_wolfpulse(guild_id):
         '</p><p><a href="/guild/' + str(guild.id) + '">Zur Server-Konfiguration ↗</a></p></section>'
     )
     return _page("WolfPulse", body)
+
+
+@app.route("/guild/<guild_id>/wolfshield", methods=["GET", "POST"])
+def guild_wolfshield(guild_id):
+    """Configure the server's anti-raid detection and response safely."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        import copy
+        original_cfg = copy.deepcopy(cfg)
+        try:
+            cfg["anti_raid_enabled"] = request.form.get("anti_raid_enabled") == "on"
+            numeric = {
+                "raid_threshold": ("raid_threshold", 3, 30, 8),
+                "raid_window_seconds": ("raid_window_seconds", 5, 60, 10),
+                "raid_lockdown_seconds": ("raid_lockdown_seconds", 15, 600, 60),
+                "raid_timeout_minutes": ("raid_timeout_minutes", 1, 60, 10),
+                "raid_min_account_age_days": ("raid_min_account_age_days", 0, 365, 0),
+            }
+            for key, (label, minimum, maximum, default) in numeric.items():
+                try:
+                    value = int(request.form.get(key, str(cfg.get(key, default))).strip())
+                except (TypeError, ValueError):
+                    abort(400, f"{label}: Bitte eine ganze Zahl eingeben.")
+                if not minimum <= value <= maximum:
+                    abort(400, f"{label} muss zwischen {minimum} und {maximum} liegen.")
+                cfg[key] = value
+            action = request.form.get("raid_action", "timeout").strip().lower()
+            if action not in {"alert", "timeout"}:
+                abort(400, "Ungültige Anti-Raid-Aktion.")
+            cfg["raid_action"] = action
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(
+                guild.id, "WolfShield Anti-Raid", session.get("user_id"),
+                f"enabled={cfg['anti_raid_enabled']}; threshold={cfg['raid_threshold']}; "
+                f"window={cfg['raid_window_seconds']}s; lockdown={cfg['raid_lockdown_seconds']}s; "
+                f"action={action}; timeout={cfg['raid_timeout_minutes']}m; "
+                f"min_account_age={cfg['raid_min_account_age_days']}d",
+            )
+        except Exception:
+            cfg.clear()
+            cfg.update(original_cfg)
+            raise
+        return redirect(url_for("guild_wolfshield", guild_id=gid, saved="1"))
+
+    enabled = bool(cfg.get("anti_raid_enabled", False))
+    action = str(cfg.get("raid_action", "timeout")).lower()
+    action_options = (
+        '<option value="alert"' + (' selected' if action == "alert" else '') + '>Nur alarmieren (keine automatische Moderation)</option>'
+        '<option value="timeout"' + (' selected' if action == "timeout" else '') + '>Neue Beitritte während der Schutzphase timeouten</option>'
+    )
+    saved_notice = '<div class="card"><strong>✅ Einstellungen gespeichert.</strong> Bot und Website verwenden dieselbe Serverkonfiguration.</div>' if request.args.get("saved") == "1" else ""
+    checked = " checked" if enabled else ""
+    body = (
+        '<section class="card"><h1>🛡️ WolfShield · Anti-Raid</h1>'
+        '<p class="muted">Konfiguriere die Beitritts-Erkennung und die Reaktion des verbundenen Discord-Bots. '
+        'Änderungen werden serverbezogen gespeichert und im Dashboard-Audit protokolliert.</p>'
+        + saved_notice +
+        '<form method="post">' + _csrf_field() +
+        '<label class="setting-row"><span><strong>Anti-Raid aktivieren</strong><small>Erkennt ungewöhnlich viele neue Mitglieder innerhalb eines Zeitfensters.</small></span>'
+        '<input type="checkbox" name="anti_raid_enabled" value="on"' + checked + '></label>'
+        '<div class="grid">'
+        '<label class="card">Beitritte bis Alarm <small>3–30 Mitglieder</small><input type="number" name="raid_threshold" min="3" max="30" required value="' + str(int(cfg.get("raid_threshold", 8) or 8)) + '"></label>'
+        '<label class="card">Erkennungsfenster (Sekunden) <small>5–60 Sekunden</small><input type="number" name="raid_window_seconds" min="5" max="60" required value="' + str(int(cfg.get("raid_window_seconds", 10) or 10)) + '"></label>'
+        '<label class="card">Schutzphase (Sekunden) <small>15–600 Sekunden</small><input type="number" name="raid_lockdown_seconds" min="15" max="600" required value="' + str(int(cfg.get("raid_lockdown_seconds", 60) or 60)) + '"></label>'
+        '<label class="card">Timeout-Dauer (Minuten) <small>1–60 Minuten</small><input type="number" name="raid_timeout_minutes" min="1" max="60" required value="' + str(int(cfg.get("raid_timeout_minutes", 10) or 10)) + '"></label>'
+        '<label class="card">Accountalter-Hinweis (Tage) <small>0 = nur protokollieren, keine Altersgrenze</small><input type="number" name="raid_min_account_age_days" min="0" max="365" required value="' + str(int(cfg.get("raid_min_account_age_days", 0) or 0)) + '"></label>'
+        '<label class="card">Reaktion während der Schutzphase <small>Kann jederzeit angepasst werden</small><select name="raid_action">' + action_options + '</select></label>'
+        '</div><p class="muted">Sicherheitshinweis: Das Accountalter ist nur ein Kontextsignal und löst allein keine Strafe aus. Im Modus „Timeout“ werden Nicht-Bot-Mitglieder, die während einer aktiven Schutzphase beitreten, für die eingestellte Dauer eingeschränkt. Benötigt „Mitglieder moderieren“ und eine passende Rollenposition.</p>'
+        '<button type="submit">💾 WolfShield speichern</button></form></section>'
+        '<section class="card"><h2>So funktioniert die Schutzphase</h2>'
+        '<ol><li>IronWolf zählt Nicht-Bot-Beitritte im konfigurierten Zeitfenster.</li>'
+        '<li>Wird die Schwelle erreicht, wird eine Schutzphase aktiviert und ein Sicherheitslog gesendet.</li>'
+        '<li>Während der Schutzphase protokolliert der Bot Beitritte und führt – je nach gewählter Aktion – keine Moderation oder einen Timeout aus.</li>'
+        '</ol><p><a href="/guild/' + gid + '/wolfpulse">WolfPulse · Berechtigungen prüfen ↗</a> · <a href="/guild/' + gid + '">Zur Server-Konfiguration ↗</a></p></section>'
+    )
+    return _page("WolfShield · Anti-Raid", body)
