@@ -1795,6 +1795,10 @@ def guild_ping_protection(guild_id):
             abort(400, "Ungültige geschützte Rolle ausgewählt.")
         if any(value not in valid_member_ids for value in selected_members):
             abort(400, "Ungültige geschützte Person ausgewählt. Falls sie fehlt, muss der Bot die Mitgliederliste laden können.")
+        if len(set(selected_roles)) > 10:
+            abort(400, "Du kannst maximal 10 Rollen gleichzeitig vor Pings schützen.")
+        if len(set(selected_members)) > 10:
+            abort(400, "Du kannst maximal 10 Personen gleichzeitig vor Pings schützen.")
 
         # Protection starts fully off and with no protected roles or members.
         cfg["ping_protection_enabled"] = request.form.get("ping_protection_enabled") == "on"
@@ -1808,8 +1812,20 @@ def guild_ping_protection(guild_id):
 
     protected_roles = {str(value) for value in cfg.get("ping_protected_role_ids", [])}
     protected_members = {str(value) for value in cfg.get("ping_protected_member_ids", [])}
-    role_options = ''.join('<option value="' + str(role.id) + '"' + (' selected' if str(role.id) in protected_roles else '') + '>' + html.escape(role.name) + '</option>' for role in sorted(guild.roles, key=lambda item: item.position, reverse=True) if not role.is_default() and not role.managed)
-    member_options = ''.join('<option value="' + str(member.id) + '"' + (' selected' if str(member.id) in protected_members else '') + '>' + html.escape(member.display_name) + ' (' + str(member.id) + ')</option>' for member in sorted(guild.members, key=lambda item: item.display_name.casefold()) if not member.bot)
+    role_options = ''.join(
+        '<label class="check ping-choice" data-search="' + html.escape(role.name.casefold(), quote=True) + '" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:8px;margin:5px 0">'
+        '<input type="checkbox" name="protected_role_ids" value="' + str(role.id) + '"' + (' checked' if str(role.id) in protected_roles else '') + '>'
+        '<span>' + html.escape(role.name) + '</span></label>'
+        for role in sorted(guild.roles, key=lambda item: item.position, reverse=True)
+        if not role.is_default() and not role.managed
+    )
+    member_options = ''.join(
+        '<label class="check ping-choice" data-search="' + html.escape((member.display_name + ' ' + str(member.id)).casefold(), quote=True) + '" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border,#ddd);border-radius:8px;margin:5px 0">'
+        '<input type="checkbox" name="protected_member_ids" value="' + str(member.id) + '"' + (' checked' if str(member.id) in protected_members else '') + '>'
+        '<span>' + html.escape(member.display_name) + ' <small class="muted">(' + str(member.id) + ')</small></span></label>'
+        for member in sorted(guild.members, key=lambda item: item.display_name.casefold())
+        if not member.bot
+    )
     protected_role_rows = ''.join(
         '<div class="check" style="display:flex;align-items:center;justify-content:space-between;gap:12px">'
         '<span>' + html.escape(guild.get_role(int(role_id)).name if role_id.isdigit() and guild.get_role(int(role_id)) else "Unbekannte Rolle") + '</span>'
@@ -1833,13 +1849,22 @@ def guild_ping_protection(guild_id):
         '<p class="muted">Standardmäßig ist der Ping-Schutz ausgeschaltet und es sind keine Rollen oder Personen geschützt. Schalte ihn manuell ein und wähle die gewünschten Rollen oder Personen aus.</p>' + success +
         '<form method="post">' + _csrf_field() +
         '<div class="check"><input type="checkbox" id="ping_protection_enabled" name="ping_protection_enabled"' + enabled + '><label for="ping_protection_enabled">Ping-Schutz aktivieren</label></div>'
-        '<label for="protected_role_ids">Rollen zum Schützen auswählen</label><select id="protected_role_ids" name="protected_role_ids" multiple size="8" style="min-height:170px">' + role_options + '</select>'
-        '<small class="muted">Mehrere Rollen mit Strg (Windows) oder Cmd (Mac) auswählen. Die Auswahl wird erst nach „Speichern“ übernommen.</small>'
+        '<h3>Geschützte Rollen <small class="muted">(max. 10)</small></h3>'
+        '<input type="search" id="role_search" placeholder="🔎 Rolle suchen…" style="width:100%;margin:6px 0 10px" oninput="filterPingChoices(\'role_choices\',this.value)">'
+        '<div id="role_choices" style="max-height:260px;overflow:auto;padding:4px">' + (role_options or '<p class="muted">Keine Rollen verfügbar.</p>') + '</div>'
+        '<p class="muted"><span id="role_count">0</span>/10 Rollen ausgewählt. Einfach anklicken, kein Strg/Cmd nötig.</p>'
         '<h3>Aktuell geschützte Rollen</h3>' + ''.join(protected_role_rows) +
-        '<label for="protected_member_ids">Personen zum Schützen auswählen</label><select id="protected_member_ids" name="protected_member_ids" multiple size="8" style="min-height:170px">' + member_options + '</select>'
-        '<small class="muted">Mehrere Personen mit Strg (Windows) oder Cmd (Mac) auswählen.</small>' + protected_member_summary +
+        '<h3>Geschützte Personen <small class="muted">(max. 10)</small></h3>'
+        '<input type="search" id="member_search" placeholder="🔎 Person oder ID suchen…" style="width:100%;margin:6px 0 10px" oninput="filterPingChoices(\'member_choices\',this.value)">'
+        '<div id="member_choices" style="max-height:300px;overflow:auto;padding:4px">' + (member_options or '<p class="muted">Keine Personen verfügbar.</p>') + '</div>'
+        '<p class="muted"><span id="member_count">0</span>/10 Personen ausgewählt. Einfach anklicken, kein Strg/Cmd nötig.</p>' + protected_member_summary +
         '<p class="notice">Hinweis: Mitglieder mit „Nachrichten verwalten“ sind ausgenommen. IronWolf braucht im betroffenen Kanal „Nachrichten verwalten“, um Pings zu löschen. DMs können durch Privatsphäre-Einstellungen blockiert sein.</p>'
-        '<button type="submit">💾 Ping-Schutz speichern</button></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
+        '<button type="submit">💾 Ping-Schutz speichern</button></form><script>'
+        'function filterPingChoices(boxId,query){const q=query.toLocaleLowerCase();document.querySelectorAll("#"+boxId+" .ping-choice").forEach(el=>{el.style.display=el.dataset.search.includes(q)?"flex":"none";});}'
+        'function updatePingCount(boxId,countId){const box=document.getElementById(boxId);const checks=box.querySelectorAll("input[type=checkbox]");const selected=[...checks].filter(c=>c.checked);document.getElementById(countId).textContent=selected.length;checks.forEach(c=>{c.disabled=!c.checked&&selected.length>=10;});}'
+        'function initPingChoices(boxId,countId){const box=document.getElementById(boxId);box.addEventListener("change",()=>updatePingCount(boxId,countId));updatePingCount(boxId,countId);}'
+        'initPingChoices("role_choices","role_count");initPingChoices("member_choices","member_count");'
+        '</script><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Ping-Schutz", body)
 
