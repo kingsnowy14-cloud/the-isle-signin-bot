@@ -2513,6 +2513,7 @@ def guild_isle_roster(guild_id):
             dinosaur = record.get("dinosaur")
             location = record.get("location")
             skin = record.get("skin", "")
+            pack = record.get("pack", "")
             if not isinstance(dinosaur, str) or not dinosaur.strip() or not isinstance(location, str) or not location.strip():
                 continue
             member = guild.get_member(int(user_id)) if str(user_id).isdigit() else None
@@ -2528,12 +2529,13 @@ def guild_isle_roster(guild_id):
             rows.append(
                 "<tr><td>" + html.escape(player_name) + "</td><td>" + html.escape(dinosaur.strip()) +
                 "</td><td>" + html.escape(skin.strip() if isinstance(skin, str) else "") +
+                "</td><td>" + html.escape(pack.strip() if isinstance(pack, str) and pack.strip() else "Solo") +
                 "</td><td>" + html.escape(location.strip()) + "</td><td>" + html.escape(signed_label) + "</td></tr>"
             )
     rows.sort(key=lambda row: row.casefold())
     table = (
-        '<div style="overflow-x:auto"><table><thead><tr><th>Spieler</th><th>Dinosaurier</th><th>Skin</th><th>Standort</th><th>Angemeldet seit</th></tr></thead><tbody>'
-        + ("".join(rows) if rows else '<tr><td colspan="5">Aktuell sind keine gültigen Spieler-Anmeldungen gespeichert.</td></tr>')
+        '<div style="overflow-x:auto"><table><thead><tr><th>Spieler</th><th>Dinosaurier</th><th>Skin</th><th>Pack / Rudel</th><th>Standort</th><th>Angemeldet seit</th></tr></thead><tbody>'
+        + ("".join(rows) if rows else '<tr><td colspan="6">Aktuell sind keine gültigen Spieler-Anmeldungen gespeichert.</td></tr>')
         + '</tbody></table></div>'
     )
     body = (
