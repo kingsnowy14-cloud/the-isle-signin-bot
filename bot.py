@@ -964,13 +964,46 @@ class TicketCreateModal(discord.ui.Modal):
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
 
-class TicketPanelView(discord.ui.View):
+class TicketPanelSelect(discord.ui.Select):
     def __init__(self, panel_key: str, labels):
+        options = [
+            discord.SelectOption(label=str(label)[:100], value=str(index), description=f"Ticket-Anfrage: {str(label)[:90]}")
+            for index, label in enumerate(labels[:10])
+        ]
+        super().__init__(
+            placeholder="Ticket-Art auswählen …",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id=f"ticket:select:{panel_key}",
+        )
+        self.panel_key = panel_key
+
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            index = int(self.values[0])
+            cfg = guild_config(interaction.guild_id) if interaction.guild_id else {}
+            panel = cfg.get("ticket_panels", {}).get(self.panel_key, {})
+            labels = panel.get("labels", [])
+            label = labels[index]
+        except (TypeError, ValueError, IndexError, KeyError):
+            await interaction.response.send_message("Diese Ticket-Auswahl ist nicht mehr gültig. Bitte nutze ein aktuelles Panel.", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketCreateModal(self.panel_key, index, str(label)))
+
+
+class TicketPanelView(discord.ui.View):
+    def __init__(self, panel_key: str, labels, display_mode: str = "buttons"):
         super().__init__(timeout=None)
         self.panel_key = panel_key
-        for index, label in enumerate(labels[:5]):
+        safe_labels = [str(label).strip()[:80] for label in labels if str(label).strip()][:10]
+        if display_mode == "select":
+            if safe_labels:
+                self.add_item(TicketPanelSelect(panel_key, safe_labels))
+            return
+        for index, label in enumerate(safe_labels):
             button = discord.ui.Button(
-                label=label[:80],
+                label=label,
                 style=discord.ButtonStyle.primary,
                 custom_id=f"ticket:create:{panel_key}:{index}",
             )
@@ -6821,7 +6854,7 @@ async def on_ready():
     for guild_id, cfg in config.items():
         for panel_key, panel in cfg.get("ticket_panels", {}).items():
             try:
-                bot.add_view(TicketPanelView(panel_key, panel.get("labels", [])))
+                bot.add_view(TicketPanelView(panel_key, panel.get("labels", []), panel.get("display_mode", "buttons")))
             except Exception:
                 pass
     try:
