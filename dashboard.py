@@ -283,7 +283,7 @@ async def _steam_grant_guild_role(guild_id, discord_id):
     if role in member.roles:
         return "already_has_role"
     try:
-        await member.add_roles(role, reason="Steam-Konto erfolgreich über Steam OpenID verifiziert")
+        await member.add_roles(role, reason="Gaming-Konto erfolgreich über den offiziellen Anbieter verifiziert")
     except (discord.Forbidden, discord.HTTPException) as exc:
         print(f"[STEAM LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
         return "role_failed"
@@ -397,6 +397,233 @@ def steam_link_callback():
     )
 
 
+
+_ROBLOX_AUTHORIZE_ENDPOINT = "https://apis.roblox.com/oauth/v1/authorize"
+_ROBLOX_TOKEN_ENDPOINT = "https://apis.roblox.com/oauth/v1/token"
+_ROBLOX_USERINFO_ENDPOINT = "https://apis.roblox.com/oauth/v1/userinfo"
+_ROBLOX_LINK_STORE = data_path("roblox_account_links.json")
+_ROBLOX_LINK_LOCK = threading.Lock()
+_ROBLOX_LINK_TTL_SECONDS = 600
+
+
+def _roblox_callback_config():
+    client_id = _env("ROBLOX_CLIENT_ID")
+    client_secret = _env("ROBLOX_CLIENT_SECRET")
+    callback_uri = _env("ROBLOX_REDIRECT_URI")
+    parsed = urlparse(callback_uri)
+    if not client_id or not client_secret or (
+        parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+        or parsed.query or parsed.fragment or parsed.path != "/gaming/roblox/callback"
+    ):
+        raise ValueError(
+            "Roblox ist noch nicht konfiguriert. Prüfe ROBLOX_CLIENT_ID, ROBLOX_CLIENT_SECRET "
+            "und ROBLOX_REDIRECT_URI in Railway. Die Redirect-URI muss exakt "
+            "https://ironwolf-bot.up.railway.app/gaming/roblox/callback sein."
+        )
+    return client_id, client_secret, callback_uri
+
+
+def _roblox_read_store_locked():
+    try:
+        value = json.loads(_ROBLOX_LINK_STORE.read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            value.setdefault("pending", {})
+            value.setdefault("accounts", {})
+            if isinstance(value["pending"], dict) and isinstance(value["accounts"], dict):
+                return value
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {"pending": {}, "accounts": {}}
+
+
+def _roblox_write_store_locked(value):
+    temp = _ROBLOX_LINK_STORE.with_suffix(".tmp")
+    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp, _ROBLOX_LINK_STORE)
+
+
+def _create_roblox_link_url(guild_id, discord_user_id):
+    if not guild_id:
+        raise ValueError("Roblox kann nur über einen Verifizierungsbutton innerhalb eines Discord-Servers verknüpft werden.")
+    client_id, client_secret, callback_uri = _roblox_callback_config()
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _ROBLOX_LINK_LOCK:
+        store = _roblox_read_store_locked()
+        store["pending"] = {
+            key: row for key, row in store["pending"].items()
+            if isinstance(row, dict) and float(row.get("expires_at", 0) or 0) > now - 86400
+        }
+        store["pending"][token] = {
+            "discord_id": str(discord_user_id), "guild_id": str(guild_id),
+            "created_at": now, "expires_at": now + _ROBLOX_LINK_TTL_SECONDS, "status": "pending",
+        }
+        _roblox_write_store_locked(store)
+    return _ROBLOX_AUTHORIZE_ENDPOINT + "?" + urlencode({
+        "client_id": client_id, "redirect_uri": callback_uri,
+        "response_type": "code", "scope": "openid profile", "state": token,
+    })
+
+
+def _roblox_claim_pending(token):
+    now = time.time()
+    with _ROBLOX_LINK_LOCK:
+        store = _roblox_read_store_locked()
+        row = store["pending"].get(token)
+        if not isinstance(row, dict) or row.get("status") != "pending" or float(row.get("expires_at", 0) or 0) <= now:
+            return None
+        row["status"] = "processing"
+        store["pending"][token] = row
+        _roblox_write_store_locked(store)
+        return dict(row)
+
+
+def _roblox_set_pending_status(token, status):
+    with _ROBLOX_LINK_LOCK:
+        store = _roblox_read_store_locked()
+        row = store["pending"].get(token)
+        if isinstance(row, dict):
+            row["status"] = status
+            store["pending"][token] = row
+            _roblox_write_store_locked(store)
+
+
+def _roblox_save_verified_account(token, roblox_id, username):
+    with _ROBLOX_LINK_LOCK:
+        store = _roblox_read_store_locked()
+        pending = store["pending"].get(token)
+        if not isinstance(pending, dict) or pending.get("status") != "processing":
+            return False, "Der Verknüpfungslink wurde bereits verwendet oder ist abgelaufen."
+        discord_id = str(pending.get("discord_id", ""))
+        guild_id = str(pending.get("guild_id", ""))
+        for owner_id, account in store["accounts"].items():
+            if isinstance(account, dict) and str(account.get("roblox_id")) == roblox_id and str(owner_id) != discord_id:
+                pending["status"] = "rejected"
+                store["pending"][token] = pending
+                _roblox_write_store_locked(store)
+                return False, "Dieses Roblox-Konto ist bereits mit einem anderen Discord-Konto verknüpft."
+        existing = store["accounts"].get(discord_id)
+        if isinstance(existing, dict) and str(existing.get("roblox_id")) != roblox_id:
+            pending["status"] = "rejected"
+            store["pending"][token] = pending
+            _roblox_write_store_locked(store)
+            return False, "Dein Discord-Konto ist bereits mit einem anderen Roblox-Konto verknüpft. Bitte wende dich an die Serveradministration."
+        account = existing if isinstance(existing, dict) else {
+            "discord_id": discord_id, "roblox_id": roblox_id,
+            "linked_at": datetime.now(timezone.utc).isoformat(), "guild_ids": [],
+        }
+        account["roblox_id"] = roblox_id
+        account["username"] = str(username)[:100]
+        guild_ids = account.get("guild_ids", [])
+        if not isinstance(guild_ids, list):
+            guild_ids = []
+        if guild_id not in [str(value) for value in guild_ids]:
+            guild_ids.append(guild_id)
+        account["guild_ids"] = guild_ids
+        account["last_verified_at"] = datetime.now(timezone.utc).isoformat()
+        store["accounts"][discord_id] = account
+        pending["status"] = "linked"
+        pending["roblox_id"] = roblox_id
+        store["pending"][token] = pending
+        _roblox_write_store_locked(store)
+        return True, guild_id
+
+
+@app.route("/gaming/roblox/start")
+def roblox_link_start():
+    token = request.args.get("token", "")
+    if not token or len(token) > 128:
+        abort(400, "Ungültiger oder fehlender Verknüpfungstoken.")
+    with _ROBLOX_LINK_LOCK:
+        row = _roblox_read_store_locked()["pending"].get(token)
+        pending = dict(row) if isinstance(row, dict) else None
+    if not pending or pending.get("status") != "pending" or float(pending.get("expires_at", 0) or 0) <= time.time():
+        return _render("Roblox-Verknüpfung", '<section class="card"><h1>Link abgelaufen</h1><p>Starte die Verknüpfung erneut über Discord.</p></section>', 400)
+    try:
+        client_id, client_secret, callback_uri = _roblox_callback_config()
+    except ValueError as exc:
+        return _render("Roblox nicht eingerichtet", '<section class="card"><h1>Roblox nicht eingerichtet</h1><p>' + html.escape(str(exc)) + '</p></section>', 503)
+    # The state token is opaque, one-time, and bound to the Discord user and guild.
+    authorize_url = _ROBLOX_AUTHORIZE_ENDPOINT + "?" + urlencode({
+        "client_id": client_id, "redirect_uri": callback_uri,
+        "response_type": "code", "scope": "openid profile", "state": token,
+    })
+    return redirect(authorize_url, code=302)
+
+
+@app.route("/gaming/roblox/callback")
+def roblox_link_callback():
+    token = request.args.get("state", "")
+    if not token or len(token) > 128:
+        abort(400, "Ungültiger oder fehlender Verknüpfungstoken.")
+    if request.args.get("error"):
+        return _render("Roblox-Anmeldung abgebrochen", '<section class="card"><h1>Anmeldung abgebrochen</h1><p>Du hast die Roblox-Verknüpfung abgebrochen. Starte sie erneut über Discord.</p></section>', 400)
+    code = request.args.get("code", "")
+    if not code or len(code) > 4096:
+        abort(400, "Roblox hat keinen gültigen Autorisierungscode zurückgegeben.")
+    try:
+        client_id, client_secret, callback_uri = _roblox_callback_config()
+    except ValueError as exc:
+        return _render("Roblox nicht eingerichtet", '<section class="card"><h1>Roblox nicht eingerichtet</h1><p>' + html.escape(str(exc)) + '</p></section>', 503)
+    pending = _roblox_claim_pending(token)
+    if not pending:
+        return _render("Roblox-Verknüpfung", '<section class="card"><h1>Link ungültig oder abgelaufen</h1><p>Starte die Verknüpfung erneut über Discord.</p></section>', 400)
+    try:
+        token_response = requests.post(
+            _ROBLOX_TOKEN_ENDPOINT,
+            data={"grant_type": "authorization_code", "code": code, "client_id": client_id,
+                  "client_secret": client_secret, "redirect_uri": callback_uri},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+        token_response.raise_for_status()
+        access_token = token_response.json().get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise ValueError("Roblox token response had no access token")
+        profile_response = requests.get(
+            _ROBLOX_USERINFO_ENDPOINT,
+            headers={"Authorization": "Bearer " + access_token},
+            timeout=15,
+        )
+        profile_response.raise_for_status()
+        profile = profile_response.json()
+        subject = str(profile.get("sub", ""))
+        username = profile.get("preferred_username") or profile.get("nickname") or profile.get("name") or ""
+        if not re.fullmatch(r"\d{1,30}", subject):
+            raise ValueError("Roblox userinfo returned an invalid subject")
+    except (requests.RequestException, ValueError, json.JSONDecodeError) as exc:
+        print(f"[ROBLOX LINK] OAuth verification failed: {type(exc).__name__}", flush=True)
+        _roblox_set_pending_status(token, "failed")
+        return _render("Roblox-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Roblox-Anmeldung konnte nicht bestätigt werden</h1><p>Prüfe die OAuth-App und die exakt eingetragene Redirect-URI. Bitte starte den Vorgang erneut.</p></section>', 502)
+    saved, result = _roblox_save_verified_account(token, subject, username)
+    if not saved:
+        return _render("Roblox-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Verknüpfung nicht möglich</h1><p>' + html.escape(result) + '</p></section>', 409)
+    guild_id = result
+    role_status = "unavailable"
+    if _bot and getattr(_bot, "loop", None) and _bot.loop.is_running():
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                _steam_grant_guild_role(guild_id, pending["discord_id"]), _bot.loop
+            )
+            role_status = future.result(timeout=18)
+        except Exception as exc:
+            print(f"[ROBLOX LINK] Role assignment failed in guild {guild_id}: {type(exc).__name__}", flush=True)
+            role_status = "role_failed"
+    if role_status in {"granted", "already_has_role"}:
+        role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
+    elif role_status == "not_configured":
+        role_text = "Das Roblox-Konto wurde gespeichert. Wähle im Dashboard eine Verifizierungsrolle aus."
+    else:
+        role_text = "Das Roblox-Konto wurde gespeichert, aber die Discord-Rolle konnte nicht vergeben werden. Prüfe die Bot-Berechtigung „Rollen verwalten“ und die Rollenposition."
+    return _render(
+        "Roblox erfolgreich verknüpft",
+        '<section class="card"><h1>✅ Roblox erfolgreich verknüpft</h1><p>Dein Roblox-Konto <strong>' +
+        html.escape(str(username) or subject) + '</strong> (ID <code>' + html.escape(subject) +
+        '</code>) wurde deinem Discord-Konto zugeordnet.</p><p>' + html.escape(role_text) +
+        '</p><p>Du kannst dieses Fenster jetzt schließen.</p></section>',
+    )
+
+
 class _GamingAccountVerifyView(discord.ui.View):
     """Gaming provider buttons; provider ownership flows are not yet configured."""
     def __init__(self, enabled_platforms):
@@ -407,13 +634,32 @@ class _GamingAccountVerifyView(discord.ui.View):
             "steam": ("🚂 Steam", discord.ButtonStyle.secondary,
                 "Steam-Verknüpfung ist noch nicht aktiviert. Dafür muss Steam OpenID mit einer sicheren Rückleitungs-URL eingerichtet werden. Gib dein Steam-Passwort niemals im Discord ein."),
             "roblox": ("🟥 Roblox", discord.ButtonStyle.danger,
-                "Roblox-Verknüpfung ist noch nicht aktiviert. Die Kontoinhaberschaft muss erst über einen sicheren Profilnachweis geprüft werden. Teile hier kein Passwort oder Login-Code."),
+                "Roblox sicher verknüpfen: Melde dich auf der offiziellen Roblox-Seite an. Teile niemals dein Passwort oder einen Login-Code."),
         }
         for key, (label, style, explanation) in details.items():
             if key not in set(enabled_platforms):
                 continue
             button = discord.ui.Button(label=label, style=style, custom_id="gaming_verify:" + key)
             async def callback(interaction, message=explanation, provider=key):
+                if provider == "roblox":
+                    try:
+                        link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
+                    except ValueError as exc:
+                        await interaction.response.send_message(str(exc), ephemeral=True)
+                        return
+                    except Exception as exc:
+                        print(f"[ROBLOX LINK] Could not create link: {type(exc).__name__}: {exc}", flush=True)
+                        await interaction.response.send_message(
+                            "Der Roblox-Link konnte gerade nicht erstellt werden. Bitte prüfe die Railway-Variablen und versuche es später erneut.",
+                            ephemeral=True,
+                        )
+                        return
+                    await interaction.response.send_message(
+                        "🔐 **Roblox sicher verknüpfen**\nÖffne den Link und melde dich direkt bei Roblox an. IronWolf fragt nur die Roblox-Profilidentität ab, niemals dein Passwort. Der Link ist 10 Minuten gültig und einmalig.\n"
+                        + link_url,
+                        ephemeral=True,
+                    )
+                    return
                 if provider == "steam":
                     try:
                         link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
