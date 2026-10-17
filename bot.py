@@ -7520,6 +7520,101 @@ async def wolfcheck_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+@bot.command(name="emoji", aliases=["emojis", "kanalemojis"])
+@commands.guild_only()
+@commands.has_guild_permissions(manage_channels=True)
+async def emoji_command(ctx):
+    """Add a fitting emoji to channel names without removing existing emojis."""
+    guild = ctx.guild
+    bot_member = guild.me
+    if bot_member is None or not bot_member.guild_permissions.manage_channels:
+        await ctx.reply(
+            "❌ IronWolf fehlt die Serverberechtigung **Kanäle verwalten**.",
+            mention_author=False,
+        )
+        return
+
+    # Specific keywords first, so e.g. "staff-chat" gets the staff emoji.
+    emoji_rules = [
+        (("willkommen", "welcome", "beitritt", "join"), "👋"),
+        (("verabschied", "goodbye", "leave"), "👋"),
+        (("regel", "rules", "richtlinien"), "📜"),
+        (("ankünd", "ankuend", "announcement", "news", "neuigkeit"), "📢"),
+        (("ticket", "support", "hilfe"), "🎫"),
+        (("bewerb", "application", "whitelist"), "📝"),
+        (("vorschlag", "suggest", "idee", "ideas"), "💡"),
+        (("abstimm", "vote", "umfrage", "poll"), "🗳️"),
+        (("event", "veranstaltung"), "📅"),
+        (("rolle", "roles", "reaktionsrolle"), "🎭"),
+        (("bot", "command", "befehl"), "🤖"),
+        (("log", "protokoll", "audit"), "📋"),
+        (("team", "staff", "moderator", "mod-chat"), "🔒"),
+        (("admin", "leitung"), "🛡️"),
+        (("voice", "sprach", "talk", "lounge", "warteraum"), "🔊"),
+        (("musik", "music", "radio"), "🎵"),
+        (("gaming", "games", "spiel", "the-isle", "theisle"), "🎮"),
+        (("clip", "video", "stream", "youtube"), "🎬"),
+        (("bild", "foto", "photo", "media", "meme"), "📸"),
+        (("faq", "frage", "help", "wissen"), "❓"),
+        (("info", "information", "server-info", "über", "ueber"), "ℹ️"),
+        (("rang", "level", "xp", "leaderboard"), "🏆"),
+        (("statistik", "stats", "statistic", "member", "mitglieder", "booster"), "📊"),
+        (("chat", "allgemein", "general", "plaud"), "💬"),
+    ]
+    known_emojis = (
+        "👋", "📜", "📢", "🎫", "📝", "💡", "🗳️", "📅", "🎭", "🤖",
+        "📋", "🔒", "🛡️", "🔊", "🎵", "🎮", "🎬", "📸", "❓", "ℹ️",
+        "🏆", "📊", "💬", "😂", "📁", "🚀", "🎉", "🔔", "🆘", "🛠️",
+    )
+    status = await ctx.reply(
+        "😀 **IronWolf · Kanal-Emojis**\nIch ergänze passende Emojis. Bereits vorhandene Emojis bleiben erhalten.",
+        mention_author=False,
+    )
+    renamed = 0
+    unchanged = 0
+    failed = 0
+
+    for channel in sorted(guild.channels, key=lambda item: (0 if isinstance(item, discord.CategoryChannel) else 1, item.position)):
+        old_name = channel.name
+        lowered = old_name.casefold()
+        # Don't add a second emoji if the name already starts with one we recognize.
+        if old_name.startswith(known_emojis):
+            unchanged += 1
+            continue
+
+        chosen = None
+        for keywords, candidate in emoji_rules:
+            if any(keyword in lowered for keyword in keywords):
+                chosen = candidate
+                break
+        if chosen is None and isinstance(channel, discord.CategoryChannel):
+            chosen = "📁"
+        if chosen is None:
+            unchanged += 1
+            continue
+
+        new_name = f"{chosen}・{old_name}"[:100]
+        try:
+            await channel.edit(name=new_name, reason=f"!emoji requested by {ctx.author} ({ctx.author.id})")
+            renamed += 1
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            failed += 1
+            print(
+                f"[CHANNEL EMOJI] Rename failed for channel {channel.id} ({old_name} -> {new_name}): "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+        await asyncio.sleep(0.8)
+
+    summary = (
+        "✅ **Emoji-Zuordnung abgeschlossen!**\n"
+        f"✨ Kanäle/Kategorien geändert: **{renamed}**\n"
+        f"⏭️ Bereits passend oder kein passendes Stichwort: **{unchanged}**\n"
+        f"⚠️ Fehlgeschlagen: **{failed}**"
+    )
+    await status.edit(content=summary)
+
+
 @bot.command(name="englisch", aliases=["english", "translateenglish"])
 @commands.guild_only()
 @commands.has_guild_permissions(manage_channels=True)
