@@ -38,14 +38,49 @@ def sync_manual_grants():
                 active[uid] = plan
     grants = _read_grants()
     for uid in list(grants):
-        if uid not in active:
+        grant = grants.get(uid)
+        # Keep server-boost rewards even though they are not in the Railway allowlist.
+        if uid not in active and not (isinstance(grant, dict) and grant.get("source") == "server_boost"):
             del grants[uid]
     for uid, plan in active.items():
         grant = grants.get(uid)
-        if not isinstance(grant, dict) or grant.get("plan") != plan:
-            grants[uid] = {"plan": plan, "granted_at": now.isoformat(), "expires_at": (now + timedelta(days=365)).isoformat(), "expiry_dm_sent": False}
+        if not isinstance(grant, dict) or grant.get("plan") != plan or grant.get("source") != "manual_allowlist":
+            grants[uid] = {"plan": plan, "source": "manual_allowlist", "granted_at": now.isoformat(), "expires_at": (now + timedelta(days=365)).isoformat(), "expiry_dm_sent": False}
     _write_grants(grants)
     return grants
+
+
+def grant_server_boost_premium(user_id, guild_id, days=183):
+    """Grant or extend six months of account Premium for boosting the configured server."""
+    uid = str(user_id)
+    if not uid.isdigit():
+        return None
+    grants = sync_manual_grants()
+    now = _now()
+    existing = grants.get(uid)
+    if isinstance(existing, dict) and existing.get("source") == "manual_allowlist":
+        return existing
+    expiry = now
+    if isinstance(existing, dict) and existing.get("source") == "server_boost":
+        try:
+            previous_expiry = datetime.fromisoformat(str(existing.get("expires_at", "")).replace("Z", "+00:00"))
+            if previous_expiry.tzinfo is None:
+                previous_expiry = previous_expiry.replace(tzinfo=timezone.utc)
+            if previous_expiry > now:
+                expiry = previous_expiry
+        except (TypeError, ValueError):
+            pass
+    grant = {
+        "plan": "premium",
+        "source": "server_boost",
+        "guild_id": str(guild_id),
+        "granted_at": now.isoformat(),
+        "expires_at": (expiry + timedelta(days=days)).isoformat(),
+        "expiry_dm_sent": False,
+    }
+    grants[uid] = grant
+    _write_grants(grants)
+    return grant
 
 
 def expired_grants():
