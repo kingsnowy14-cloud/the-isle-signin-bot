@@ -801,16 +801,16 @@ class GamingAccountVerifyView(discord.ui.View):
                     if provider == "steam":
                         link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
                         message = (
-                            "🔐 **Steam sicher verknüpfen**\\nÖffne diesen Link und melde dich direkt bei Steam an. "
+                            "🔐 **Steam sicher verknüpfen**\nÖffne diesen Link und melde dich direkt bei Steam an. "
                             "Dein Steam-Passwort wird niemals an IronWolf übermittelt. Der Link ist 10 Minuten gültig "
-                            "und kann nur einmal verwendet werden.\\n" + link_url
+                            "und kann nur einmal verwendet werden.\n" + link_url
                         )
                     else:
                         link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
                         message = (
-                            "🔐 **Roblox sicher verknüpfen**\\nÖffne den Link und melde dich direkt bei Roblox an. "
+                            "🔐 **Roblox sicher verknüpfen**\nÖffne den Link und melde dich direkt bei Roblox an. "
                             "IronWolf fragt nur deine Roblox-Profilidentität ab, niemals dein Passwort. "
-                            "Der Link ist 10 Minuten gültig und einmalig.\\n" + link_url
+                            "Der Link ist 10 Minuten gültig und einmalig.\n" + link_url
                         )
                     await interaction.followup.send(message, ephemeral=True)
                 except ValueError as exc:
@@ -6554,17 +6554,17 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
                 created_channels += int(made)
 
         await status.edit(content=(
-            f"✅ **{template_title}** fertig!\\n"
+            f"✅ **{template_title}** fertig!\n"
             f"Neu erstellt: **{created_roles} Rollen**, **{created_categories} Kategorien**, "
-            f"**{created_channels} Kanäle**.\\n"
+            f"**{created_channels} Kanäle**.\n"
             "Bereits vorhandene Inhalte wurden beibehalten. Prüfe bitte Rollen-Hierarchie "
-            "und Berechtigungen und weise Teamrollen den richtigen Personen zu.\\n\\n"
-            "**Sinnvolle nächste Schritte:**\\n"
-            "• `/bewerbung-panel` – Bewerbungen für Teammitglieder einrichten\\n"
-            "• `/security-konfigurieren` – Sicherheits- und Raid-Logkanal festlegen\\n"
-            "• `/serverlogs` – Aktivitätslogs in einem Kanal aktivieren\\n"
-            "• `/event-erstellen` – ein Serverevent veröffentlichen\\n"
-            "• `/bewerbung-fragen` – Bewerbungsfragen für das Team anpassen\\n"
+            "und Berechtigungen und weise Teamrollen den richtigen Personen zu.\n\n"
+            "**Sinnvolle nächste Schritte:**\n"
+            "• `/bewerbung-panel` – Bewerbungen für Teammitglieder einrichten\n"
+            "• `/security-konfigurieren` – Sicherheits- und Raid-Logkanal festlegen\n"
+            "• `/serverlogs` – Aktivitätslogs in einem Kanal aktivieren\n"
+            "• `/event-erstellen` – ein Serverevent veröffentlichen\n"
+            "• `/bewerbung-fragen` – Bewerbungsfragen für das Team anpassen\n"
             "• Danach: Kanalrechte prüfen, Teamrollen vergeben und Regeln/Willkommensnachricht anpassen."
         ))
     except discord.Forbidden:
