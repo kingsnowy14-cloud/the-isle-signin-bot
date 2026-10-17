@@ -25,6 +25,7 @@ from flask import Flask, abort, redirect, request, session, url_for, make_respon
 from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 from wolfmirror import simulate_scenario, SCENARIOS
+from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -152,6 +153,7 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
@@ -3458,6 +3460,108 @@ def guild_wolfshield(guild_id):
         '</ol><p><a href="/guild/' + gid + '/wolfpulse">WolfPulse · Berechtigungen prüfen ↗</a> · <a href="/guild/' + gid + '">Zur Server-Konfiguration ↗</a></p></section>'
     )
     return _page("WolfShield · Anti-Raid", body)
+
+
+@app.route("/guild/<guild_id>/wolfchronicle", methods=["GET", "POST"])
+def guild_wolfchronicle(guild_id):
+    """Shared, OAuth-protected incident timeline for the bot and website."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        action = request.form.get("action", "")
+        if action == "create":
+            try:
+                incident = create_incident(
+                    cfg,
+                    incident_type=request.form.get("incident_type", "other"),
+                    severity=request.form.get("severity", "medium"),
+                    title=request.form.get("title", ""),
+                    summary=request.form.get("summary", ""),
+                    reporter_id=session.get("user_id", "dashboard"),
+                    source="dashboard",
+                )
+            except ValueError as exc:
+                abort(400, str(exc))
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "wolfchronicle.create", session.get("user_id"), f"Vorfall {incident['id']} erstellt")
+        elif action == "update":
+            incident_id = request.form.get("incident_id", "")
+            status = request.form.get("status", "")
+            note = request.form.get("resolution_note", "")
+            try:
+                updated = update_incident(cfg, incident_id, status=status, resolution_note=note)
+            except ValueError as exc:
+                abort(400, str(exc))
+            if updated is None:
+                abort(404, "Dieser Vorfall wurde nicht gefunden.")
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "wolfchronicle.update", session.get("user_id"), f"Vorfall {updated['id']} → {updated['status_label']}")
+        else:
+            abort(400, "Unbekannte Aktion.")
+        return redirect(url_for("guild_wolfchronicle", guild_id=guild.id))
+
+    incidents = list_incidents(cfg, limit=50)
+    type_options = "".join(
+        '<option value="' + key + '">' + html.escape(label) + '</option>'
+        for key, label in INCIDENT_TYPES.items()
+    )
+    severity_options = "".join(
+        '<option value="' + key + '"' + (' selected' if key == "medium" else '') + '>' +
+        html.escape(label) + '</option>'
+        for key, label in SEVERITIES.items()
+    )
+    status_options = "".join(
+        '<option value="' + key + '">' + html.escape(label) + '</option>'
+        for key, label in STATUSES.items()
+    )
+    cards = []
+    for item in incidents:
+        created = html.escape(str(item.get("created_at", "Unbekannt"))[:19].replace("T", " "))
+        status = item.get("status", "open")
+        status_label = html.escape(str(item.get("status_label", STATUSES.get(status, status))))
+        resolution_note = html.escape(str(item.get("resolution_note", "")))
+        card = (
+            '<section class="card"><div class="pill">' + html.escape(str(item.get("severity_label", "Mittel"))) +
+            ' · ' + status_label + '</div><h2>' + html.escape(str(item.get("title", "Vorfall"))) + '</h2>'
+            '<p class="muted">' + html.escape(str(item.get("type_label", "Sonstiger Vorfall"))) +
+            ' · ID <code>' + html.escape(str(item.get("id", ""))) + '</code> · ' + created + ' UTC</p>'
+            '<p>' + html.escape(str(item.get("summary", ""))) + '</p>'
+        )
+        if status != "resolved":
+            card += (
+                '<form method="post">' + _csrf_field() +
+                '<input type="hidden" name="action" value="update">'
+                '<input type="hidden" name="incident_id" value="' + html.escape(str(item.get("id", "")), quote=True) + '">'
+                '<label>Status<select name="status">' + status_options + '</select></label>'
+                '<label>Abschlussnotiz (optional, wird nur bei „Abgeschlossen“ gespeichert)'
+                '<input type="text" name="resolution_note" maxlength="500" placeholder="z. B. Ursache behoben, Schutz geprüft"></label>'
+                '<button type="submit">Status aktualisieren</button></form>'
+            )
+        elif resolution_note:
+            card += '<p class="notice"><strong>Abschlussnotiz:</strong> ' + resolution_note + '</p>'
+        card += '</section>'
+        cards.append(card)
+    timeline = "".join(cards) if cards else '<section class="card"><h2>Noch keine Vorfälle</h2><p>Erstelle hier einen Eintrag oder nutze im Discord-Server <code>/wolfincident</code>. Beide Wege schreiben in dieselbe serverbezogene Chronik.</p></section>'
+    body = (
+        '<section class="card"><h1>📚 WolfChronicle · Gemeinsames Incident-Center</h1>'
+        '<p class="muted">Ein gemeinsamer Verlauf für Discord und Website. Vorfälle bleiben serverbezogen gespeichert, sind begrenzt auf 100 Einträge und können hier nachverfolgt werden. Es werden keine Nachrichten automatisch gesammelt und keine Strafen ausgeführt.</p>'
+        '<form method="post">' + _csrf_field() +
+        '<input type="hidden" name="action" value="create">'
+        '<div class="grid"><label>Vorfalltyp<select name="incident_type">' + type_options + '</select></label>'
+        '<label>Priorität<select name="severity">' + severity_options + '</select></label></div>'
+        '<label>Titel<input type="text" name="title" maxlength="120" required placeholder="Kurzer, verständlicher Titel"></label>'
+        '<label>Zusammenfassung<textarea name="summary" maxlength="500" required placeholder="Was ist passiert? Keine privaten Nachrichten oder unnötigen personenbezogenen Daten einfügen."></textarea></label>'
+        '<button type="submit">＋ Vorfall dokumentieren</button></form></section>'
+        '<section><h2>Letzte Vorfälle · ' + str(len(incidents)) + '</h2>' + timeline + '</section>'
+        '<section class="card"><h2>Vom Discord aus starten</h2><p><code>/wolfincident</code> legt einen Eintrag an. <code>/wolfincidents</code> zeigt die letzten Vorfälle direkt im Server. Statusänderungen im Dashboard werden beim nächsten Aufruf auch vom Bot gelesen.</p>'
+        '<p><a href="/guild/' + str(guild.id) + '/wolfmirror">WolfMirror öffnen ↗</a> · <a href="/guild/' + str(guild.id) + '/wolfpulse">WolfPulse öffnen ↗</a></p></section>'
+    )
+    return _page("WolfChronicle · Incident-Center", body)
 
 
 @app.route("/guild/<guild_id>/wolfmirror", methods=["GET", "POST"])
