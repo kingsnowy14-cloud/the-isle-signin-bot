@@ -4150,6 +4150,7 @@ async def social_alert_loop():
 _nuke_events = defaultdict(deque)       # (guild_id, actor_id) -> timestamps
 _raid_joins = defaultdict(deque)        # guild_id -> (timestamp, member_id)
 _raid_lockdown_until = {}               # guild_id -> monotonic timestamp
+_raid_last_alert_at = {}               # guild_id -> monotonic timestamp
 _nuke_handled = set()                   # avoid handling the same audit entry twice
 _nuke_handled_order = deque()           # bounds memory use for long-running bots
 
@@ -5039,7 +5040,7 @@ async def on_member_join(member: discord.Member):
         _raid_lockdown_until[guild_id] = lockdown_until
         await security_log(
             member.guild, "🚨 Anti-Raid: Beitrittswelle erkannt",
-            f"**{len(joins)} Mitglieder in {window_seconds} Sekunden.**\\n"
+            f"**{len(joins)} Mitglieder in {window_seconds} Sekunden.**\n"
             f"Schutzphase: {lockdown_seconds} Sekunden · Aktion: {cfg.get('raid_action', 'timeout')}.",
             discord.Color.red(),
         )
@@ -5073,12 +5074,20 @@ async def on_member_join(member: discord.Member):
                     discord.Color.red(),
                 )
         elif action == "alert":
-            await security_log(
-                member.guild, "🔎 Anti-Raid: Beitritt während Schutzphase",
-                f"{member.mention} (`{member.id}`) ist während der Schutzphase beigetreten. "
-                f"Accountalter: {account_age_days} Tage; keine automatische Moderationsaktion konfiguriert.",
-                discord.Color.orange(),
-            )
+            # Avoid flooding the configured log channel during a large raid.
+            last_alert = _raid_last_alert_at.get(guild_id, 0)
+            if now - last_alert >= 15:
+                _raid_last_alert_at[guild_id] = now
+                age_note = f"Accountalter: {account_age_days} Tage."
+                if min_account_age_days and account_age_days < min_account_age_days:
+                    age_note += f" Unter der konfigurierten Altersgrenze von {min_account_age_days} Tagen."
+                await security_log(
+                    member.guild, "🔎 Anti-Raid: Beitritt während Schutzphase",
+                    f"Mindestens ein Mitglied ist während der Schutzphase beigetreten. "
+                    f"Letzter erfasster Beitritt: {member.mention} (`{member.id}`). {age_note} "
+                    "Keine automatische Moderationsaktion konfiguriert; weitere Hinweise werden gedrosselt.",
+                    discord.Color.orange(),
+                )
 
 
 @bot.event
