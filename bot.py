@@ -6530,16 +6530,56 @@ async def module_status_command(interaction: discord.Interaction):
 # Seasonal Halloween, Christmas and Advent commands removed.
 
 
+_server_statistics_task = None
+
+
+async def server_statistics_worker():
+    """Refresh configured statistics voice-channel names periodically."""
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        for guild in list(bot.guilds):
+            try:
+                cfg = guild_config(guild.id)
+                raw_channel_id = cfg.get("server_statistics_channel")
+                if not raw_channel_id:
+                    continue
+                channel = guild.get_channel(int(raw_channel_id))
+                if not isinstance(channel, discord.VoiceChannel):
+                    continue
+                me = guild.me
+                if me is None or not me.guild_permissions.manage_channels:
+                    print(f"[SERVER-STATS] Missing Manage Channels permission in guild {guild.id}.", flush=True)
+                    continue
+                members = list(guild.members)
+                total = int(guild.member_count or len(members))
+                bots = sum(1 for member in members if member.bot)
+                boosters = int(guild.premium_subscription_count or 0)
+                new_name = f"👥 {total} · 🤖 {bots} · 🚀 {boosters}"[:100]
+                if channel.name != new_name:
+                    await channel.edit(name=new_name, reason="IronWolf: Server-Statistik aktualisieren")
+                    print(f"[SERVER-STATS] Updated voice channel for guild {guild.id}: {new_name}", flush=True)
+            except (ValueError, TypeError):
+                print(f"[SERVER-STATS] Invalid channel configuration for guild {guild.id}.", flush=True)
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[SERVER-STATS] Could not update guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+            except Exception as exc:
+                print(f"[SERVER-STATS] Unexpected error in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+        await asyncio.sleep(300)
+
+
 @bot.event
 async def on_ready():
     migrate_all_guild_configs()
     global _automation_worker_task
     global _birthday_worker_task
+    global _server_statistics_task
     record_module_changes()
     if _automation_worker_task is None or _automation_worker_task.done():
         _automation_worker_task = asyncio.create_task(premium_automation_worker(), name="premium-automation-worker")
     if _birthday_worker_task is None or _birthday_worker_task.done():
         _birthday_worker_task = asyncio.create_task(birthday_worker(), name="birthday-worker")
+    if _server_statistics_task is None or _server_statistics_task.done():
+        _server_statistics_task = asyncio.create_task(server_statistics_worker(), name="server-statistics-worker")
     # Start tracking members already in voice after a bot start/reconnect.
     # Only seed sessions that are not already tracked to avoid resetting time
     # when Discord reconnects the bot.
