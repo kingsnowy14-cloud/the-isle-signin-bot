@@ -1288,7 +1288,7 @@ def teamlist_dashboard(guild_id):
             print(f"[DASHBOARD] Teamliste konnte Mitglieder für Guild {gid} nicht abrufen: {type(exc).__name__}: {exc}", flush=True)
             members_html += '<div class="notice">Die Mitgliederliste konnte nicht geladen werden. Prüfe, ob der Bot online ist und der privilegierte „Server Members Intent“ im Discord Developer Portal aktiviert ist.</div>'
     members_html += '</section>'
-    body = f'<span class="pill">IRONWOLF · TEAMLISTE</span><h1 style="margin-top:12px">👥 Teamliste · {html.escape(guild.name)}</h1><p class="muted">Die Teamliste nutzt die aktuellen Discord-Rollen und kann in einen Kanal gesendet werden.</p><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a></div>' + form + members_html
+    body = f'<span class="pill">IRONWOLF · TEAMLISTE</span><h1 style="margin-top:12px">👥 Teamliste · {html.escape(guild.name)}</h1><p class="muted">Die Teamliste nutzt die aktuellen Discord-Rollen und kann in einen Kanal gesendet werden.</p><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a><a href="/guild/{gid}/isle-roster">🦖 The Isle Spieler</a></div>' + form + members_html
     return _render("Teamliste", body)
 
 
@@ -2495,6 +2495,56 @@ def guild_live_stats(guild_id):
         '<p class="muted">Aktivitätswerte stammen aus gespeicherten Bot-Statistiken und sind keine Echtzeit-Zeitreihe.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
     )
     return _render(guild.name + " · Live-Statistiken", body)
+
+@app.route("/guild/<guild_id>/isle-roster", methods=["GET"])
+def guild_isle_roster(guild_id):
+    """Show the selected guild's currently signed-in The Isle players."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    dashboard_data = getattr(_bot, "dashboard_data", {})
+    registrations_root = dashboard_data.get("registrations", {}) if isinstance(dashboard_data, dict) else {}
+    records = registrations_root.get(str(guild.id), {}) if isinstance(registrations_root, dict) else {}
+    rows = []
+    if isinstance(records, dict):
+        for user_id, record in records.items():
+            if not isinstance(record, dict):
+                continue
+            dinosaur = record.get("dinosaur")
+            location = record.get("location")
+            skin = record.get("skin", "")
+            if not isinstance(dinosaur, str) or not dinosaur.strip() or not isinstance(location, str) or not location.strip():
+                continue
+            member = guild.get_member(int(user_id)) if str(user_id).isdigit() else None
+            player_name = member.display_name if member else ("Discord-ID " + str(user_id))
+            signed_at = str(record.get("signed_in_at", ""))
+            try:
+                parsed = datetime.fromisoformat(signed_at.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                signed_label = parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+            except (TypeError, ValueError):
+                signed_label = "Unbekannt"
+            rows.append(
+                "<tr><td>" + html.escape(player_name) + "</td><td>" + html.escape(dinosaur.strip()) +
+                "</td><td>" + html.escape(skin.strip() if isinstance(skin, str) else "") +
+                "</td><td>" + html.escape(location.strip()) + "</td><td>" + html.escape(signed_label) + "</td></tr>"
+            )
+    rows.sort(key=lambda row: row.casefold())
+    table = (
+        '<div style="overflow-x:auto"><table><thead><tr><th>Spieler</th><th>Dinosaurier</th><th>Skin</th><th>Standort</th><th>Angemeldet seit</th></tr></thead><tbody>'
+        + ("".join(rows) if rows else '<tr><td colspan="5">Aktuell sind keine gültigen Spieler-Anmeldungen gespeichert.</td></tr>')
+        + '</tbody></table></div>'
+    )
+    body = (
+        '<section class="card"><span class="pill">THE ISLE · LIVE ROSTER</span><h1>🦖 Spieler-Anmeldungen</h1>'
+        '<p class="muted">Aktuell gespeicherte Anmeldungen dieses Servers. Die Liste wird beim Neuladen aktualisiert.</p>'
+        '<div class="notice"><strong>' + str(len(rows)) + '</strong> aktive Anmeldung(en)</div>'
+        + table + '<p class="muted">Die Übersicht zeigt nur gültige Datensätze. Für aktuelle Namen muss der Spieler im Discord-Cache verfügbar sein.</p>'
+        + '<a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
+    )
+    return _render(guild.name + " · The Isle Spieler", body)
+
 
 @app.route("/admin/premium-servers", methods=["GET", "POST"])
 def dashboard_premium_servers_admin():
