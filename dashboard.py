@@ -1575,7 +1575,7 @@ def guild_reaction_roles(guild_id):
         channel_raw = request.form.get("channel_id", "").strip()
         message_text = request.form.get("message_text", "").strip()
         role_raw = request.form.get("role_id", "").strip()
-        emoji = request.form.get("emoji", "").strip()
+        emoji = (request.form.get("emoji", "").strip() or request.form.get("emoji_manual", "").strip())
         valid_channels = {str(item.id): item for item in guild.text_channels}
         valid_roles = {str(item.id): item for item in guild.roles}
         if channel_raw not in valid_channels:
@@ -1613,6 +1613,11 @@ def guild_reaction_roles(guild_id):
     roles = _guild_roles(guild)
     channel_options = '<option value="">— Textkanal auswählen —</option>' + ''.join(f'<option value="{cid}">{html.escape(name)}</option>' for cid, name in channels)
     role_options = '<option value="">— Rolle auswählen —</option>' + ''.join(f'<option value="{rid}">{html.escape(name)}</option>' for rid, name in roles)
+    server_emojis = sorted(guild.emojis, key=lambda item: item.name.lower())
+    emoji_options = '<option value="">— Server-Emoji auswählen —</option>' + ''.join(
+        f'<option value="{html.escape(str(item), quote=True)}">{html.escape(item.name)} {html.escape(str(item))}</option>'
+        for item in server_emojis
+    )
     body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🎭 Reaktionsrollen</h1><p class="muted">Schreibe deine Nachricht, wähle Kanal, Emoji und Rolle aus. Der Bot sendet die Nachricht und fügt das Emoji automatisch hinzu. Bei Reaktion wird die Rolle vergeben; beim Entfernen der Reaktion wird sie entfernt.</p>'
     if request.args.get("saved") == "added":
         body += '<div class="notice">✅ Reaktionsrolle gespeichert und Emoji zur Nachricht hinzugefügt.</div>'
@@ -1621,7 +1626,10 @@ def guild_reaction_roles(guild_id):
     body += '<section class="card"><h2>＋ Reaktionsrolle erstellen & Nachricht senden</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add">'
     body += '<label for="channel_id">Textkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
     body += '<label for="message_text">Deine Nachricht</label><textarea id="message_text" name="message_text" required maxlength="2000" rows="5" placeholder="Schreibe hier die Nachricht, die im ausgewählten Kanal erscheinen soll …"></textarea><small>Maximal 2000 Zeichen. Die Nachricht wird vom Bot gesendet.</small>'
-    body += '<label for="emoji">Emoji</label><input id="emoji" name="emoji" type="text" required maxlength="100" placeholder="✅ oder <:emoji:123456789012345678>">'
+    body += '<label for="emoji">Server-Emoji auswählen</label><select id="emoji" name="emoji">' + emoji_options + '</select>'
+    if not server_emojis:
+        body += '<p class="muted">Auf diesem Server sind keine benutzerdefinierten Emojis verfügbar. Du kannst stattdessen ein normales Emoji eingeben.</p>'
+    body += '<label for="emoji_manual">Oder normales Emoji manuell eingeben</label><input id="emoji_manual" name="emoji_manual" type="text" maxlength="100" placeholder="z. B. ✅ (optional, überschreibt die Auswahl)">'
     body += '<label for="role_id">Zu vergebende Rolle</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">📨 Nachricht senden & Reaktionsrolle erstellen</button></form></section>'
     body += '<section class="card"><h2>📋 Konfigurierte Reaktionsrollen</h2>'
     if not records:
