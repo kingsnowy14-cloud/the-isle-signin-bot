@@ -150,7 +150,8 @@ def _page(title, body):
         + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
-        + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a><span></span>'
+        + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
+        + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
