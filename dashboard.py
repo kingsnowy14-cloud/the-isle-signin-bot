@@ -320,24 +320,30 @@ async def _steam_grant_guild_role(guild_id, discord_id, nickname=None, provider=
             )
             nickname_status = "nickname_failed"
 
-    # Surface nickname failures even if the verification role is granted successfully.
-    if nickname_status in {"nickname_failed", "nickname_missing"}:
-        return nickname_status
-
+    # Still attempt role assignment if nickname editing fails; report nickname failures afterward.
     role_id = cfg.get("verified_accounts_role_id")
     if not role_id:
-        return "not_configured" if nickname_status != "nickname_set" else "nickname_set"
-    role = guild.get_role(int(role_id))
-    if role is None or role.is_default() or role.managed:
-        return "invalid_role"
-    if role in member.roles:
-        return "already_has_role" if nickname_status != "nickname_set" else "nickname_set"
-    try:
-        await member.add_roles(role, reason=f"{provider}-Konto erfolgreich über den offiziellen Anbieter verifiziert")
-    except (discord.Forbidden, discord.HTTPException) as exc:
-        print(f"[GAMING LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
-        return "role_failed"
-    return "granted" if nickname_status != "nickname_set" else "nickname_set"
+        role_result = "not_configured"
+    else:
+        role = guild.get_role(int(role_id))
+        if role is None or role.is_default() or role.managed:
+            role_result = "invalid_role"
+        elif role in member.roles:
+            role_result = "already_has_role"
+        else:
+            try:
+                await member.add_roles(role, reason=f"{provider}-Konto erfolgreich über den offiziellen Anbieter verifiziert")
+                role_result = "granted"
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[GAMING LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
+                role_result = "role_failed"
+
+    # Make nickname failures visible instead of masking them with a successful role result.
+    if nickname_status in {"nickname_failed", "nickname_missing"}:
+        return nickname_status
+    if nickname_status == "nickname_set":
+        return "nickname_set"
+    return role_result
 
 
 @app.route("/gaming/steam/start")
@@ -438,8 +444,6 @@ def steam_link_callback():
         role_text = "Steam wurde verknüpft, aber Discord hat die Nickname-Änderung abgelehnt. Prüfe „Spitznamen verwalten“ und die Rollen-Hierarchie des Bots; Details stehen in den Railway-Logs."
     elif role_status == "nickname_missing":
         role_text = "Steam wurde verknüpft, aber IronWolf konnte keinen öffentlichen Steam-Profilnamen abrufen. Stelle dein Steam-Profil auf öffentlich und versuche es erneut."
-    elif role_status == "nickname_disabled":
-        role_text = "Steam wurde verknüpft, aber die Nickname-Automatik ist im Dashboard deaktiviert."
     elif role_status == "nickname_set":
         role_text = "Dein Discord-Nickname wurde auf deinen Steam-Namen gesetzt."
     elif role_status in {"granted", "already_has_role"}:
@@ -670,8 +674,6 @@ def roblox_link_callback():
         role_text = "Roblox wurde verknüpft, aber Discord hat die Nickname-Änderung abgelehnt. Prüfe „Spitznamen verwalten“ und die Rollen-Hierarchie des Bots; Details stehen in den Railway-Logs."
     elif role_status == "nickname_missing":
         role_text = "Roblox wurde verknüpft, aber IronWolf hat keinen Roblox-Nutzernamen für die Nickname-Änderung erhalten. Prüfe die Roblox-Profilantwort und die Railway-Logs."
-    elif role_status == "nickname_disabled":
-        role_text = "Roblox wurde verknüpft, aber die Nickname-Automatik ist im Dashboard deaktiviert."
     elif role_status == "nickname_set":
         role_text = "Dein Discord-Nickname wurde auf deinen Roblox-Namen gesetzt."
     elif role_status in {"granted", "already_has_role"}:
