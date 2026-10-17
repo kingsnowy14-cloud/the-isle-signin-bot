@@ -7539,7 +7539,9 @@ async def englisch_command(ctx):
         # Use MyMemory instead of Google Translate: Google was rate-limiting the
         # Railway server IP and causing every channel rename to fail.
         from deep_translator import MyMemoryTranslator
-        translator = MyMemoryTranslator(source="de", target="en")
+        # MyMemory's language validator in deep-translator versions can reject
+        # ISO codes here; use the canonical language names instead.
+        translator = MyMemoryTranslator(source="german", target="english")
     except Exception as exc:
         print(f"[ENGLISH TRANSLATION] Translator initialization failed: {type(exc).__name__}: {exc}", flush=True)
         await ctx.reply(
