@@ -235,7 +235,7 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 .selection-summary{{font-size:12px;color:var(--muted);margin-left:auto}}
 {custom_theme_css}
 html[data-theme="light"]{{--bg:#f3f6fb;--panel:#ffffff;--panel2:#e9eef7;--text:#172033;--muted:#59677d;--border:rgba(44,62,91,.18);--shadow:0 16px 45px rgba(25,42,70,.10);--glow:rgba(91,141,255,.08);color-scheme:light}}
-html[data-theme="light"] body{{background:linear-gradient(180deg,#edf3fc 0%,var(--bg) 60%,#f8faff 100%);color:var(--text)}}
+html[data-theme="light"]{{background:#fff!important;color-scheme:light}}html[data-theme="light"] body{{background:#fff!important;color:#172033}}html[data-theme="light"] main{{background:#fff!important;color:#172033}}
 html[data-theme="light"] nav{{background:rgba(248,250,255,.92);border-bottom-color:var(--border);box-shadow:0 8px 30px rgba(25,42,70,.08)}}
 html[data-theme="light"] .card,html[data-theme="light"] .notice,html[data-theme="light"] .section-nav,html[data-theme="light"] .command-group{{background:#fff;border-color:var(--border);color:var(--text);box-shadow:0 10px 28px rgba(25,42,70,.04)}}
 html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),html[data-theme="light"] textarea,html[data-theme="light"] select,html[data-theme="light"] .select-search-wrap input{{background-color:#fff;color:var(--text);border-color:var(--border)}}
