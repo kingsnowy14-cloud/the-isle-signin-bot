@@ -7600,12 +7600,25 @@ async def englisch_command(ctx):
                 )
                 continue
 
-            new_name = translated.strip()[:100]
+            # Preserve leading emojis/symbols from the original channel name.
+            # Translation providers often drop emojis (e.g. 👋・ or 🎮・).
+            original_prefix = ""
+            for char in old_name:
+                if char.isalnum():
+                    break
+                original_prefix += char
+
+            translated_body = translated.strip()[:100].lstrip()
+            while translated_body and not translated_body[0].isalnum():
+                translated_body = translated_body[1:]
+
             if not isinstance(channel, discord.CategoryChannel):
                 # Discord channel names should be lowercase slugs; retain Unicode letters.
-                new_name = re.sub(r"\s+", "-", new_name.lower())
-                new_name = re.sub(r"[!@#$%^&*()=+\[\]{}|\\:;\"'<>,.?/]", "", new_name)
-                new_name = re.sub(r"-{2,}", "-", new_name).strip("-") or old_name
+                translated_body = re.sub(r"\\s+", "-", translated_body.lower())
+                translated_body = re.sub(r"[!@#$%^&*()=+\\[\\]{}|\\\\:;\\"'<>,.?/]", "", translated_body)
+                translated_body = re.sub(r"-{2,}", "-", translated_body).strip("-")
+
+            new_name = (original_prefix + translated_body).strip()[:100] or old_name
             if new_name == old_name:
                 unchanged += 1
                 await asyncio.sleep(0.25)
