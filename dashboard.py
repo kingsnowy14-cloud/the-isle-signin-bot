@@ -1649,17 +1649,26 @@ def guild_feedback(guild_id):
         title = request.form.get("title", "Feedback").strip()[:45] or "Feedback"
         description = request.form.get("description", "").strip()[:4000]
         channel_raw = request.form.get("channel_id", "").strip()
+        panel_channel_raw = request.form.get("panel_channel_id", "").strip()
         enabled = request.form.get("enabled") == "on"
         valid_channels = {str(item.id): item for item in guild.text_channels}
         if channel_raw not in valid_channels:
-            abort(400, "Bitte wähle einen gültigen Feedback-Zielkanal.")
+            abort(400, "Bitte wähle einen gültigen Kanal für eingehendes Feedback.")
+        if panel_channel_raw not in valid_channels:
+            panel_channel_raw = str(cfg.get("feedback_panel_channel_id") or channel_raw)
+        if panel_channel_raw not in valid_channels:
+            abort(400, "Bitte wähle einen gültigen Kanal für das Feedback-Panel.")
         channel = valid_channels[channel_raw]
+        panel_channel = valid_channels[panel_channel_raw]
         me = guild.me
-        if me is None or not channel.permissions_for(me).send_messages or not channel.permissions_for(me).embed_links:
-            abort(400, "Der Bot benötigt im Feedback-Kanal die Rechte „Nachrichten senden“ und „Links einbetten“.")
+        for target in (channel, panel_channel):
+            if me is None or not target.permissions_for(me).send_messages or not target.permissions_for(me).embed_links:
+                abort(400, "Der Bot benötigt in beiden Feedback-Kanälen die Rechte „Nachrichten senden“ und „Links einbetten“.")
         cfg["feedback_title"] = title
         cfg["feedback_description"] = description
         cfg["feedback_channel_id"] = int(channel_raw)
+        cfg["feedback_submission_channel_id"] = int(channel_raw)
+        cfg["feedback_panel_channel_id"] = int(panel_channel_raw)
         cfg["feedback_enabled"] = enabled
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Feedback-Modul", session.get("user_id"), f"Feedback {'aktiviert' if enabled else 'deaktiviert'}; Zielkanal #{channel.name}")
@@ -1673,18 +1682,23 @@ def guild_feedback(guild_id):
             )
             embed.set_footer(text="IronWolf · Feedback")
             async def _publish_feedback_panel():
-                return await channel.send(embed=embed, view=_bot.AnonymousFeedbackView(), allowed_mentions=discord.AllowedMentions.none())
+                return await panel_channel.send(embed=embed, view=_bot.AnonymousFeedbackView(), allowed_mentions=discord.AllowedMentions.none())
             try:
                 asyncio.run_coroutine_threadsafe(_publish_feedback_panel(), _bot.loop).result(timeout=20)
             except Exception as exc:
                 abort(400, "Feedback-Panel konnte nicht gesendet werden: " + (str(exc) or type(exc).__name__)[:250])
-            _audit_dashboard_change(guild.id, "Feedback-Modul", session.get("user_id"), f"Feedback-Panel in #{channel.name} veröffentlicht")
+            _audit_dashboard_change(guild.id, "Feedback-Modul", session.get("user_id"), f"Feedback-Panel in #{panel_channel.name} veröffentlicht; Einsendungen nach #{channel.name}")
             return redirect(url_for("guild_feedback", guild_id=gid, saved="published"))
         return redirect(url_for("guild_feedback", guild_id=gid, saved="saved"))
     channels = _guild_channels(guild)
-    selected_channel = str(cfg.get("feedback_channel_id") or "")
-    channel_options = '<option value="">— Feedback-Kanal auswählen —</option>' + ''.join(
+    selected_channel = str(cfg.get("feedback_submission_channel_id") or cfg.get("feedback_channel_id") or "")
+    selected_panel_channel = str(cfg.get("feedback_panel_channel_id") or selected_channel)
+    channel_options = '<option value="">— Kanal auswählen —</option>' + ''.join(
         '<option value="' + str(cid) + '"' + (' selected' if str(cid) == selected_channel else '') + '>' + html.escape(name) + '</option>'
+        for cid, name in channels
+    )
+    panel_channel_options = '<option value="">— Panel-Kanal auswählen —</option>' + ''.join(
+        '<option value="' + str(cid) + '"' + (' selected' if str(cid) == selected_panel_channel else '') + '>' + html.escape(name) + '</option>'
         for cid, name in channels
     )
     title_value = html.escape(str(cfg.get("feedback_title") or "💬 Feedback"), quote=True)
@@ -1699,11 +1713,12 @@ def guild_feedback(guild_id):
     body += '<section class="card"><h2>⚙️ Feedback-Modul einstellen</h2><form method="post">' + _csrf_field()
     body += '<input type="hidden" name="action" value="save"><label for="title">Titel der Nachricht</label><input id="title" name="title" maxlength="45" required value="' + title_value + '">'
     body += '<label for="description">Beschreibung</label><textarea id="description" name="description" maxlength="4000" rows="5">' + description_value + '</textarea>'
-    body += '<label for="channel_id">Kanal für eingehendes Feedback und das Panel</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
+    body += '<label for="channel_id">Kanal für abgesendete Feedback-Nachrichten</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
+    body += '<label for="panel_channel_id">Kanal, in dem das Feedback-Panel veröffentlicht wird</label><select id="panel_channel_id" name="panel_channel_id" required>' + panel_channel_options + '</select>'
     body += '<div class="check"><input id="enabled" type="checkbox" name="enabled"' + checked + '><label for="enabled">Feedback-Modul aktivieren</label></div>'
     body += '<button type="submit">💾 Einstellungen speichern</button></form>'
     body += '<form method="post" style="margin-top:14px">' + _csrf_field() + '<input type="hidden" name="action" value="publish">'
-    body += '<input type="hidden" name="title" value="' + title_value + '"><input type="hidden" name="description" value="' + description_value + '"><input type="hidden" name="channel_id" value="' + html.escape(selected_channel, quote=True) + '">'
+    body += '<input type="hidden" name="title" value="' + title_value + '"><input type="hidden" name="description" value="' + description_value + '"><input type="hidden" name="channel_id" value="' + html.escape(selected_channel, quote=True) + '"><input type="hidden" name="panel_channel_id" value="' + html.escape(selected_panel_channel, quote=True) + '">'
     body += '<input type="hidden" name="enabled" value="' + ('on' if cfg.get("feedback_enabled", False) else '') + '">'
     body += '<button type="submit" class="secondary">📨 Feedback-Panel im ausgewählten Kanal veröffentlichen</button></form></section>'
     body += '<section class="card"><h2>🔒 Anonymität</h2><p>Im Feedback-Kanal werden nur der Feedback-Text, der konfigurierte Titel und der Zeitpunkt angezeigt. Der Bot hängt keine Absender-ID und keinen Benutzernamen an. Beachte: Discord selbst und Server-Administratoren mit Zugriff auf Logs oder externe Protokolle können außerhalb dieser Nachricht eventuell technische Informationen sehen.</p></section>'
