@@ -63,6 +63,7 @@ class WolfChronicleTests(unittest.TestCase):
         self.assertIsNone(update_incident({}, "missing", status="resolved"))
         self.assertEqual(list_incidents({"wolfchronicle_incidents": "invalid"}), [])
         self.assertEqual(list_incidents({"wolfchronicle_incidents": [{"id": "x"}]}), [])
+        self.assertEqual(list_incidents({"wolfchronicle_incidents": [{"id": "x", "type": [], "severity": {}, "status": []}]}), [])
 
     def test_supported_types_are_documented(self):
         self.assertIn("raid", INCIDENT_TYPES)
