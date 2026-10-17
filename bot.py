@@ -2696,7 +2696,7 @@ class AnonymousFeedbackModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         cfg = guild_config(self.guild_id)
         try:
-            channel_id = int(cfg.get("feedback_channel_id") or 0)
+            channel_id = int(cfg.get("feedback_submission_channel_id") or cfg.get("feedback_channel_id") or 0)
         except (TypeError, ValueError):
             channel_id = 0
         channel = interaction.guild.get_channel(channel_id) if interaction.guild else None
