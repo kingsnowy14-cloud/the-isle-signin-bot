@@ -975,8 +975,8 @@ class TicketPanelSelect(discord.ui.Select):
                 label=str(label)[:100],
                 value=str(index),
                 description=(str(descriptions[index]).strip()[:100] or None)
-                if index < len(descriptions) and str(descriptions[index]).strip()
-                else f"Ticket-Anfrage: {str(label)[:90]}",
+                if index < len(descriptions)
+                else None,
             )
             for index, label in enumerate(labels[:10])
         ]
