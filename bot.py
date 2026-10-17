@@ -6859,6 +6859,53 @@ async def filmserver_error(ctx, error):
         await ctx.reply(f"❌ Fehler bei !filmserver: {error}", mention_author=False)
 
 
+
+@bot.tree.command(name="wolfcheck", description="Prüft wichtige IronWolf-Kanäle und Bot-Berechtigungen")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def wolfcheck_command(interaction: discord.Interaction):
+    """Run the same quick readiness checks available in the web dashboard."""
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    cfg = guild_config(guild.id)
+    me = guild.me
+    checks = [
+        ("Willkommenskanal", cfg.get("welcome_channel")),
+        ("Verifizierungskanal", cfg.get("verify_channel")),
+        ("Moderations-Logkanal", cfg.get("log_channel_id")),
+        ("Sicherheits-Logkanal", cfg.get("security_log_channel")),
+    ]
+    lines = []
+    ready = 0
+    for label, raw_id in checks:
+        channel = guild.get_channel(int(raw_id)) if str(raw_id or "").isdigit() else None
+        if channel is not None:
+            ready += 1
+            lines.append(f"✅ **{label}:** {channel.mention}")
+        else:
+            lines.append(f"⚠️ **{label}:** nicht eingerichtet")
+    permissions = [
+        ("Nachrichten senden", bool(me and me.guild_permissions.send_messages)),
+        ("Nachrichtenverlauf lesen", bool(me and me.guild_permissions.read_message_history)),
+        ("Kanäle verwalten", bool(me and me.guild_permissions.manage_channels)),
+        ("Rollen verwalten", bool(me and me.guild_permissions.manage_roles)),
+        ("Mitglieder moderieren", bool(me and me.guild_permissions.moderate_members)),
+    ]
+    lines.extend(f'{"✅" if enabled else "⚠️"} **Recht · {label}:** {"OK" if enabled else "prüfen"}'
+                 for label, enabled in permissions)
+    embed = create_embed(
+        title="🐺 IronWolf · WolfPulse",
+        description="\n".join(lines),
+        color=discord.Color.green() if ready == len(checks) and all(v for _, v in permissions) else discord.Color.orange(),
+    )
+    embed.add_field(name="Kanal-Konfiguration", value=f"{ready}/{len(checks)} geprüft", inline=True)
+    embed.add_field(name="Server", value=discord.utils.escape_markdown(guild.name[:100]), inline=True)
+    embed.set_footer(text="WolfPulse · Diagnose ohne Änderungen an deiner Konfiguration")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
