@@ -1673,7 +1673,7 @@ def guild_feedback(guild_id):
             )
             embed.set_footer(text="IronWolf · Feedback")
             async def _publish_feedback_panel():
-                return await channel.send(embed=embed, view=AnonymousFeedbackView(), allowed_mentions=discord.AllowedMentions.none())
+                return await channel.send(embed=embed, view=_bot.AnonymousFeedbackView(), allowed_mentions=discord.AllowedMentions.none())
             try:
                 asyncio.run_coroutine_threadsafe(_publish_feedback_panel(), _bot.loop).result(timeout=20)
             except Exception as exc:
