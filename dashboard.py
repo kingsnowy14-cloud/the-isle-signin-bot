@@ -3049,8 +3049,15 @@ def start_dashboard(bot, config, save_json, guild_config):
     if not _env("DASHBOARD_SECRET_KEY"):
         print("[DASHBOARD] WARNING: DASHBOARD_SECRET_KEY is not set; sessions will reset on restart.", flush=True)
     port = int(os.getenv("PORT", "8080"))
+    def run_dashboard():
+        try:
+            from waitress import serve
+            serve(app, host="0.0.0.0", port=port, threads=8)
+        except Exception as exc:
+            print(f"[DASHBOARD] Production server failed: {type(exc).__name__}: {exc}", flush=True)
+
     thread = threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True),
+        target=run_dashboard,
         name="ironwolf-dashboard",
         daemon=True,
     )
