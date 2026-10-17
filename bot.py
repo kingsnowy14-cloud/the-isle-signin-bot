@@ -3793,13 +3793,47 @@ async def suggestion_channel_set(interaction: discord.Interaction, kanal: discor
 
 @bot.tree.command(name="event-create", description="Veröffentliche eine Community-Veranstaltung")
 @app_commands.checks.has_permissions(manage_events=True)
+@app_commands.describe(titel="Kurzer Event-Titel", datum="Datum und Uhrzeit mit Zeitzone", beschreibung="Details zur Veranstaltung")
 async def event_create(interaction: discord.Interaction, titel: str, datum: str, beschreibung: str):
-    embed = create_embed(title=f"📅 {titel[:250]}", description=f"**Wann:** {datum[:200]}\n\n{beschreibung[:3000]}\n\nReagiere mit 📅, wenn du teilnehmen möchtest.", color=discord.Color.blurple())
-    await interaction.response.send_message("Event veröffentlicht.", ephemeral=True)
-    msg = await interaction.channel.send(embed=embed)
-    await msg.add_reaction("📅")
-    data.setdefault("events", {}).setdefault(str(interaction.guild_id), []).append({"message_id": msg.id, "title": titel[:250], "date": datum[:200], "created_by": interaction.user.id})
+    if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+        await interaction.response.send_message("Dieser Befehl funktioniert nur in einem Textkanal auf einem Server.", ephemeral=True)
+        return
+    titel = str(titel).strip()
+    datum = str(datum).strip()
+    beschreibung = str(beschreibung).strip()
+    if not titel or len(titel) > 250 or not datum or len(datum) > 200 or not beschreibung or len(beschreibung) > 3000:
+        await interaction.response.send_message("Bitte gib einen Titel (max. 250 Zeichen), Datum (max. 200) und eine Beschreibung (max. 3000) an.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    embed = create_embed(
+        title="📅 " + discord.utils.escape_markdown(titel),
+        description=f"**Wann:** {discord.utils.escape_markdown(datum)}\n\n{discord.utils.escape_markdown(beschreibung)}\n\nReagiere mit 📅, wenn du teilnehmen möchtest.",
+        color=discord.Color.blurple(),
+    )
+    msg = None
+    try:
+        msg = await interaction.channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        await msg.add_reaction("📅")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        if msg is not None:
+            try:
+                await msg.delete()
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+        print(f"[EVENTS] Could not publish event in guild {interaction.guild_id}: {type(exc).__name__}: {exc}", flush=True)
+        await interaction.followup.send("Das Event konnte nicht veröffentlicht werden. Prüfe die Kanalberechtigungen und versuche es erneut.", ephemeral=True)
+        return
+    data.setdefault("events", {}).setdefault(str(interaction.guild_id), []).append({
+        "message_id": msg.id,
+        "channel_id": interaction.channel_id,
+        "title": titel,
+        "date": datum,
+        "created_by": interaction.user.id,
+        "participant_ids": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
     save_json(DATA_FILE, data)
+    await interaction.followup.send(f"Event veröffentlicht: {msg.jump_url}", ephemeral=True)
 
 
 @bot.tree.command(name="ticket-stats", description="Zeige Support-Ticket-Statistiken")
