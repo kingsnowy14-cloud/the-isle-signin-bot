@@ -3308,3 +3308,66 @@ def start_dashboard(bot, config, save_json, guild_config):
     thread.start()
     bot._dashboard_started = True
     print(f"[DASHBOARD] Listening on 0.0.0.0:{port}", flush=True)
+
+
+@app.route("/guild/<guild_id>/wolfpulse", methods=["GET"])
+def guild_wolfpulse(guild_id):
+    """Read-only server readiness report for the IronWolf Control Center."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    me = guild.me
+    checks = [
+        ("Willkommenskanal", cfg.get("welcome_channel"), "welcome_channel"),
+        ("Verifizierungskanal", cfg.get("verify_channel"), "verify_channel"),
+        ("Moderations-Logkanal", cfg.get("log_channel_id"), "log_channel_id"),
+        ("Sicherheits-Logkanal", cfg.get("security_log_channel"), "security_log_channel"),
+    ]
+    rows = []
+    ready = 0
+    for label, raw_id, key in checks:
+        channel = guild.get_channel(int(raw_id)) if str(raw_id or "").isdigit() else None
+        if channel is not None:
+            ready += 1
+            status = '<span class="pill">Konfiguriert</span>'
+            detail = html.escape(getattr(channel, "mention", channel.name))
+        else:
+            status = '<span class="pill">Offen</span>'
+            detail = "Noch nicht eingerichtet"
+        rows.append(
+            '<div class="card" style="margin:12px 0"><strong>' + html.escape(label) +
+            '</strong><div class="muted" style="margin-top:8px">' + detail +
+            '</div><div style="margin-top:10px">' + status + '</div></div>'
+        )
+    permissions = {
+        "Nachrichten senden": bool(me and me.guild_permissions.send_messages),
+        "Nachrichtenverlauf lesen": bool(me and me.guild_permissions.read_message_history),
+        "Kanäle verwalten": bool(me and me.guild_permissions.manage_channels),
+        "Rollen verwalten": bool(me and me.guild_permissions.manage_roles),
+        "Mitglieder moderieren": bool(me and me.guild_permissions.moderate_members),
+    }
+    permission_rows = []
+    for label, enabled in permissions.items():
+        pill = '<span class="pill">' + ("OK" if enabled else "Prüfen") + '</span>'
+        permission_rows.append('<div class="card" style="margin:12px 0"><strong>' +
+            html.escape(label) + '</strong><div style="margin-top:10px">' + pill + '</div></div>')
+    missing = len(checks) - ready
+    body = (
+        '<section class="card"><h1>🐺 WolfPulse · Server-Check</h1>'
+        '<p class="muted">Live-Prüfung der wichtigsten IronWolf-Einstellungen und Bot-Rechte. '
+        'Diese Seite verändert keine Serverkonfiguration.</p>'
+        '<div class="grid">'
+        '<div class="card"><div class="muted">Mitglieder</div><h2>' + str(guild.member_count or len(guild.members)) + '</h2></div>'
+        '<div class="card"><div class="muted">Text- und Voice-Kanäle</div><h2>' + str(len(guild.channels)) + '</h2></div>'
+        '<div class="card"><div class="muted">Rollen</div><h2>' + str(len(guild.roles)) + '</h2></div>'
+        '<div class="card"><div class="muted">Konfigurationschecks</div><h2>' + str(ready) + '/' + str(len(checks)) + '</h2></div>'
+        '</div></section><section class="card"><h2>Konfiguration</h2>' + ''.join(rows) +
+        '</section><section class="card"><h2>Bot-Berechtigungen</h2>' + ''.join(permission_rows) +
+        '</section><section class="card"><h2>Empfohlene nächste Schritte</h2><p>' +
+        (str(missing) + ' der vier geprüften Kanäle fehlen oder zeigen auf einen nicht verfügbaren Kanal. '
+         'Richte sie im Control Center ein und prüfe anschließend erneut.' if missing else
+         'Alle vier geprüften Kanäle sind eingerichtet. Prüfe zusätzlich die Rechte im jeweiligen Kanal.') +
+        '</p><p><a href="/guild/' + str(guild.id) + '">Zur Server-Konfiguration ↗</a></p></section>'
+    )
+    return _page("WolfPulse", body)
