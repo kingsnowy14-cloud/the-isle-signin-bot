@@ -6575,7 +6575,8 @@ async def on_ready():
         global_synced = await bot.tree.sync()
         print(f"Synced {len(global_synced)} global slash commands.")
         for guild_obj in bot.guilds:
-            bot.tree.copy_global_to(guild=guild_obj)
+            # Do not copy all global commands into each guild: that would recreate
+            # the 100-command limit locally. Global commands sync globally above.
             for command in economy_commands:
                 try:
                     bot.tree.add_command(command, guild=guild_obj)
