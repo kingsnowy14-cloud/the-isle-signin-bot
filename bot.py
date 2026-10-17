@@ -441,22 +441,30 @@ BOT_TRANSLATIONS = {
     "en": {
         "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "This command has been disabled for this server in the web dashboard.",
         "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "This Pro module requires an active Premium+ account linked to this server.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "This module has been disabled for this server in the web dashboard."
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "This module has been disabled for this server in the web dashboard.",
+        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Welcome {mention} to **{server}**! You are member **#{count}**.",
+        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** has left **{server}**. We wish you all the best."
     },
     "cs": {
         "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento příkaz byl pro tento server vypnut ve webovém dashboardu.",
         "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Tento modul Pro vyžaduje aktivní účet Premium+ propojený s tímto serverem.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento modul byl pro tento server vypnut ve webovém dashboardu."
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento modul byl pro tento server vypnut ve webovém dashboardu.",
+        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Vítej {mention} na serveru **{server}**! Jsi člen číslo **{count}**.",
+        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** opustil(a) server **{server}**. Přejeme vše dobré."
     },
     "fr": {
         "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Cette commande a été désactivée pour ce serveur dans le tableau de bord.",
         "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Ce module Pro nécessite un compte Premium+ actif lié à ce serveur.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Ce module a été désactivé pour ce serveur dans le tableau de bord."
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Ce module a été désactivé pour ce serveur dans le tableau de bord.",
+        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Bienvenue {mention} sur **{server}** ! Vous êtes le membre **n° {count}**.",
+        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** a quitté **{server}**. Bonne continuation."
     },
     "es": {
         "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Este comando se ha desactivado para este servidor en el panel web.",
         "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Este módulo Pro requiere una cuenta Premium+ activa vinculada a este servidor.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Este módulo se ha desactivado para este servidor en el panel web."
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Este módulo se ha desactivado para este servidor en el panel web.",
+        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "¡Bienvenido {mention} a **{server}**! Eres el miembro número **{count}**.",
+        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** ha salido de **{server}**. ¡Te deseamos lo mejor!"
     }
 }
 
@@ -5131,6 +5139,8 @@ async def on_member_join(member: discord.Member):
                 welcome_channel = None
         if isinstance(welcome_channel, discord.TextChannel):
             template = cfg.get("welcome_message") or "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**."
+            if template == "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.":
+                template = bot_text(member.guild.id, template)
             welcome_text = (template.replace("{mention}", member.mention)
                             .replace("{user}", discord.utils.escape_markdown(member.display_name))
                             .replace("{server}", discord.utils.escape_markdown(member.guild.name))
@@ -5285,6 +5295,8 @@ async def on_member_remove(member: discord.Member):
         channel = member.guild.get_channel(int(leave_channel_id))
         if isinstance(channel, discord.TextChannel):
             template = cfg.get("leave_message") or "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!"
+            if template == "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!":
+                template = bot_text(member.guild.id, template)
             leave_text = (template.replace("{user}", discord.utils.escape_markdown(member.display_name))
                           .replace("{server}", discord.utils.escape_markdown(member.guild.name))
                           .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
