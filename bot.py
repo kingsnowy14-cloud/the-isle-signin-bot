@@ -7710,7 +7710,7 @@ async def englisch_command(ctx):
             if not isinstance(channel, discord.CategoryChannel):
                 # Discord channel names should be lowercase slugs; retain Unicode letters.
                 translated_body = re.sub(r"\s+", "-", translated_body.lower())
-                translated_body = re.sub(r"""[!@#$%^&*()=+\[\]{}|\\:;"'<>,.?/]""", "", translated_body)
+                translated_body = re.sub(r"[^\\w-]", "", translated_body)
                 translated_body = re.sub(r"-{2,}", "-", translated_body).strip("-")
 
             new_name = (original_prefix + translated_body).strip()[:100] or old_name
