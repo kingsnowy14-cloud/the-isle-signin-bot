@@ -6938,12 +6938,15 @@ async def wolfincident_command(
     interaction: discord.Interaction,
     incident_type: app_commands.Choice[str],
     severity: app_commands.Choice[str],
-    titel: app_commands.Range[str, 1, 120],
-    beschreibung: app_commands.Range[str, 1, 500],
+    titel: str,
+    beschreibung: str,
 ):
     """Create a structured incident that appears in the web dashboard."""
     if interaction.guild is None:
         await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    if len(titel) > 120 or len(beschreibung) > 500:
+        await interaction.response.send_message("❌ Titel maximal 120 Zeichen, Beschreibung maximal 500 Zeichen.", ephemeral=True)
         return
     cfg = guild_config(interaction.guild.id)
     try:
