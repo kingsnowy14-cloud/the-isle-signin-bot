@@ -157,7 +157,8 @@ def _page(title, body):
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
-        + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a><span></span>'
+        + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
+        + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -551,7 +552,8 @@ def index():
         body = """<section class="card hero"><span class="pill">CONTROL CENTER</span><h1 style="margin-top:16px">Dein Server. Deine Regeln.</h1>
 <p>Verwalte deine IronWolf-Server an einem Ort: Einstellungen, Befehle und Modulvorlagen.</p>
 <div class="notice">🔐 Die Anmeldung erfolgt über Discord. Du kannst nur Server verwalten, auf denen du „Server verwalten“ oder Administrator-Rechte besitzt und auf denen der Bot online ist.</div>
-<a class="button" href="/login">Mit Discord anmelden</a>
+<a class="button" href="/login">Mit Discord anmelden</a> <a class="button secondary" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ IronWolf für Windows herunterladen</a>
+<div class="notice">Windows-App: Nach der Installation kann IronWolf beim Windows-Anmelden starten. Die Discord-Anmeldung bleibt weiterhin erforderlich.</div>
 <div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> Fragen oder Nachrichten? <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Tritt unserem Discord bei</a>.</div>
 <h2>Was du hier machen kannst</h2><ul><li>Serverbezogene Einstellungen mit Formularen ändern</li><li>Prefix- und Slash-Befehle einzeln aktivieren/deaktivieren</li><li>Neue Python-Modulvorlagen erstellen und herunterladen</li></ul></section>"""
         if not _oauth_ready():
