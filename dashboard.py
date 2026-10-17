@@ -2356,6 +2356,7 @@ def guild_page(guild_id):
             settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
         if request.args.get("saved") == "1":
             settings_html += '<div class="notice">✅ Änderungen wurden gespeichert.</div>'
+        settings_html += '<div style="display:flex;justify-content:flex-end;margin-top:18px"><button type="submit">💾 Änderungen speichern</button></div>'
         settings_html += '</form></section>'
         if section == "roles":
             settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
