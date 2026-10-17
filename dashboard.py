@@ -2128,7 +2128,7 @@ def guild_verified_accounts(guild_id):
         '<label for="verified_accounts_channel_id">Zielkanal für die Verifizierungs-Nachricht</label>'
         '<select id="verified_accounts_channel_id" name="verified_accounts_channel_id">' + channel_options + '</select>'
         '<label>Rollen nach erfolgreicher Verifizierung <small>Einfach die gewünschten Rollen anklicken – mehrere sind möglich.</small></label>'
-        '<div style="max-height:260px;overflow-y:auto;margin:8px 0 18px">' + (role_options || '<p class="muted">Keine auswählbaren Rollen vorhanden.</p>') + '</div>' +
+        '<div style="max-height:260px;overflow-y:auto;margin:8px 0 18px">' + (role_options or '<p class="muted">Keine auswählbaren Rollen vorhanden.</p>') + '</div>' +
         '<div class="check"><input type="checkbox" id="nickname_enabled" name="nickname_enabled"' + nickname_checked +
         '><label for="nickname_enabled">Discord-Nickname nach erfolgreicher Prüfung auf den Gaming-Namen setzen</label></div>'
         '<h2 style="margin-top:24px">3. Nachrichtentext</h2>'
