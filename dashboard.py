@@ -663,238 +663,11 @@ def roblox_link_callback():
 
 
 
-_EPIC_AUTHORIZE_ENDPOINT = "https://www.epicgames.com/id/authorize"
-_EPIC_TOKEN_ENDPOINT = "https://api.epicgames.dev/epic/oauth/v2/token"
-_EPIC_USERINFO_ENDPOINT = "https://api.epicgames.dev/epic/oauth/v2/userInfo"
-_EPIC_LINK_STORE = data_path("epic_account_links.json")
-_EPIC_LINK_LOCK = threading.Lock()
-_EPIC_LINK_TTL_SECONDS = 600
-
-
-def _epic_callback_config():
-    client_id = _env("EPIC_CLIENT_ID")
-    client_secret = _env("EPIC_CLIENT_SECRET")
-    callback_uri = _env("EPIC_REDIRECT_URI")
-    parsed = urlparse(callback_uri)
-    if not client_id or not client_secret or (
-        parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-        or parsed.query or parsed.fragment or parsed.path != "/gaming/epic/callback"
-    ):
-        raise ValueError(
-            "Epic Games ist noch nicht konfiguriert. Prüfe EPIC_CLIENT_ID, EPIC_CLIENT_SECRET "
-            "und EPIC_REDIRECT_URI in Railway. Die Redirect-URI muss exakt "
-            "https://ironwolf-bot.up.railway.app/gaming/epic/callback sein."
-        )
-    return client_id, client_secret, callback_uri
-
-
-def _epic_read_store_locked():
-    try:
-        value = json.loads(_EPIC_LINK_STORE.read_text(encoding="utf-8"))
-        if isinstance(value, dict):
-            value.setdefault("pending", {})
-            value.setdefault("accounts", {})
-            if isinstance(value["pending"], dict) and isinstance(value["accounts"], dict):
-                return value
-    except (OSError, json.JSONDecodeError):
-        pass
-    return {"pending": {}, "accounts": {}}
-
-
-def _epic_write_store_locked(value):
-    temp = _EPIC_LINK_STORE.with_suffix(".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temp, _EPIC_LINK_STORE)
-
-
-def _create_epic_link_url(guild_id, discord_user_id):
-    if not guild_id:
-        raise ValueError("Epic Games kann nur über einen Verifizierungsbutton innerhalb eines Discord-Servers verknüpft werden.")
-    client_id, client_secret, callback_uri = _epic_callback_config()
-    token = secrets.token_urlsafe(32)
-    now = time.time()
-    with _EPIC_LINK_LOCK:
-        store = _epic_read_store_locked()
-        store["pending"] = {
-            key: row for key, row in store["pending"].items()
-            if isinstance(row, dict) and float(row.get("expires_at", 0) or 0) > now - 86400
-        }
-        store["pending"][token] = {
-            "discord_id": str(discord_user_id), "guild_id": str(guild_id),
-            "created_at": now, "expires_at": now + _EPIC_LINK_TTL_SECONDS, "status": "pending",
-        }
-        _epic_write_store_locked(store)
-    return f"https://{urlparse(callback_uri).netloc}/gaming/epic/start?" + urlencode({"token": token})
-
-
-def _epic_claim_pending(token):
-    now = time.time()
-    with _EPIC_LINK_LOCK:
-        store = _epic_read_store_locked()
-        row = store["pending"].get(token)
-        if not isinstance(row, dict) or row.get("status") != "pending" or float(row.get("expires_at", 0) or 0) <= now:
-            return None
-        row["status"] = "processing"
-        store["pending"][token] = row
-        _epic_write_store_locked(store)
-        return dict(row)
-
-
-def _epic_set_pending_status(token, status):
-    with _EPIC_LINK_LOCK:
-        store = _epic_read_store_locked()
-        row = store["pending"].get(token)
-        if isinstance(row, dict):
-            row["status"] = status
-            store["pending"][token] = row
-            _epic_write_store_locked(store)
-
-
-def _epic_save_verified_account(token, epic_id, username):
-    with _EPIC_LINK_LOCK:
-        store = _epic_read_store_locked()
-        pending = store["pending"].get(token)
-        if not isinstance(pending, dict) or pending.get("status") != "processing":
-            return False, "Der Verknüpfungslink wurde bereits verwendet oder ist abgelaufen."
-        discord_id = str(pending.get("discord_id", ""))
-        guild_id = str(pending.get("guild_id", ""))
-        for owner_id, account in store["accounts"].items():
-            if isinstance(account, dict) and str(account.get("epic_id")) == epic_id and str(owner_id) != discord_id:
-                pending["status"] = "rejected"
-                store["pending"][token] = pending
-                _epic_write_store_locked(store)
-                return False, "Dieses Epic-Games-Konto ist bereits mit einem anderen Discord-Konto verknüpft."
-        existing = store["accounts"].get(discord_id)
-        if isinstance(existing, dict) and str(existing.get("epic_id")) != epic_id:
-            pending["status"] = "rejected"
-            store["pending"][token] = pending
-            _epic_write_store_locked(store)
-            return False, "Dein Discord-Konto ist bereits mit einem anderen Epic-Games-Konto verknüpft. Bitte wende dich an die Serveradministration."
-        account = existing if isinstance(existing, dict) else {
-            "discord_id": discord_id, "epic_id": epic_id,
-            "linked_at": datetime.now(timezone.utc).isoformat(), "guild_ids": [],
-        }
-        account["epic_id"] = epic_id
-        account["username"] = str(username)[:100]
-        guild_ids = account.get("guild_ids", [])
-        if not isinstance(guild_ids, list):
-            guild_ids = []
-        if guild_id not in [str(value) for value in guild_ids]:
-            guild_ids.append(guild_id)
-        account["guild_ids"] = guild_ids
-        account["last_verified_at"] = datetime.now(timezone.utc).isoformat()
-        store["accounts"][discord_id] = account
-        pending["status"] = "linked"
-        pending["epic_id"] = epic_id
-        store["pending"][token] = pending
-        _epic_write_store_locked(store)
-        return True, guild_id
-
-
-@app.route("/gaming/epic/start")
-def epic_link_start():
-    token = request.args.get("token", "")
-    if not token or len(token) > 128:
-        abort(400, "Ungültiger oder fehlender Verknüpfungstoken.")
-    with _EPIC_LINK_LOCK:
-        row = _epic_read_store_locked()["pending"].get(token)
-        pending = dict(row) if isinstance(row, dict) else None
-    if not pending or pending.get("status") != "pending" or float(pending.get("expires_at", 0) or 0) <= time.time():
-        return _render("Epic-Games-Verknüpfung", '<section class="card"><h1>Link abgelaufen</h1><p>Starte die Verknüpfung erneut über Discord.</p></section>', 400)
-    try:
-        client_id, client_secret, callback_uri = _epic_callback_config()
-    except ValueError as exc:
-        return _render("Epic Games nicht eingerichtet", '<section class="card"><h1>Epic Games nicht eingerichtet</h1><p>' + html.escape(str(exc)) + '</p></section>', 503)
-    authorize_url = _EPIC_AUTHORIZE_ENDPOINT + "?" + urlencode({
-        "client_id": client_id, "redirect_uri": callback_uri,
-        "response_type": "code", "scope": "basic_profile", "state": token,
-    })
-    return redirect(authorize_url, code=302)
-
-
-@app.route("/gaming/epic/callback")
-def epic_link_callback():
-    token = request.args.get("state", "")
-    if not token or len(token) > 128:
-        abort(400, "Ungültiger oder fehlender Verknüpfungstoken.")
-    if request.args.get("error"):
-        _epic_set_pending_status(token, "failed")
-        return _render("Epic-Games-Anmeldung abgebrochen", '<section class="card"><h1>Anmeldung abgebrochen</h1><p>Du hast die Epic-Games-Verknüpfung abgebrochen. Starte sie erneut über Discord.</p></section>', 400)
-    code = request.args.get("code", "")
-    if not code or len(code) > 4096:
-        abort(400, "Epic Games hat keinen gültigen Autorisierungscode zurückgegeben.")
-    try:
-        client_id, client_secret, callback_uri = _epic_callback_config()
-    except ValueError as exc:
-        return _render("Epic Games nicht eingerichtet", '<section class="card"><h1>Epic Games nicht eingerichtet</h1><p>' + html.escape(str(exc)) + '</p></section>', 503)
-    pending = _epic_claim_pending(token)
-    if not pending:
-        return _render("Epic-Games-Verknüpfung", '<section class="card"><h1>Link ungültig oder abgelaufen</h1><p>Starte die Verknüpfung erneut über Discord.</p></section>', 400)
-    credentials = base64.b64encode((client_id + ":" + client_secret).encode("utf-8")).decode("ascii")
-    try:
-        token_response = requests.post(
-            _EPIC_TOKEN_ENDPOINT,
-            data={"grant_type": "authorization_code", "code": code, "redirect_uri": callback_uri},
-            headers={"Authorization": "Basic " + credentials, "Content-Type": "application/x-www-form-urlencoded"},
-            timeout=15,
-        )
-        token_response.raise_for_status()
-        access_token = token_response.json().get("access_token")
-        if not isinstance(access_token, str) or not access_token:
-            raise ValueError("Epic token response had no access token")
-        profile_response = requests.get(
-            _EPIC_USERINFO_ENDPOINT,
-            headers={"Authorization": "Bearer " + access_token},
-            timeout=15,
-        )
-        profile_response.raise_for_status()
-        profile = profile_response.json()
-        epic_id = str(profile.get("sub") or profile.get("account_id") or "")
-        username = profile.get("preferred_username") or profile.get("nickname") or profile.get("name") or profile.get("displayName") or ""
-        if not epic_id or len(epic_id) > 128:
-            raise ValueError("Epic userinfo returned an invalid subject")
-    except (requests.RequestException, ValueError, json.JSONDecodeError) as exc:
-        print(f"[EPIC LINK] OAuth verification failed: {type(exc).__name__}", flush=True)
-        _epic_set_pending_status(token, "failed")
-        return _render("Epic-Games-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Epic-Games-Anmeldung konnte nicht bestätigt werden</h1><p>Prüfe die OAuth-App, die Client-Zugangsdaten und die exakt eingetragene Redirect-URI. Bitte starte den Vorgang erneut.</p></section>', 502)
-    saved, result = _epic_save_verified_account(token, epic_id, username)
-    if not saved:
-        return _render("Epic-Games-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Verknüpfung nicht möglich</h1><p>' + html.escape(result) + '</p></section>', 409)
-    guild_id = result
-    role_status = "unavailable"
-    if _bot and getattr(_bot, "loop", None) and _bot.loop.is_running():
-        try:
-            future = asyncio.run_coroutine_threadsafe(
-                _steam_grant_guild_role(guild_id, pending["discord_id"], nickname=username, provider="Epic Games"), _bot.loop
-            )
-            role_status = future.result(timeout=18)
-        except Exception as exc:
-            print(f"[EPIC LINK] Role assignment failed in guild {guild_id}: {type(exc).__name__}", flush=True)
-            role_status = "role_failed"
-    if role_status in {"granted", "already_has_role"}:
-        role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
-    elif role_status == "nickname_set":
-        role_text = "Dein Discord-Nickname wurde auf deinen Epic-Games-Namen gesetzt. Die Rollenvergabe wurde ebenfalls versucht, sofern eine Verifizierungsrolle konfiguriert ist."
-    elif role_status == "not_configured":
-        role_text = "Das Epic-Games-Konto wurde gespeichert. Wähle im Dashboard eine Verifizierungsrolle aus."
-    else:
-        role_text = "Das Epic-Games-Konto wurde gespeichert, aber die Discord-Rolle konnte nicht vergeben werden. Prüfe die Bot-Berechtigung „Rollen verwalten“ und die Rollenposition."
-    return _render(
-        "Epic Games erfolgreich verknüpft",
-        '<section class="card"><h1>✅ Epic Games erfolgreich verknüpft</h1><p>Dein Epic-Games-Konto <strong>' +
-        html.escape(str(username) or epic_id) + '</strong> (ID <code>' + html.escape(epic_id) +
-        '</code>) wurde deinem Discord-Konto zugeordnet.</p><p>' + html.escape(role_text) +
-        '</p><p>Du kannst dieses Fenster jetzt schließen.</p></section>',
-    )
-
-
 class _GamingAccountVerifyView(discord.ui.View):
     """Gaming provider buttons for official provider-owned account verification flows."""
     def __init__(self, enabled_platforms):
         super().__init__(timeout=None)
         details = {
-            "fortnite": ("🎮 Fortnite / Epic Games", discord.ButtonStyle.primary,
-                "Epic Games sicher verknüpfen: Melde dich auf der offiziellen Epic-Games-Seite an. Teile niemals dein Passwort oder einen Login-Code."),
             "steam": ("🚂 Steam", discord.ButtonStyle.secondary,
                 "Steam-Verknüpfung ist noch nicht aktiviert. Dafür muss Steam OpenID mit einer sicheren Rückleitungs-URL eingerichtet werden. Gib dein Steam-Passwort niemals im Discord ein."),
             "roblox": ("🟥 Roblox", discord.ButtonStyle.danger,
@@ -905,25 +678,6 @@ class _GamingAccountVerifyView(discord.ui.View):
                 continue
             button = discord.ui.Button(label=label, style=style, custom_id="gaming_verify:" + key)
             async def callback(interaction, message=explanation, provider=key):
-                if provider == "fortnite":
-                    try:
-                        link_url = _create_epic_link_url(interaction.guild_id, interaction.user.id)
-                    except ValueError as exc:
-                        await interaction.response.send_message(str(exc), ephemeral=True)
-                        return
-                    except Exception as exc:
-                        print(f"[EPIC LINK] Could not create link: {type(exc).__name__}: {exc}", flush=True)
-                        await interaction.response.send_message(
-                            "Der Epic-Games-Link konnte gerade nicht erstellt werden. Bitte prüfe die Railway-Variablen und versuche es später erneut.",
-                            ephemeral=True,
-                        )
-                        return
-                    await interaction.response.send_message(
-                        "🔐 **Epic Games sicher verknüpfen**\nÖffne den Link und melde dich direkt bei Epic Games an. IronWolf fragt niemals dein Passwort ab. Der Link ist 10 Minuten gültig und einmalig.\n"
-                        + link_url,
-                        ephemeral=True,
-                    )
-                    return
                 if provider == "roblox":
                     try:
                         link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
@@ -2160,7 +1914,6 @@ def guild_verified_accounts(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     platforms = {
-        "fortnite": ("🎮", "Epic Games / Fortnite"),
         "steam": ("🚂", "Steam"),
         "roblox": ("🟥", "Roblox"),
     }
@@ -2225,7 +1978,7 @@ def guild_verified_accounts(guild_id):
             "; Nickname-Automatik: " + ("an" if cfg["verified_accounts_nickname_enabled"] else "aus"))
         return redirect(url_for("guild_verified_accounts", guild_id=gid, saved="1"))
 
-    selected = set(cfg.get("verified_accounts_enabled_platforms", ["steam", "roblox", "fortnite"]))
+    selected = set(cfg.get("verified_accounts_enabled_platforms", ["steam", "roblox"]))
     channel_selected = str(cfg.get("verified_accounts_channel_id") or "")
     role_selected = str(cfg.get("verified_accounts_role_id") or "")
     platform_fields = ""
@@ -2264,7 +2017,7 @@ def guild_verified_accounts(guild_id):
         '<label for="verified_accounts_message">Text der Discord-Nachricht <small>Maximal 1800 Zeichen; leer lassen für den Standardtext.</small></label>'
         '<textarea id="verified_accounts_message" name="verified_accounts_message" rows="5" maxlength="1800" placeholder="Wähle den Gaming-Anbieter aus, dessen Konto du verknüpfen möchtest:">' + message_value + '</textarea>'
         '<p class="notice">🔐 Niemals Passwörter oder Login-Codes im Discord-Chat abfragen. Die echten Konto-Anmelde- und Verifizierungsabläufe müssen separat eingerichtet sein.</p>'
-        '<p class="muted">Steam nutzt Steam OpenID. Roblox und Epic Games benötigen jeweils eine konfigurierte OAuth-Anwendung und eine exakt passende Redirect-URI in Railway und im jeweiligen Entwicklerportal.</p>'
+        '<p class="muted">Steam nutzt Steam OpenID und Roblox benötigt eine konfigurierte OAuth-Anwendung mit exakt passender Redirect-URI in Railway und im Entwicklerportal.</p>'
         '<button type="submit" name="action" value="save">💾 Einstellungen speichern</button> '
         '<button type="submit" name="action" value="send_panel">📨 Nachricht jetzt senden</button> '
         '<a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form></section>')
@@ -2535,7 +2288,7 @@ def guild_page(guild_id):
     settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Einstellungen öffnen →</span></a>' for key, title, desc in section_links)
     if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
-    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verified-accounts">🎮 Gaming-Verifizierung →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/server-boost">🚀 Server-Booster →</a> <a class="button secondary" href="/guild/{gid}/command-log">⌘ Command Log →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a> <a class="button secondary" href="/guild/{gid}/messages">✉️ Bot-Nachrichten →</a> <a class="button secondary" href="/guild/{gid}/branding">🎨 Server-Design →</a> <a class="button secondary" href="/guild/{gid}/teamlist">👥 Teamliste →</a> <a class="button secondary" href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz →</a> <a class="button secondary" href="/guild/{gid}/ausweis">🪪 Ausweissystem →</a> <a class="button secondary" href="/guild/{gid}/feedback">💬 Anonymes Feedback →</a></div><h2 class="dashboard-group-title">⭐ Wichtigste Funktionen</h2><p class="muted">Die am häufigsten benötigten Einstellungen stehen ganz oben.</p><div class="grid"><a class="card dashboard-card" href="/guild/{gid}/feedback"><h2>💬 Anonymes Feedback</h2><p>Feedback-Panel mit Titel, Beschreibung und anonymen Einsendungen einrichten.</p><span class="card-link">Feedback verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/reaction-roles"><h2>🎭 Reaktionsrollen</h2><p>Rollen automatisch vergeben, wenn Mitglieder auf eine festgelegte Nachricht reagieren.</p><span class="card-link">Reaktionsrollen verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}?section=general#settings-panel"><h2>👋 Willkommen & Begrüßung</h2><p>Willkommensnachrichten und grundlegende Serveroptionen zuerst konfigurieren.</p><span class="card-link">Willkommen einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/verified-accounts"><h2>🎮 Gaming-Account-Verifizierung</h2><p>Fortnite, Steam und Roblox einzeln aktivieren, Zielkanal und Rolle auswählen.</p><span class="card-link">Gaming-Verifizierung konfigurieren →</span></a><a class="card dashboard-card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungsnachricht, Kanal und Rolle einrichten.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/server-boost"><h2>🚀 Server-Booster</h2><p>Boost-Ankündigungen, Nachricht und optionale Booster-Rolle einstellen.</p><span class="card-link">Server-Booster verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/voice-support"><h2>🎧 Voice-Support</h2><p>Support-Warteraum, Team-Rolle und private Support-Räume verwalten.</p><span class="card-link">Support einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/tickets"><h2>🎟️ Support-Tickets</h2><p>Ticket-Panel, Support-Team und Ticket-Kategorie konfigurieren.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/messages"><h2>✉️ Nachrichten & Buttons</h2><p>Bot-Nachrichten, Rollen-Buttons und Link-Buttons erstellen.</p><span class="card-link">Nachricht erstellen →</span></a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general#settings-panel">👋 Willkommen</a><a href="/guild/{gid}/voice-support">🎧 Support</a><a href="/guild/{gid}/verification">🔐 Verifizierung</a><a href="/guild/{gid}/tickets">🎟️ Tickets</a><a href="/guild/{gid}/messages">✉️ Nachrichten</a><a href="/guild/{gid}/branding">🎨 Server-Design</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a><a href="/guild/{gid}?section=security#settings-panel">🛡️ Sicherheit</a><a href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz</a><a href="/guild/{gid}/ausweis">🪪 Ausweis</a><a href="/guild/{gid}?section=channels#settings-panel">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles#settings-panel">🎭 Rollen</a><a href="/guild/{gid}/reaction-roles">🎭 Reaktionsrollen</a><a href="/guild/{gid}/honeypot">🍯 Honeypot</a><a href="/guild/{gid}?section=voice#settings-panel">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/birthdays">🎂 Geburtstage</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/messages">✉️ Bot-Nachrichten</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}/command-log">⌘ Command Log</a><a href="/guild/{gid}/audit-log">📜 Audit-Log</a><a href="/guild/{gid}/backup">🗄️ Backup & Wiederherstellung</a><a href="/guild/{gid}/health">🩺 Systemdiagnose</a><a href="/guild/{gid}/stats">📊 Live-Statistiken</a><a href="/guild/{gid}/server-statistics">📈 Server-Statistik</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/birthdays"><h2>🎂 Geburtstagskalender</h2><p>Geburtstagskanal, Nachricht und gespeicherte Geburtstage verwalten.</p><span class="card-link">Geburtstage verwalten →</span></a></div><h2 class="dashboard-group-title">🍯 Honeypot-Schutz</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/honeypot"><h2>🍯 Honeypot-Modul</h2><p>Versteckten Lockkanal auswählen, Schutzaktion festlegen und die Honeypot-Nachricht veröffentlichen.</p><span class="card-link">Honeypot konfigurieren →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/backup"><h2>🗄️ Backup & Wiederherstellung</h2><p>Serverkonfiguration exportieren und mit ausdrücklicher Bestätigung wiederherstellen.</p><span class="card-link">Backups verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/health"><h2>🩺 Systemdiagnose</h2><p>Bot-Verbindung und wichtige Serverberechtigungen überprüfen.</p><span class="card-link">System prüfen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/audit-log"><h2>📜 Dashboard-Audit-Log</h2><p>Nachvollziehen, welche Einstellungen im Dashboard geändert wurden.</p><span class="card-link">Audit-Log öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/command-log"><h2>⌘ Command Log</h2><p>IronWolf-Befehle aus ausgewählten Kanälen in einem Log-Kanal protokollieren.</p><span class="card-link">Command Log konfigurieren →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/stats"><h2>📊 Live-Statistiken</h2><p>Mitglieder, Befehle, Nachrichtenaktivität und gespeicherte Voice-Zeit.</p><span class="card-link">Statistiken öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/messages"><h2>✉️ Bot-Nachrichten & Buttons</h2><p>Nachrichten senden und HTTPS-Link- oder Rollen-Buttons ergänzen.</p><span class="card-link">Nachricht erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/voice-support"><h2>🎧 Sprach-Support</h2><p>Warteraum, Team-Rolle, Benachrichtigungen und private Sprachkanäle konfigurieren.</p><span class="card-link">Sprach-Support einstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
+    body = f'<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🐺 {html.escape(guild.name)}</h1><p class="muted">Server-ID: {guild.id} · Verwalte Einstellungen, Module und Befehle zentral.</p><div class="notice"><strong>⚡ Schnellzugriff</strong><p style="margin:4px 0 10px">Aktionen direkt auf Discord ausführen oder gezielt zu einem Verwaltungsbereich springen.</p><a class="button" href="/guild/{gid}/actions">Aktionszentrale öffnen →</a> <a class="button secondary" href="/guild/{gid}/tickets">Ticket-System verwalten →</a> <a class="button secondary" href="/guild/{gid}/verified-accounts">🎮 Gaming-Verifizierung →</a> <a class="button secondary" href="/guild/{gid}/verification">Verifizierung verwalten →</a> <a class="button secondary" href="/guild/{gid}/premium">✨ Premium verwalten →</a> <a class="button secondary" href="/guild/{gid}/server-boost">🚀 Server-Booster →</a> <a class="button secondary" href="/guild/{gid}/command-log">⌘ Command Log →</a> <a class="button secondary" href="/guild/{gid}/automation">⚙️ Automation Pro →</a> <a class="button secondary" href="/guild/{gid}/messages">✉️ Bot-Nachrichten →</a> <a class="button secondary" href="/guild/{gid}/branding">🎨 Server-Design →</a> <a class="button secondary" href="/guild/{gid}/teamlist">👥 Teamliste →</a> <a class="button secondary" href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz →</a> <a class="button secondary" href="/guild/{gid}/ausweis">🪪 Ausweissystem →</a> <a class="button secondary" href="/guild/{gid}/feedback">💬 Anonymes Feedback →</a></div><h2 class="dashboard-group-title">⭐ Wichtigste Funktionen</h2><p class="muted">Die am häufigsten benötigten Einstellungen stehen ganz oben.</p><div class="grid"><a class="card dashboard-card" href="/guild/{gid}/feedback"><h2>💬 Anonymes Feedback</h2><p>Feedback-Panel mit Titel, Beschreibung und anonymen Einsendungen einrichten.</p><span class="card-link">Feedback verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/reaction-roles"><h2>🎭 Reaktionsrollen</h2><p>Rollen automatisch vergeben, wenn Mitglieder auf eine festgelegte Nachricht reagieren.</p><span class="card-link">Reaktionsrollen verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}?section=general#settings-panel"><h2>👋 Willkommen & Begrüßung</h2><p>Willkommensnachrichten und grundlegende Serveroptionen zuerst konfigurieren.</p><span class="card-link">Willkommen einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/verified-accounts"><h2>🎮 Gaming-Account-Verifizierung</h2><p>Steam und Roblox einzeln aktivieren, Zielkanal und Rolle auswählen.</p><span class="card-link">Gaming-Verifizierung konfigurieren →</span></a><a class="card dashboard-card" href="/guild/{gid}/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungsnachricht, Kanal und Rolle einrichten.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/server-boost"><h2>🚀 Server-Booster</h2><p>Boost-Ankündigungen, Nachricht und optionale Booster-Rolle einstellen.</p><span class="card-link">Server-Booster verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/voice-support"><h2>🎧 Voice-Support</h2><p>Support-Warteraum, Team-Rolle und private Support-Räume verwalten.</p><span class="card-link">Support einstellen →</span></a><a class="card dashboard-card" href="/guild/{gid}/tickets"><h2>🎟️ Support-Tickets</h2><p>Ticket-Panel, Support-Team und Ticket-Kategorie konfigurieren.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/{gid}/messages"><h2>✉️ Nachrichten & Buttons</h2><p>Bot-Nachrichten, Rollen-Buttons und Link-Buttons erstellen.</p><span class="card-link">Nachricht erstellen →</span></a></div><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}?section=general#settings-panel">👋 Willkommen</a><a href="/guild/{gid}/voice-support">🎧 Support</a><a href="/guild/{gid}/verification">🔐 Verifizierung</a><a href="/guild/{gid}/tickets">🎟️ Tickets</a><a href="/guild/{gid}/messages">✉️ Nachrichten</a><a href="/guild/{gid}/branding">🎨 Server-Design</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a><a href="/guild/{gid}?section=security#settings-panel">🛡️ Sicherheit</a><a href="/guild/{gid}/ping-protection">🛡️ Ping-Schutz</a><a href="/guild/{gid}/ausweis">🪪 Ausweis</a><a href="/guild/{gid}?section=channels#settings-panel">📡 Kanäle & Logs</a><a href="/guild/{gid}?section=roles#settings-panel">🎭 Rollen</a><a href="/guild/{gid}/reaction-roles">🎭 Reaktionsrollen</a><a href="/guild/{gid}/honeypot">🍯 Honeypot</a><a href="/guild/{gid}?section=voice#settings-panel">🔊 Voice</a><a href="/guild/{gid}/economy">💰 Wirtschaft</a><a href="/guild/{gid}/birthdays">🎂 Geburtstage</a><a href="/guild/{gid}/automation">⚙️ Automation</a><a href="/guild/{gid}/messages">✉️ Bot-Nachrichten</a><a href="/guild/{gid}/commands">⌘ Befehle</a><a href="/guild/{gid}/command-log">⌘ Command Log</a><a href="/guild/{gid}/audit-log">📜 Audit-Log</a><a href="/guild/{gid}/backup">🗄️ Backup & Wiederherstellung</a><a href="/guild/{gid}/health">🩺 Systemdiagnose</a><a href="/guild/{gid}/stats">📊 Live-Statistiken</a><a href="/guild/{gid}/server-statistics">📈 Server-Statistik</a><a href="/guild/{gid}?section=modules">🧩 Module</a></div>{settings_html if section != "overview" else '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(len(module_records)) + '</strong><span>Erkannte Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in module_records if item["enabled"])) + '</strong><span>Aktive Module</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if item["enabled"])) + '</strong><span>Aktive Befehle</span></div><div class="dashboard-metric"><strong>' + str(sum(1 for item in _command_records(guild.id) if not item["enabled"])) + '</strong><span>Deaktivierte Befehle</span></div></div><h2 class="dashboard-group-title">🛡️ Sicherheit & Grundeinstellungen</h2><div class="grid">' + settings_cards + '<a class="card dashboard-card" href="/guild/' + gid + '?section=security"><h2>🛡️ Schutz & Moderation</h2><p>Anti-Raid, Anti-Nuke und konfigurierbare Schutzschwellen.</p><span class="card-link">Schutz verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/economy"><h2>💰 Wirtschaftssystem</h2><p>Übersicht der vorhandenen Geld- und Shop-Funktionen.</p><span class="card-link">Wirtschaft öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/birthdays"><h2>🎂 Geburtstagskalender</h2><p>Geburtstagskanal, Nachricht und gespeicherte Geburtstage verwalten.</p><span class="card-link">Geburtstage verwalten →</span></a></div><h2 class="dashboard-group-title">🍯 Honeypot-Schutz</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/honeypot"><h2>🍯 Honeypot-Modul</h2><p>Versteckten Lockkanal auswählen, Schutzaktion festlegen und die Honeypot-Nachricht veröffentlichen.</p><span class="card-link">Honeypot konfigurieren →</span></a></div><h2 class="dashboard-group-title">👥 Serverfunktionen</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/tickets"><h2>🎟️ Tickets</h2><p>Ticket-Panels, Support-Rollen, Kategorien und Protokollierung.</p><span class="card-link">Tickets verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/verification"><h2>🔐 Verifizierung</h2><p>Verifizierungspost, Rollen und zugehörige Einstellungen.</p><span class="card-link">Verifizierung verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/actions"><h2>🎮 Aktionszentrale</h2><p>Moderation und schnelle Serveraktionen direkt aus dem Dashboard.</p><span class="card-link">Aktionen öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/backup"><h2>🗄️ Backup & Wiederherstellung</h2><p>Serverkonfiguration exportieren und mit ausdrücklicher Bestätigung wiederherstellen.</p><span class="card-link">Backups verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/health"><h2>🩺 Systemdiagnose</h2><p>Bot-Verbindung und wichtige Serverberechtigungen überprüfen.</p><span class="card-link">System prüfen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/audit-log"><h2>📜 Dashboard-Audit-Log</h2><p>Nachvollziehen, welche Einstellungen im Dashboard geändert wurden.</p><span class="card-link">Audit-Log öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/command-log"><h2>⌘ Command Log</h2><p>IronWolf-Befehle aus ausgewählten Kanälen in einem Log-Kanal protokollieren.</p><span class="card-link">Command Log konfigurieren →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/stats"><h2>📊 Live-Statistiken</h2><p>Mitglieder, Befehle, Nachrichtenaktivität und gespeicherte Voice-Zeit.</p><span class="card-link">Statistiken öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/messages"><h2>✉️ Bot-Nachrichten & Buttons</h2><p>Nachrichten senden und HTTPS-Link- oder Rollen-Buttons ergänzen.</p><span class="card-link">Nachricht erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/premium"><h2>✨ Premium & Funktionen</h2><p>Premium-Status und freigeschaltete Funktionen dieses Servers.</p><span class="card-link">Premium verwalten →</span></a></div><h2 class="dashboard-group-title">⚙️ Automatisierung & Verwaltung</h2><div class="grid"><a class="card dashboard-card" href="/guild/' + gid + '/automation"><h2>📣 Nachrichten & Automation</h2><p>Wiederkehrende Ankündigungen und gespeicherte Nachrichtenvorlagen.</p><span class="card-link">Automation öffnen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/commands"><h2>⌘ Befehle & Rechte</h2><p>Prefix- und Slash-Befehle pro Server aktivieren oder deaktivieren.</p><span class="card-link">Befehle verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=modules"><h2>🧩 Modul-Manager</h2><p>Verfügbare Bot-Module serverbezogen aktivieren oder deaktivieren.</p><span class="card-link">Module verwalten →</span></a><a class="card dashboard-card" href="/guild/' + gid + '?section=template"><h2>＋ Modul-Vorlage</h2><p>Sichere herunterladbare Vorlage für eigene discord.py-Cogs erstellen.</p><span class="card-link">Vorlage erstellen →</span></a><a class="card dashboard-card" href="/guild/' + gid + '/voice-support"><h2>🎧 Sprach-Support</h2><p>Warteraum, Team-Rolle, Benachrichtigungen und private Sprachkanäle konfigurieren.</p><span class="card-link">Sprach-Support einstellen →</span></a></div>'}<div class="grid">{modules_html if section == "modules" else ''}{module_form if section == "template" else ''}</div>'
     return _render(guild.name + " · Control Center", body)
 
 
