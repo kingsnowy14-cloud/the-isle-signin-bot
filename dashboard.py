@@ -1338,6 +1338,10 @@ def guild_page(guild_id):
             try:
                 settings_section = request.form.get("settings_section", "general")
                 if settings_section == "general":
+                    selected_language = request.form.get("bot_language", "de").strip().lower()
+                    if selected_language not in {"de", "en", "cs", "fr", "es"}:
+                        abort(400, "Bitte eine unterstützte Bot-Sprache auswählen.")
+                    cfg["bot_language"] = selected_language
                     for key, meta in TEXT_SETTINGS.items():
                         if key in request.form:
                             value = request.form.get(key, "").strip()
@@ -1477,6 +1481,9 @@ def guild_page(guild_id):
     if section in ("general", "channels", "roles", "voice", "security"):
         settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
+            language_labels = {"de": "🇩🇪 Deutsch", "en": "🇬🇧 English", "cs": "🇨🇿 Čeština", "fr": "🇫🇷 Français", "es": "🇪🇸 Español"}
+            current_language = cfg.get("bot_language", "de")
+            settings_html += '<label for="bot_language">🌐 Bot-Sprache</label><small>Legt die Sprache der unterstützten Bot-Antworten für diesen Discord-Server fest.</small><select id="bot_language" name="bot_language">' + "".join(f'<option value="{code}"{" selected" if code == current_language else ""}>{label}</option>' for code, label in language_labels.items()) + '</select>'
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
