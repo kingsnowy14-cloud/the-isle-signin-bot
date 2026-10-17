@@ -299,15 +299,30 @@ async def _steam_grant_guild_role(guild_id, discord_id, nickname=None, provider=
             return "member_missing"
 
     nickname_status = "nickname_unchanged"
-    if nickname and cfg.get("verified_accounts_nickname_enabled", True):
-        safe_nickname = str(nickname).strip()[:32]
-        if safe_nickname and safe_nickname != member.nick:
-            try:
-                await member.edit(nick=safe_nickname, reason=f"{provider}-Konto erfolgreich verifiziert")
-                nickname_status = "nickname_set"
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                print(f"[GAMING LINK] Could not set nickname in guild {guild_id}: {type(exc).__name__}", flush=True)
-                nickname_status = "nickname_failed"
+    nickname_enabled = cfg.get("verified_accounts_nickname_enabled", True)
+    safe_nickname = str(nickname or "").strip()[:32]
+    if not nickname_enabled:
+        nickname_status = "nickname_disabled"
+    elif not safe_nickname:
+        nickname_status = "nickname_missing"
+        print(f"[GAMING LINK] No username available for {provider} nickname in guild {guild_id}; Discord ID {discord_id}", flush=True)
+    elif safe_nickname != (member.nick or ""):
+        try:
+            await member.edit(nick=safe_nickname, reason=f"{provider}-Konto erfolgreich verifiziert")
+            nickname_status = "nickname_set"
+            print(f"[GAMING LINK] Set {provider} nickname in guild {guild_id} for member {discord_id}", flush=True)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            status_code = getattr(getattr(exc, "response", None), "status", None)
+            print(
+                f"[GAMING LINK] Could not set nickname in guild {guild_id} for member {discord_id}: "
+                f"{type(exc).__name__}, HTTP {status_code or 'unknown'}; check Manage Nicknames and role hierarchy",
+                flush=True,
+            )
+            nickname_status = "nickname_failed"
+
+    # Surface nickname failures even if the verification role is granted successfully.
+    if nickname_status in {"nickname_failed", "nickname_missing"}:
+        return nickname_status
 
     role_id = cfg.get("verified_accounts_role_id")
     if not role_id:
@@ -419,14 +434,20 @@ def steam_link_callback():
         except Exception as exc:
             print(f"[STEAM LINK] Role assignment failed in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
             role_status = "role_failed"
-    if role_status in {"granted", "already_has_role"}:
-        role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
+    if role_status == "nickname_failed":
+        role_text = "Steam wurde verknüpft, aber Discord hat die Nickname-Änderung abgelehnt. Prüfe „Spitznamen verwalten“ und die Rollen-Hierarchie des Bots; Details stehen in den Railway-Logs."
+    elif role_status == "nickname_missing":
+        role_text = "Steam wurde verknüpft, aber IronWolf konnte keinen öffentlichen Steam-Profilnamen abrufen. Stelle dein Steam-Profil auf öffentlich und versuche es erneut."
+    elif role_status == "nickname_disabled":
+        role_text = "Steam wurde verknüpft, aber die Nickname-Automatik ist im Dashboard deaktiviert."
     elif role_status == "nickname_set":
-        role_text = "Dein Discord-Nickname wurde auf deinen Steam-Namen gesetzt. Die Rollenvergabe wurde ebenfalls versucht, sofern eine Verifizierungsrolle konfiguriert ist."
+        role_text = "Dein Discord-Nickname wurde auf deinen Steam-Namen gesetzt."
+    elif role_status in {"granted", "already_has_role"}:
+        role_text = "Die Verifizierungsrolle ist korrekt. Der Nickname war bereits passend oder die Nickname-Automatik ist deaktiviert."
     elif role_status == "not_configured":
         role_text = "Das Steam-Konto ist gespeichert. Im Dashboard ist für diesen Server noch keine Verifizierungsrolle ausgewählt."
     else:
-        role_text = "Das Steam-Konto ist gespeichert, aber die Discord-Rolle konnte nicht vergeben werden. Bitte prüfe die Bot-Berechtigung „Rollen verwalten“ und die Rollenposition des Bots."
+        role_text = "Das Steam-Konto wurde gespeichert, aber die Discord-Aktion konnte nicht vollständig ausgeführt werden. Prüfe Bot-Berechtigungen und Rollen-Hierarchie sowie die Railway-Logs."
     return _render(
         "Steam erfolgreich verknüpft",
         '<section class="card"><h1>✅ Steam erfolgreich verknüpft</h1><p>Deine Steam-ID <code>' +
@@ -645,14 +666,20 @@ def roblox_link_callback():
         except Exception as exc:
             print(f"[ROBLOX LINK] Role assignment failed in guild {guild_id}: {type(exc).__name__}", flush=True)
             role_status = "role_failed"
-    if role_status in {"granted", "already_has_role"}:
-        role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
+    if role_status == "nickname_failed":
+        role_text = "Roblox wurde verknüpft, aber Discord hat die Nickname-Änderung abgelehnt. Prüfe „Spitznamen verwalten“ und die Rollen-Hierarchie des Bots; Details stehen in den Railway-Logs."
+    elif role_status == "nickname_missing":
+        role_text = "Roblox wurde verknüpft, aber IronWolf hat keinen Roblox-Nutzernamen für die Nickname-Änderung erhalten. Prüfe die Roblox-Profilantwort und die Railway-Logs."
+    elif role_status == "nickname_disabled":
+        role_text = "Roblox wurde verknüpft, aber die Nickname-Automatik ist im Dashboard deaktiviert."
     elif role_status == "nickname_set":
-        role_text = "Dein Discord-Nickname wurde auf deinen Roblox-Namen gesetzt. Die Rollenvergabe wurde ebenfalls versucht, sofern eine Verifizierungsrolle konfiguriert ist."
+        role_text = "Dein Discord-Nickname wurde auf deinen Roblox-Namen gesetzt."
+    elif role_status in {"granted", "already_has_role"}:
+        role_text = "Die Verifizierungsrolle ist korrekt. Der Nickname war bereits passend oder die Nickname-Automatik ist deaktiviert."
     elif role_status == "not_configured":
         role_text = "Das Roblox-Konto wurde gespeichert. Wähle im Dashboard eine Verifizierungsrolle aus."
     else:
-        role_text = "Das Roblox-Konto wurde gespeichert, aber die Discord-Rolle konnte nicht vergeben werden. Prüfe die Bot-Berechtigung „Rollen verwalten“ und die Rollenposition."
+        role_text = "Das Roblox-Konto wurde gespeichert, aber die Discord-Aktion konnte nicht vollständig ausgeführt werden. Prüfe Bot-Berechtigungen und Rollen-Hierarchie sowie die Railway-Logs."
     return _render(
         "Roblox erfolgreich verknüpft",
         '<section class="card"><h1>✅ Roblox erfolgreich verknüpft</h1><p>Dein Roblox-Konto <strong>' +
