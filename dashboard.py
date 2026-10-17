@@ -159,7 +159,6 @@ def _page(title, body):
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
         + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a>'
-        + '<button type="button" id="theme-toggle" aria-label="Dashboard-Farbschema wechseln" onclick="if(window.ironwolfToggleTheme){window.ironwolfToggleTheme();}return false;" style="white-space:nowrap;margin:0;padding:8px 12px">☀️ Hell</button><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -234,20 +233,7 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 .role-picker-tools button{{margin:0;padding:7px 10px}}
 .selection-summary{{font-size:12px;color:var(--muted);margin-left:auto}}
 {custom_theme_css}
-html[data-theme="light"]{{--bg:#f3f6fb;--panel:#ffffff;--panel2:#e9eef7;--text:#172033;--muted:#59677d;--border:rgba(44,62,91,.18);--shadow:0 16px 45px rgba(25,42,70,.10);--glow:rgba(91,141,255,.08);color-scheme:light}}
-html[data-theme="light"]{{background:#fff!important;color-scheme:light}}html[data-theme="light"] body{{background:#fff!important;color:#172033}}html[data-theme="light"] main{{background:#fff!important;color:#172033}}
-html[data-theme="light"] nav{{background:rgba(248,250,255,.92);border-bottom-color:var(--border);box-shadow:0 8px 30px rgba(25,42,70,.08)}}
-html[data-theme="light"] .card,html[data-theme="light"] .notice,html[data-theme="light"] .section-nav,html[data-theme="light"] .command-group{{background:#fff;border-color:var(--border);color:var(--text);box-shadow:0 10px 28px rgba(25,42,70,.04)}}
-html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),html[data-theme="light"] textarea,html[data-theme="light"] select,html[data-theme="light"] .select-search-wrap input{{background-color:#fff;color:var(--text);border-color:var(--border)}}
-html[data-theme="light"] select option,html[data-theme="light"] select optgroup{{background:#fff;color:#172033}}
-html[data-theme="light"] code,html[data-theme="light"] pre{{background:#edf1f8;color:#172033;border-color:var(--border)}}
-html[data-theme="light"] .role-option,html[data-theme="light"] .section-nav a{{background:#f6f8fc;color:var(--text);border-color:var(--border)}}
-html[data-theme="light"] table,html[data-theme="light"] th,html[data-theme="light"] td{{border-color:var(--border)}}
-html[data-theme="light"] .select-search-wrap:before{{color:var(--muted)}}
-#theme-toggle{{border:1px solid var(--border);border-radius:11px;background:var(--panel);color:var(--text);cursor:pointer;font:inherit;font-weight:700}}
-#theme-toggle:hover{{border-color:var(--accent)}}
 </style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}<script>
-(function(){{var root=document.documentElement;var button=document.getElementById("theme-toggle");var key="ironwolf-dashboard-theme";var theme="dark";try{{var saved=window.localStorage.getItem(key);if(saved==="light"||saved==="dark")theme=saved;}}catch(e){{}}function apply(value){{theme=value==="light"?"light":"dark";root.setAttribute("data-theme",theme);root.style.colorScheme=theme;var body=document.body;var main=document.querySelector("main");if(theme==="light"){{body.style.setProperty("background","#fff","important");body.style.setProperty("color","#172033","important");root.style.setProperty("background","#fff","important");if(main){{main.style.setProperty("background","#fff","important");main.style.setProperty("color","#172033","important");}}}}else{{body.style.removeProperty("background");body.style.removeProperty("color");root.style.removeProperty("background");if(main){{main.style.removeProperty("background");main.style.removeProperty("color");}}}}if(button){{button.textContent=theme==="dark"?"☀️ Hell":"🌙 Dark";button.setAttribute("aria-label",theme==="dark"?"Zu hellem Design wechseln":"Zu dunklem Design wechseln");button.setAttribute("aria-pressed",theme==="light"?"true":"false");}}}}window.ironwolfToggleTheme=function(){{apply(theme==="dark"?"light":"dark");try{{window.localStorage.setItem(key,theme);}}catch(e){{}}return false;}};apply(theme);}})();
 </script></body></html>"""
 
 
