@@ -62,6 +62,11 @@ TEXT_SETTINGS = {
         "max_length": 1000,
     },
 
+    "honeypot_action": {
+        "label": "Honeypot-Aktion (ban/kick/timeout)",
+        "help": "Erlaubte Werte: ban, kick oder timeout. Standard: kick.",
+        "max_length": 10,
+    },
     "honeypot_message": {
         "label": "Honeypot-Nachricht",
         "help": "Nachricht im Honeypot-Kanal (max. 1500 Zeichen).",
