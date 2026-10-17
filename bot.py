@@ -777,32 +777,53 @@ class LanguageSelect(discord.ui.Select):
 
 
 class GamingAccountVerifyView(discord.ui.View):
-    """Buttons for the gaming account verification panel.
+    """Compatibility view for older gaming verification panels.
 
-    The UI is ready, but account ownership must not be claimed until each
-    provider's official OAuth/proof flow has been configured.
+    Delegate to the same secure provider-link handlers as the dashboard view.
     """
     def __init__(self, enabled_platforms=None):
         super().__init__(timeout=None)
-        enabled = set(enabled_platforms or ("fortnite", "steam", "roblox"))
+        enabled = set(enabled_platforms or ("steam", "roblox"))
         buttons = {
-            "fortnite": ("🎮 Fortnite / Epic Games", discord.ButtonStyle.primary, "gaming_verify:fortnite"),
-            "steam": ("🚂 Steam", discord.ButtonStyle.secondary, "gaming_verify:steam"),
-            "roblox": ("🟥 Roblox", discord.ButtonStyle.danger, "gaming_verify:roblox"),
+            "steam": ("🚂 Steam", discord.ButtonStyle.secondary),
+            "roblox": ("🟥 Roblox", discord.ButtonStyle.danger),
         }
-        for key, (label, style, custom_id) in buttons.items():
-            if key in enabled:
-                button = discord.ui.Button(label=label, style=style, custom_id=custom_id)
-                async def callback(interaction, provider=key):
-                    messages = {
-                        "steam": "Steam-Verknüpfung ist noch nicht aktiviert. Dafür muss Steam OpenID mit einer sicheren Rückleitungs-URL eingerichtet werden. Gib dein Steam-Passwort niemals im Discord ein.",
-                        "roblox": "Roblox-Verknüpfung ist noch nicht aktiviert. Zuerst muss die Kontoinhaberschaft über einen sicheren Profilnachweis geprüft werden. Teile hier kein Passwort oder Login-Code.",
-                        "fortnite": "Fortnite/Epic-Verknüpfung ist noch nicht aktiviert. Dafür ist ein unterstützter Epic-Kontennachweis erforderlich. Gib dein Epic-Passwort niemals im Discord ein.",
-                    }
-                    await interaction.response.send_message(messages[provider], ephemeral=True)
-                button.callback = callback
-                self.add_item(button)
+        for key, (label, style) in buttons.items():
+            if key not in enabled:
+                continue
+            button = discord.ui.Button(label=label, style=style, custom_id="gaming_verify:" + key)
 
+            async def callback(interaction, provider=key):
+                # Acknowledge the component interaction before any link/store work.
+                await interaction.response.defer(ephemeral=True, thinking=True)
+                try:
+                    from dashboard import _create_steam_link_url, _create_roblox_link_url
+                    if provider == "steam":
+                        link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
+                        message = (
+                            "🔐 **Steam sicher verknüpfen**\\nÖffne diesen Link und melde dich direkt bei Steam an. "
+                            "Dein Steam-Passwort wird niemals an IronWolf übermittelt. Der Link ist 10 Minuten gültig "
+                            "und kann nur einmal verwendet werden.\\n" + link_url
+                        )
+                    else:
+                        link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
+                        message = (
+                            "🔐 **Roblox sicher verknüpfen**\\nÖffne den Link und melde dich direkt bei Roblox an. "
+                            "IronWolf fragt nur deine Roblox-Profilidentität ab, niemals dein Passwort. "
+                            "Der Link ist 10 Minuten gültig und einmalig.\\n" + link_url
+                        )
+                    await interaction.followup.send(message, ephemeral=True)
+                except ValueError as exc:
+                    await interaction.followup.send(str(exc), ephemeral=True)
+                except Exception as exc:
+                    print(f"[GAMING VERIFY] {provider} link creation failed: {type(exc).__name__}: {exc}", flush=True)
+                    await interaction.followup.send(
+                        f"Der {provider.capitalize()}-Link konnte gerade nicht erstellt werden. Bitte prüfe die Railway-Konfiguration und versuche es erneut.",
+                        ephemeral=True,
+                    )
+
+            button.callback = callback
+            self.add_item(button)
 
 class LanguageView(discord.ui.View):
     def __init__(self):
