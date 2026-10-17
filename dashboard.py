@@ -218,7 +218,27 @@ def _steam_set_pending_status(token, status):
             _steam_write_store_locked(store)
 
 
-def _steam_save_verified_account(token, steam_id):
+def _steam_profile_name(steam_id):
+    """Best-effort lookup of a public Steam profile name; SteamID remains the verified identity."""
+    try:
+        response = requests.get(
+            "https://steamcommunity.com/profiles/" + steam_id,
+            params={"xml": "1"},
+            timeout=8,
+            headers={"User-Agent": "IronWolf account verification"},
+        )
+        response.raise_for_status()
+        match = re.search(r"<steamID><!\[CDATA\[(.*?)\]\]></steamID>", response.text, re.DOTALL)
+        if match:
+            name = html.unescape(match.group(1)).strip()
+            if name:
+                return name[:32]
+    except requests.RequestException as exc:
+        print(f"[STEAM LINK] Public profile name lookup failed: {type(exc).__name__}", flush=True)
+    return ""
+
+
+def _steam_save_verified_account(token, steam_id, username=""):
     """Persist a verified SteamID once; never allow it to be claimed by another Discord user."""
     with _STEAM_LINK_LOCK:
         store = _steam_read_store_locked()
@@ -246,6 +266,8 @@ def _steam_save_verified_account(token, steam_id):
             "guild_ids": [],
         }
         account["steam_id"] = steam_id
+        if username:
+            account["username"] = str(username)[:100]
         guild_ids = account.get("guild_ids", [])
         if not isinstance(guild_ids, list):
             guild_ids = []
@@ -381,7 +403,8 @@ def steam_link_callback():
         return _render("Steam-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Steam-Anmeldung ungültig</h1><p>Steam konnte die Anmeldung nicht bestätigen. Bitte starte den Vorgang erneut über Discord.</p></section>', 400)
 
     steam_id = match.group(1)
-    saved, result = _steam_save_verified_account(token, steam_id)
+    steam_username = _steam_profile_name(steam_id)
+    saved, result = _steam_save_verified_account(token, steam_id, steam_username)
     if not saved:
         return _render("Steam-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Verknüpfung nicht möglich</h1><p>' + html.escape(result) + '</p></section>', 409)
     guild_id = result
@@ -389,7 +412,7 @@ def steam_link_callback():
     if _bot and getattr(_bot, "loop", None) and _bot.loop.is_running():
         try:
             future = asyncio.run_coroutine_threadsafe(
-                _steam_grant_guild_role(guild_id, pending["discord_id"]), _bot.loop
+                _steam_grant_guild_role(guild_id, pending["discord_id"], nickname=steam_username, provider="Steam"), _bot.loop
             )
             role_status = future.result(timeout=18)
         except Exception as exc:
@@ -397,6 +420,8 @@ def steam_link_callback():
             role_status = "role_failed"
     if role_status in {"granted", "already_has_role"}:
         role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
+    elif role_status == "nickname_set":
+        role_text = "Dein Discord-Nickname wurde auf deinen Steam-Namen gesetzt. Eine Verifizierungsrolle ist noch nicht konfiguriert oder war bereits vorhanden."
     elif role_status == "not_configured":
         role_text = "Das Steam-Konto ist gespeichert. Im Dashboard ist für diesen Server noch keine Verifizierungsrolle ausgewählt."
     else:
