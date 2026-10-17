@@ -6963,6 +6963,15 @@ async def on_ready():
             except Exception as exc:
                 print(f"[ID CARD] Could not restore review view {app_id}: {type(exc).__name__}", flush=True)
 
+    # Register persistent gaming-account buttons created by the dashboard.
+    # Without this registration Discord interactions on older dashboard messages
+    # have no callback after the bot process restarts.
+    try:
+        from dashboard import _GamingAccountVerifyView
+        bot.add_view(_GamingAccountVerifyView(["fortnite", "steam", "roblox"]))
+    except Exception as exc:
+        print(f"[GAMING VERIFY] Could not restore provider buttons: {type(exc).__name__}: {exc}", flush=True)
+
     # Register persistent views so old buttons keep working after restart.
     bot.add_view(BirthdayRegisterView())
     bot.add_view(RegistrationView())
