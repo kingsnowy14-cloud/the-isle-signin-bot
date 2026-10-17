@@ -459,10 +459,8 @@ def _create_roblox_link_url(guild_id, discord_user_id):
             "created_at": now, "expires_at": now + _ROBLOX_LINK_TTL_SECONDS, "status": "pending",
         }
         _roblox_write_store_locked(store)
-    return _ROBLOX_AUTHORIZE_ENDPOINT + "?" + urlencode({
-        "client_id": client_id, "redirect_uri": callback_uri,
-        "response_type": "code", "scope": "openid profile", "state": token,
-    })
+    origin = f"https://{urlparse(callback_uri).netloc}"
+    return origin + "/gaming/roblox/start?" + urlencode({"token": token})
 
 
 def _roblox_claim_pending(token):
