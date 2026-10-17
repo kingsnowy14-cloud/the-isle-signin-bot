@@ -22,6 +22,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone, timedelta
+from wolfmirror import simulate_scenario
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
@@ -6913,6 +6914,49 @@ async def filmserver_error(ctx, error):
     else:
         await ctx.reply(f"❌ Fehler bei !filmserver: {error}", mention_author=False)
 
+
+
+@bot.tree.command(name="wolfmirror", description="Simuliert einen Sicherheitsvorfall ohne Moderationsaktionen")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(scenario=[
+    app_commands.Choice(name="Mitglieder-Raid", value="raid"),
+    app_commands.Choice(name="Spam-Welle", value="spam"),
+    app_commands.Choice(name="Channel-/Rollen-Angriff", value="nuke"),
+    app_commands.Choice(name="Welle neuer Accounts", value="new_accounts"),
+])
+async def wolfmirror_command(interaction: discord.Interaction, scenario: app_commands.Choice[str]):
+    """Run a read-only security tabletop simulation for this guild."""
+    guild = interaction.guild
+    if guild is None or guild.me is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    cfg = guild_config(guild.id)
+    permissions = guild.me.guild_permissions
+    report = simulate_scenario(
+        cfg,
+        {
+            "moderate_members": permissions.moderate_members,
+            "manage_messages": permissions.manage_messages,
+            "view_audit_log": permissions.view_audit_log,
+        },
+        scenario.value,
+        {"member_count": guild.member_count or 0, "channel_count": len(guild.channels)},
+    )
+    lines = [
+        f"**Resilienz-Score: {report['score']}/100 · {report['verdict']}**",
+        report["summary"],
+        "",
+    ]
+    for item in report["controls"]:
+        lines.append(f"{'✅' if item['active'] else '⚠️'} **{item['name']}:** {item['detail']}")
+    if report["gaps"]:
+        lines.extend(["", "**Verbesserungspotenzial**"])
+        lines.extend(f"• {gap}" for gap in report["gaps"][:5])
+    lines.extend(["", "🧪 **Dry-Run:** Keine Einstellungen geändert, keine Nachrichten gelöscht und niemand moderiert."])
+    embed = create_embed(title=f"🐺 WolfMirror · {report['label']}", description="\n".join(lines), color=discord.Color.blurple())
+    embed.set_footer(text="Simulation · Keine Garantie gegen Angriffe")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="wolfcheck", description="Prüft wichtige IronWolf-Kanäle und Bot-Berechtigungen")
