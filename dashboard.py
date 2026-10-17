@@ -3523,6 +3523,10 @@ def guild_wolfchronicle(guild_id):
     for item in incidents:
         created = html.escape(str(item.get("created_at", "Unbekannt"))[:19].replace("T", " "))
         status = item.get("status", "open")
+        item_status_options = status_options.replace(
+            '<option value="' + status + '">',
+            '<option value="' + status + '" selected>',
+        )
         status_label = html.escape(str(item.get("status_label", STATUSES.get(status, status))))
         resolution_note = html.escape(str(item.get("resolution_note", "")))
         card = (
@@ -3537,7 +3541,7 @@ def guild_wolfchronicle(guild_id):
                 '<form method="post">' + _csrf_field() +
                 '<input type="hidden" name="action" value="update">'
                 '<input type="hidden" name="incident_id" value="' + html.escape(str(item.get("id", "")), quote=True) + '">'
-                '<label>Status<select name="status">' + status_options + '</select></label>'
+                '<label>Status<select name="status">' + item_status_options + '</select></label>'
                 '<label>Abschlussnotiz (optional, wird nur bei „Abgeschlossen“ gespeichert)'
                 '<input type="text" name="resolution_note" maxlength="500" placeholder="z. B. Ursache behoben, Schutz geprüft"></label>'
                 '<button type="submit">Status aktualisieren</button></form>'
