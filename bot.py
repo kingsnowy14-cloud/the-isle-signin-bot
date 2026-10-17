@@ -7567,14 +7567,16 @@ async def emoji_command(ctx):
         "🏆", "📊", "💬", "😂", "📁", "🚀", "🎉", "🔔", "🆘", "🛠️",
     )
     status = await ctx.reply(
-        "😀 **IronWolf · Kanal-Emojis**\nIch ergänze passende Emojis. Bereits vorhandene Emojis bleiben erhalten.",
+        "😀 **IronWolf · Kanal-Emojis**\nIch ergänze passende Emojis bei Text-, Sprach- und Forumkanälen. Kategorien bleiben unverändert; vorhandene Emojis bleiben erhalten.",
         mention_author=False,
     )
     renamed = 0
     unchanged = 0
     failed = 0
 
-    for channel in sorted(guild.channels, key=lambda item: (0 if isinstance(item, discord.CategoryChannel) else 1, item.position)):
+    # Only rename actual channels; category names are deliberately left untouched.
+    channels = [channel for channel in guild.channels if not isinstance(channel, discord.CategoryChannel)]
+    for channel in sorted(channels, key=lambda item: item.position):
         old_name = channel.name
         lowered = old_name.casefold()
         # Don't add a second emoji if the name already starts with one we recognize.
@@ -7587,11 +7589,18 @@ async def emoji_command(ctx):
             if any(keyword in lowered for keyword in keywords):
                 chosen = candidate
                 break
-        if chosen is None and isinstance(channel, discord.CategoryChannel):
-            chosen = "📁"
         if chosen is None:
-            unchanged += 1
-            continue
+            if isinstance(channel, discord.VoiceChannel):
+                chosen = "🔊"
+            elif isinstance(channel, discord.StageChannel):
+                chosen = "🎙️"
+            elif isinstance(channel, discord.ForumChannel):
+                chosen = "🗣️"
+            elif isinstance(channel, discord.TextChannel):
+                chosen = "💬"
+            else:
+                unchanged += 1
+                continue
 
         new_name = f"{chosen}・{old_name}"[:100]
         try:
@@ -7608,7 +7617,7 @@ async def emoji_command(ctx):
 
     summary = (
         "✅ **Emoji-Zuordnung abgeschlossen!**\n"
-        f"✨ Kanäle/Kategorien geändert: **{renamed}**\n"
+        f"✨ Kanäle geändert: **{renamed}** (Kategorien unverändert)\n"
         f"⏭️ Bereits passend oder kein passendes Stichwort: **{unchanged}**\n"
         f"⚠️ Fehlgeschlagen: **{failed}**"
     )
