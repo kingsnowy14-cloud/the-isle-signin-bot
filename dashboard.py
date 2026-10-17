@@ -159,6 +159,7 @@ def _page(title, body):
     nav = (
         '<nav><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
         + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
+        + (f'<a href="/guild/{match.group(1)}/honeypot">🍯 Honeypot</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a><span></span>'
@@ -1292,6 +1293,98 @@ def teamlist_dashboard(guild_id):
     members_html += '</section>'
     body = f'<span class="pill">IRONWOLF · TEAMLISTE</span><h1 style="margin-top:12px">👥 Teamliste · {html.escape(guild.name)}</h1><p class="muted">Die Teamliste nutzt die aktuellen Discord-Rollen und kann in einen Kanal gesendet werden.</p><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a></div>' + form + members_html
     return _render("Teamliste", body)
+
+
+
+@app.route("/guild/<guild_id>/honeypot", methods=["GET", "POST"])
+def honeypot_dashboard(guild_id):
+    """Dedicated, standalone Honeypot settings page."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        enabled = request.form.get("honeypot_enabled") == "on"
+        channel_raw = request.form.get("honeypot_channel", "").strip()
+        log_raw = request.form.get("honeypot_log_channel", "").strip()
+        valid_channels = {str(channel.id) for channel in guild.text_channels}
+        for raw in (channel_raw, log_raw):
+            if raw and raw not in valid_channels:
+                abort(400, "Bitte einen gültigen Textkanal auswählen.")
+        action = request.form.get("honeypot_action", "kick").strip().lower()
+        if action not in {"ban", "kick", "timeout"}:
+            abort(400, "Ungültige Honeypot-Aktion.")
+        try:
+            timeout_minutes = int(request.form.get("honeypot_timeout_minutes", "60"))
+        except (TypeError, ValueError):
+            abort(400, "Timeout muss eine ganze Zahl sein.")
+        if not 1 <= timeout_minutes <= 40320:
+            abort(400, "Timeout muss zwischen 1 und 40320 Minuten liegen.")
+        message = request.form.get("honeypot_message", "").strip()
+        if len(message) > 1500:
+            abort(400, "Die Honeypot-Nachricht darf maximal 1500 Zeichen lang sein.")
+        cfg["honeypot_enabled"] = enabled
+        cfg["honeypot_channel"] = int(channel_raw) if channel_raw else None
+        cfg["honeypot_action"] = action
+        cfg["honeypot_timeout_minutes"] = timeout_minutes
+        cfg["honeypot_message"] = message or "🍯 Honeypot aktiv. Bitte hier nicht schreiben."
+        cfg["honeypot_log_channel"] = int(log_raw) if log_raw else None
+        # Keep the shared security log setting intact; the Honeypot has its own log destination.
+        if _save_json:
+            _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Honeypot", session.get("user_id"),
+            f"enabled={enabled}; action={action}; channel={channel_raw or 'none'}")
+        return redirect(url_for("honeypot_dashboard", guild_id=str(guild.id), saved="1"))
+
+    channels = list(guild.text_channels)
+    def channel_options(selected):
+        options = ['<option value="">— Kein Kanal ausgewählt —</option>']
+        for channel in channels:
+            sel = " selected" if str(channel.id) == str(selected or "") else ""
+            options.append(f'<option value="{channel.id}"{sel}>#{html.escape(channel.name)}</option>')
+        return "".join(options)
+
+    enabled_checked = " checked" if cfg.get("honeypot_enabled", False) else ""
+    action = str(cfg.get("honeypot_action", "kick")).lower()
+    if action not in {"ban", "kick", "timeout"}:
+        action = "kick"
+    message = html.escape(str(cfg.get("honeypot_message") or "🍯 Honeypot aktiv. Bitte hier nicht schreiben."))
+    saved_notice = '<div class="notice">✅ Honeypot-Einstellungen wurden gespeichert.</div>' if request.args.get("saved") == "1" else ""
+    body = f"""
+    <span class="pill">Eigenständiges Modul</span>
+    <h1>🍯 Honeypot</h1>
+    <p class="muted">Konfiguriere deine Fallenkanäle unabhängig von AutoMod, Anti-Raid und Anti-Nuke.</p>
+    {saved_notice}
+    <div class="notice">Wähle einen Kanal, in dem normale Mitglieder nicht schreiben sollen. Stelle sicher, dass die Bot-Rolle Mitglieder bannen, kicken oder timeouten darf. Administratoren und der Serverbesitzer werden ausgenommen.</div>
+    <form method="post" class="card">
+      {_csrf_field()}
+      <input type="hidden" name="action" value="honeypot_settings">
+      <div class="row"><div><strong>Honeypot aktivieren</strong><div class="muted">Fallenkanal überwachen</div></div><label class="check"><input type="checkbox" name="honeypot_enabled"{enabled_checked}> Aktiv</label></div>
+      <label for="honeypot_channel">Fallenkanal</label>
+      <select id="honeypot_channel" name="honeypot_channel">{channel_options(cfg.get("honeypot_channel"))}</select>
+      <label for="honeypot_log_channel">Honeypot-Logkanal</label>
+      <select id="honeypot_log_channel" name="honeypot_log_channel">{channel_options(cfg.get("honeypot_log_channel"))}</select>
+      <label for="honeypot_action">Aktion bei einem Treffer</label>
+      <select id="honeypot_action" name="honeypot_action">
+        <option value="ban"{" selected" if action == "ban" else ""}>Ban – dauerhaft bannen</option>
+        <option value="kick"{" selected" if action == "kick" else ""}>Kick – vom Server entfernen</option>
+        <option value="timeout"{" selected" if action == "timeout" else ""}>Timeout – zeitweise sperren</option>
+      </select>
+      <label for="honeypot_timeout_minutes">Timeout-Dauer in Minuten</label>
+      <input id="honeypot_timeout_minutes" type="number" min="1" max="40320" name="honeypot_timeout_minutes" value="{int(cfg.get('honeypot_timeout_minutes', 60) or 60)}">
+      <label for="honeypot_message">Hinweis-/Veröffentlichungsnachricht</label>
+      <textarea id="honeypot_message" name="honeypot_message" maxlength="1500">{message}</textarea>
+      <button type="submit">Einstellungen speichern</button>
+    </form>
+    <div class="grid">
+      <div class="card"><h2>Statistiken</h2><p>Gebannte, gekickte und timeoutete Mitglieder sowie fehlgeschlagene Aktionen bleiben nach Bot-Neustarts gespeichert.</p><code>/honeypot_stats</code></div>
+      <div class="card"><h2>Nachricht veröffentlichen</h2><p>Veröffentlicht den konfigurierten Hinweis im Fallenkanal.</p><code>/honeypot_publish</code></div>
+    </div>
+    <p><a class="button secondary" href="/guild/{guild.id}">← Zur Serverübersicht</a></p>
+    """
+    return _page("Honeypot", body)
 
 
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
