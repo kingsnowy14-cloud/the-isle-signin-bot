@@ -2107,8 +2107,11 @@ def guild_verified_accounts(guild_id):
         '<option value="' + str(channel.id) + '"' + (' selected' if str(channel.id) == channel_selected else '') +
         '>' + html.escape("#" + channel.name) + '</option>' for channel in guild.text_channels)
     role_options = "".join(
-        '<option value="' + str(role.id) + '"' + (' selected' if str(role.id) in role_selected else '') +
-        '>' + html.escape(role.name) + '</option>' for role in guild.roles if not role.is_default() and not role.managed)
+        '<label class="check" style="display:flex;align-items:center;gap:10px;margin:8px 0;padding:10px 12px;border:1px solid var(--border, #444);border-radius:8px">'
+        '<input type="checkbox" name="verified_accounts_role_ids" value="' + str(role.id) + '"' +
+        (' checked' if str(role.id) in role_selected else '') + '>'
+        '<span>' + html.escape(role.name) + '</span></label>'
+        for role in guild.roles if not role.is_default() and not role.managed)
     nickname_checked = ' checked' if cfg.get("verified_accounts_nickname_enabled", True) else ''
     notice = ''
     if request.args.get("saved") == "1":
@@ -2124,8 +2127,8 @@ def guild_verified_accounts(guild_id):
         '<h2 style="margin-top:24px">2. Discord-Einstellungen</h2>'
         '<label for="verified_accounts_channel_id">Zielkanal für die Verifizierungs-Nachricht</label>'
         '<select id="verified_accounts_channel_id" name="verified_accounts_channel_id">' + channel_options + '</select>'
-        '<label for="verified_accounts_role_ids">Rollen nach erfolgreicher Verifizierung <small>Mehrere Rollen mit Strg (Windows) bzw. Cmd (Mac) auswählen.</small></label>'
-        '<select id="verified_accounts_role_ids" name="verified_accounts_role_ids" multiple size="6">' + role_options + '</select>'
+        '<label>Rollen nach erfolgreicher Verifizierung <small>Einfach die gewünschten Rollen anklicken – mehrere sind möglich.</small></label>'
+        '<div style="max-height:260px;overflow-y:auto;margin:8px 0 18px">' + (role_options || '<p class="muted">Keine auswählbaren Rollen vorhanden.</p>') + '</div>'
         '<div class="check"><input type="checkbox" id="nickname_enabled" name="nickname_enabled"' + nickname_checked +
         '><label for="nickname_enabled">Discord-Nickname nach erfolgreicher Prüfung auf den Gaming-Namen setzen</label></div>'
         '<h2 style="margin-top:24px">3. Nachrichtentext</h2>'
