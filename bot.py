@@ -968,9 +968,16 @@ class TicketCreateModal(discord.ui.Modal):
 
 
 class TicketPanelSelect(discord.ui.Select):
-    def __init__(self, panel_key: str, labels):
+    def __init__(self, panel_key: str, labels, descriptions=None):
+        descriptions = descriptions if isinstance(descriptions, list) else []
         options = [
-            discord.SelectOption(label=str(label)[:100], value=str(index), description=f"Ticket-Anfrage: {str(label)[:90]}")
+            discord.SelectOption(
+                label=str(label)[:100],
+                value=str(index),
+                description=(str(descriptions[index]).strip()[:100] or None)
+                if index < len(descriptions) and str(descriptions[index]).strip()
+                else f"Ticket-Anfrage: {str(label)[:90]}",
+            )
             for index, label in enumerate(labels[:10])
         ]
         super().__init__(
@@ -996,13 +1003,13 @@ class TicketPanelSelect(discord.ui.Select):
 
 
 class TicketPanelView(discord.ui.View):
-    def __init__(self, panel_key: str, labels, display_mode: str = "buttons"):
+    def __init__(self, panel_key: str, labels, display_mode: str = "buttons", descriptions=None):
         super().__init__(timeout=None)
         self.panel_key = panel_key
         safe_labels = [str(label).strip()[:80] for label in labels if str(label).strip()][:10]
         if display_mode == "select":
             if safe_labels:
-                self.add_item(TicketPanelSelect(panel_key, safe_labels))
+                self.add_item(TicketPanelSelect(panel_key, safe_labels, descriptions))
             return
         for index, label in enumerate(safe_labels):
             button = discord.ui.Button(
@@ -6891,7 +6898,7 @@ async def on_ready():
     for guild_id, cfg in config.items():
         for panel_key, panel in cfg.get("ticket_panels", {}).items():
             try:
-                bot.add_view(TicketPanelView(panel_key, panel.get("labels", []), panel.get("display_mode", "buttons")))
+                bot.add_view(TicketPanelView(panel_key, panel.get("labels", []), panel.get("display_mode", "buttons"), panel.get("option_descriptions", [])))
             except Exception:
                 pass
     try:
