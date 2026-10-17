@@ -10,7 +10,7 @@ Der Workflow kann auch automatisch bei Änderungen an `desktop-app/**` oder am W
 
 ## Dashboard-Adresse
 
-Standardmäßig wird `https://king-snowy-at.base44.app/` geöffnet. Für einen Build mit einer anderen Adresse muss die Umgebungsvariable `IRONWOLF_DASHBOARD_URL` während des Build-Schritts gesetzt werden. Alternativ kann in `%APPDATA%/ironwolf-desktop/settings.json` ein `dashboardUrl`-Wert mit einer HTTPS-Adresse eingetragen werden, zum Beispiel:
+Standardmäßig wird `https://king-snowy-at.base44.app/` geöffnet. Für eine andere Adresse kann in `%APPDATA%/ironwolf-desktop/settings.json` ein `dashboardUrl`-Wert mit einer HTTPS-Adresse eingetragen werden, zum Beispiel:
 
 ```json
 {
