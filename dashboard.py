@@ -2851,7 +2851,7 @@ def guild_tickets(guild_id):
                 return redirect(url_for("guild_tickets", guild_id=gid))
             except Exception as exc:
                 result_html = '<div class="notice">⚠️ Löschen fehlgeschlagen: ' + html.escape(str(exc)[:300]) + '</div>'
-        submitted_labels = [request.form.get(f"button{i}", "").strip() for i in range(1, 6)]
+        submitted_labels = [request.form.get(f"button{i}", "").strip() for i in range(1, 11)]
         if not any(submitted_labels):
             abort(400, "Mindestens ein Button-Label ist erforderlich.")
         if not guild_has_feature(cfg, "ticket") and sum(bool(label) for label in submitted_labels) > 1:
@@ -2870,7 +2870,7 @@ def guild_tickets(guild_id):
             abort(404, "Ticket-Panel nicht gefunden.")
         title = request.form.get("title", "").strip()[:256]
         description = request.form.get("description", "").strip()[:4000]
-        labels = [request.form.get(f"button{i}", "").strip()[:80] for i in range(1, 6)]
+        labels = [request.form.get(f"button{i}", "").strip()[:80] for i in range(1, 11)]
         labels = [label for label in labels if label]
         channel_raw = request.form.get("channel_id", "").strip()
         category_raw = request.form.get("category_id", "").strip()
@@ -2889,7 +2889,12 @@ def guild_tickets(guild_id):
         if not labels:
             abort(400, "Mindestens ein Button-Label ist erforderlich.")
         if not guild_has_feature(cfg, "ticket") and len(labels) > 1:
-            abort(403, "Mehrere Ticket-Buttons sind Premium. Im Free-Plan ist ein Button pro Panel verfügbar.")
+            abort(403, "Mehrere Ticket-Optionen sind Premium. Im Free-Plan ist eine Option pro Panel verfügbar.")
+        display_mode = request.form.get("display_mode", "buttons").strip().lower()
+        if display_mode not in {"buttons", "select"}:
+            abort(400, "Ungültige Darstellung für das Ticket-Panel.")
+        if display_mode == "select" and not guild_has_feature(cfg, "ticket"):
+            abort(403, "Das Ticket-Dropdown ist eine Premium-Funktion.")
         if not isinstance(channel, discord.TextChannel):
             abort(400, "Bitte wähle einen gültigen Textkanal.")
         if category_id and not isinstance(category, discord.CategoryChannel):
@@ -2900,6 +2905,7 @@ def guild_tickets(guild_id):
             "title": title,
             "description": description,
             "labels": labels,
+            "display_mode": display_mode,
             "channel_id": channel.id,
             "category_id": category.id if category else None,
             "support_role_id": support_role.id if support_role else None,
@@ -2959,7 +2965,7 @@ def guild_tickets(guild_id):
             elif isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
                 embed.set_thumbnail(url=logo_url)
             embed.set_footer(text=f"IronWolf · Created by KingSnowy · Ticket-Panel ID {panel_key}")
-            view = view_cls(panel_key, labels)
+            view = view_cls(panel_key, labels, display_mode)
             old_channel_id = panel.get("channel_id")
             old_message_id = panel.get("message_id")
             # Existing panels with a saved message ID are edited in place when possible.
@@ -3034,16 +3040,16 @@ def guild_tickets(guild_id):
     body = ticket_metrics_html + (
         f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
         '<p class="muted">Bearbeite Titel, Beschreibung, Anfragearten, Ticket-Kategorie und Support-Rolle. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
-        '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support-Rolle, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu fünf Anfrage-Buttons pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
+        '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support-Rolle, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
-    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Beschreibung</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support"><label>Button 2 (optional)</label><input name="button2" maxlength="80"><label>Button 3 (optional)</label><input name="button3" maxlength="80"><label>Button 4 (optional)</label><input name="button4" maxlength="80"><label>Button 5 (optional)</label><input name="button5" maxlength="80"><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>' + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#5865F2" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="5865F2" oninput="this.form.brand_color_picker.value=\'#\'+this.value"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500"></div>' if guild_has_feature(cfg, "branding") else '') + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
+    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Beschreibung</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">' + "".join(f'<label>Button {i} (optional)</label><input name="button{i}" maxlength="80">' for i in range(2, 11)) + '<label>Darstellung (Premium)</label><select name="display_mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select><p class="muted">Im Free-Plan ist eine Anfrageart als Button verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>' + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#5865F2" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="5865F2" oninput="this.form.brand_color_picker.value=\'#\'+this.value"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500"></div>' if guild_has_feature(cfg, "branding") else '') + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     if not panels:
         body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Nutze das Formular „Neues Ticket-Panel erstellen“ oben, um eines direkt hier anzulegen.</div>'
     for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
-        labels = list(panel.get("labels", []))[:5]
+        labels = list(panel.get("labels", []))[:10]
         button_fields = ""
-        for i in range(1, 6):
+        for i in range(1, 11):
             value = labels[i-1] if len(labels) >= i else ""
             button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
         body += (
@@ -3052,6 +3058,7 @@ def guild_tickets(guild_id):
             '<label>Titel</label><input type="text" name="title" maxlength="256" required value="' + html.escape(str(panel.get("title", "Support-Ticket")), quote=True) + '">'
             '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(panel.get("description", ""))) + '</textarea>'
             + button_fields
+            + '<label>Darstellung (Premium)</label><select name="display_mode"><option value="buttons"' + (' selected' if panel.get("display_mode", "buttons") == "buttons" else '') + '>Buttons (bis zu 10)</option><option value="select"' + (' selected' if panel.get("display_mode") == "select" else '') + '>Dropdown-Menü (bis zu 10 Optionen)</option></select>'
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
