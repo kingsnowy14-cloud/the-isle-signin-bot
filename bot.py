@@ -776,6 +776,34 @@ class LanguageSelect(discord.ui.Select):
         await interaction.response.send_message(TEXTS[language]["language_saved"], ephemeral=True)
 
 
+class GamingAccountVerifyView(discord.ui.View):
+    """Buttons for the gaming account verification panel.
+
+    The UI is ready, but account ownership must not be claimed until each
+    provider's official OAuth/proof flow has been configured.
+    """
+    def __init__(self, enabled_platforms=None):
+        super().__init__(timeout=None)
+        enabled = set(enabled_platforms or ("fortnite", "steam", "roblox"))
+        buttons = {
+            "fortnite": ("🎮 Fortnite / Epic Games", discord.ButtonStyle.primary, "gaming_verify:fortnite"),
+            "steam": ("🚂 Steam", discord.ButtonStyle.secondary, "gaming_verify:steam"),
+            "roblox": ("🟥 Roblox", discord.ButtonStyle.danger, "gaming_verify:roblox"),
+        }
+        for key, (label, style, custom_id) in buttons.items():
+            if key in enabled:
+                button = discord.ui.Button(label=label, style=style, custom_id=custom_id)
+                async def callback(interaction, provider=key):
+                    messages = {
+                        "steam": "Steam-Verknüpfung ist noch nicht aktiviert. Dafür muss Steam OpenID mit einer sicheren Rückleitungs-URL eingerichtet werden. Gib dein Steam-Passwort niemals im Discord ein.",
+                        "roblox": "Roblox-Verknüpfung ist noch nicht aktiviert. Zuerst muss die Kontoinhaberschaft über einen sicheren Profilnachweis geprüft werden. Teile hier kein Passwort oder Login-Code.",
+                        "fortnite": "Fortnite/Epic-Verknüpfung ist noch nicht aktiviert. Dafür ist ein unterstützter Epic-Kontennachweis erforderlich. Gib dein Epic-Passwort niemals im Discord ein.",
+                    }
+                    await interaction.response.send_message(messages[provider], ephemeral=True)
+                button.callback = callback
+                self.add_item(button)
+
+
 class LanguageView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
