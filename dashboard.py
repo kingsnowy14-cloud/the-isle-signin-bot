@@ -61,11 +61,17 @@ TEXT_SETTINGS = {
         "help": "Platzhalter: {user}, {server}, {count}",
         "max_length": 1000,
     },
-}
+
+    "honeypot_message": {
+        "label": "Honeypot-Nachricht",
+        "help": "Nachricht im Honeypot-Kanal (max. 1500 Zeichen).",
+        "max_length": 1500,
+    },}
 BOOL_SETTINGS = {
     "welcome_bots_enabled": "Willkommensnachrichten für Bots",
     "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
+    "honeypot_enabled": "Honeypot aktivieren",
     "xp_enabled": "Level- und XP-System aktivieren",
     "anti_nuke_enabled": "Anti-Nuke-Schutz",
     "anti_raid_enabled": "Anti-Raid-Schutz",
@@ -1319,7 +1325,7 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
+                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled", "honeypot_enabled"):
                         cfg[key] = request.form.get(key) == "on"
                     numeric_settings = {
                         "automod_threshold": (3, 20, 6),
