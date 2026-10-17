@@ -2147,6 +2147,13 @@ def guild_page(guild_id):
                     if selected_language not in {"de", "en", "cs", "fr", "es"}:
                         abort(400, "Bitte eine unterstützte Bot-Sprache auswählen.")
                     cfg["bot_language"] = selected_language
+                    # Welcome and goodbye destinations are configured in the Welcome module.
+                    text_channel_ids = {str(item.id) for item in guild.text_channels}
+                    for key, label in (("welcome_channel", "Willkommenskanal"), ("goodbye_channel", "Auf-Wiedersehen-Kanal")):
+                        raw_channel_id = request.form.get(key, "").strip()
+                        if raw_channel_id and raw_channel_id not in text_channel_ids:
+                            abort(400, f"{label}: Bitte einen gültigen Textkanal auswählen.")
+                        cfg[key] = int(raw_channel_id) if raw_channel_id else None
                     for key, meta in TEXT_SETTINGS.items():
                         if key in request.form:
                             value = request.form.get(key, "").strip()
@@ -2289,6 +2296,9 @@ def guild_page(guild_id):
             language_labels = {"de": "🇩🇪 Deutsch", "en": "🇬🇧 English", "cs": "🇨🇿 Čeština", "fr": "🇫🇷 Français", "es": "🇪🇸 Español"}
             current_language = cfg.get("bot_language", "de")
             settings_html += '<label for="bot_language">🌐 Bot-Sprache</label><small>Legt die Sprache der unterstützten Bot-Antworten für diesen Discord-Server fest.</small><select id="bot_language" name="bot_language">' + "".join(f'<option value="{code}"{" selected" if code == current_language else ""}>{label}</option>' for code, label in language_labels.items()) + '</select>'
+            settings_html += '<h3>👋 Willkommensmodul · Kanäle auswählen</h3><p class="muted">Lege fest, wohin IronWolf neue Mitglieder begrüßt und wo Nachrichten beim Verlassen des Servers erscheinen.</p>'
+            settings_html += '<label for="welcome_channel">Willkommenskanal</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
+            settings_html += '<label for="goodbye_channel">Auf-Wiedersehen-Kanal</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
@@ -2308,7 +2318,7 @@ def guild_page(guild_id):
                 settings_html += '<div class="check"><input type="checkbox" id="invite_tracker_locked" disabled><label for="invite_tracker_locked">🔒 Invite-Tracker aktivieren (Premium erforderlich)</label></div><p class="muted">Der Invite-Tracker bleibt gesperrt, bis dieser Server aktives Premium hat. <a href="/guild/' + gid + '/premium">Premium verwalten →</a></p>'
         if section == "channels":
             for key, label in CHANNEL_SETTINGS.items():
-                if key == "ticket_category":
+                if key in {"ticket_category", "welcome_channel", "goodbye_channel"}:
                     continue
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(channels, cfg.get(key))}</select>'
         if section == "roles":
