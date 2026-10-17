@@ -1582,7 +1582,14 @@ def guild_honeypot(guild_id):
         _audit_dashboard_change(guild.id, "Honeypot-Modul", session.get("user_id"), f"Honeypot {'aktiviert' if enabled else 'deaktiviert'}; Kanal #{channel.name}; Aktion {action}")
         if request.form.get("action") == "publish":
             async def _publish_honeypot():
-                return await channel.send(message, allowed_mentions=discord.AllowedMentions.none())
+                embed = discord.Embed(
+                    title="🍯 IronWolf · Honeypot",
+                    description=message,
+                    color=discord.Color.orange(),
+                    timestamp=datetime.now(timezone.utc),
+                )
+                embed.set_footer(text="Sicherheits-System · IronWolf")
+                return await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
             try:
                 asyncio.run_coroutine_threadsafe(_publish_honeypot(), _bot.loop).result(timeout=20)
             except Exception as exc:
