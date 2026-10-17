@@ -65,12 +65,17 @@ async def dashboard_module_enabled(guild_id, module_name):
 @bot.check
 async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
-    if not await dashboard_command_enabled(guild_id, f"prefix:!{ctx.command.name}"):
+    command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
+    if not await dashboard_command_enabled(guild_id, f"prefix:!{command_name}"):
+        await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
     cog = getattr(ctx, "cog", None)
     module_name = cog.__class__.__name__ if cog is not None else None
     # Seasonal prefix commands are available without a premium feature flag.
-    return await dashboard_module_enabled(guild_id, module_name)
+    if not await dashboard_module_enabled(guild_id, module_name):
+        await ctx.send("Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.")
+        return False
+    return True
 
 
 async def dashboard_slash_command_check(interaction):
