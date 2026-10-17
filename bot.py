@@ -7522,12 +7522,14 @@ async def englisch_command(ctx):
         return
 
     try:
-        from deep_translator import GoogleTranslator
-        translator = GoogleTranslator(source="auto", target="en")
+        # Use MyMemory instead of Google Translate: Google was rate-limiting the
+        # Railway server IP and causing every channel rename to fail.
+        from deep_translator import MyMemoryTranslator
+        translator = MyMemoryTranslator(source="de", target="en")
     except Exception as exc:
         print(f"[ENGLISH TRANSLATION] Translator initialization failed: {type(exc).__name__}: {exc}", flush=True)
         await ctx.reply(
-            f"❌ Übersetzer konnte nicht geladen werden ({type(exc).__name__}). "
+            f"❌ Übersetzer (MyMemory) konnte nicht geladen werden ({type(exc).__name__}). "
             "Bitte prüfe den Railway-Deployment-Log und ob deep-translator installiert ist.",
             mention_author=False,
         )
@@ -7535,8 +7537,8 @@ async def englisch_command(ctx):
 
     status = await ctx.reply(
         "🌐 **IronWolf · English Translation**\n"
-        "Ich übersetze jetzt Kategorien und Kanäle ins Englische. "
-        "Bei vielen Kanälen kann das einige Minuten dauern.",
+        "Ich übersetze jetzt Kategorien und Kanäle ins Englische (MyMemory statt Google, "
+        "da Google Railway zuvor blockiert hat). Bei vielen Kanälen kann das einige Minuten dauern.",
         mention_author=False,
     )
     renamed = 0
@@ -7552,8 +7554,7 @@ async def englisch_command(ctx):
         try:
             translated = None
             last_error = None
-            # Google can temporarily throttle the Railway IP. Use exponential backoff,
-            # with longer waits for rate-limit responses instead of hammering the provider.
+            # Use bounded retries for temporary provider/network errors.
             for attempt in range(5):
                 try:
                     translated = await asyncio.to_thread(translator.translate, old_name)
@@ -7564,7 +7565,7 @@ async def englisch_command(ctx):
                     last_error = f"{type(exc).__name__}: {exc}"
                     if attempt < 4:
                         message = str(exc).lower()
-                        if "toomanyrequests" in message or "too many requests" in message or "429" in message:
+                        if "toomanyrequests" in message or "too many requests" in message or "429" in message or "quota" in message:
                             delay = (5, 12, 25, 40)[attempt]
                         else:
                             delay = (2, 4, 8, 15)[attempt]
@@ -7608,8 +7609,8 @@ async def englisch_command(ctx):
                     f"({old_name} -> {new_name}): {detail}",
                     flush=True,
                 )
-            # Keep requests well below Google's published per-second limit.
-            await asyncio.sleep(2.0)
+            # Avoid overwhelming the translation provider.
+            await asyncio.sleep(1.0)
         except Exception as exc:
             failed.append((old_name, f"{type(exc).__name__}: {str(exc)[:80]}"))
             print(
