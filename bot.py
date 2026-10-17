@@ -4452,6 +4452,54 @@ async def voice_support_waiting_room(member, before, after):
         _support_pending.discard(key)
 
 
+class HoneypotStatsView(discord.ui.View):
+    def __init__(self, guild_id: int):
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="Statistik aktualisieren", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def refresh_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message("Diese Statistik gehört zu einem anderen Server.", ephemeral=True)
+            return
+        stats = data.setdefault("honeypot_stats", {}).setdefault(str(self.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
+        embed = discord.Embed(title="🍯 IronWolf Honeypot-Statistik", color=discord.Color.orange())
+        embed.add_field(name="Gebannt", value=str(stats.get("ban", 0)), inline=True)
+        embed.add_field(name="Gekickt", value=str(stats.get("kick", 0)), inline=True)
+        embed.add_field(name="Timeouts", value=str(stats.get("timeout", 0)), inline=True)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+@bot.tree.command(name="honeypot_stats", description="Zeigt die gespeicherte Honeypot-Moderationsstatistik.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def honeypot_stats(interaction: discord.Interaction):
+    stats = data.setdefault("honeypot_stats", {}).setdefault(str(interaction.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
+    embed = discord.Embed(title="🍯 IronWolf Honeypot-Statistik", color=discord.Color.orange())
+    embed.add_field(name="Gebannt", value=str(stats.get("ban", 0)), inline=True)
+    embed.add_field(name="Gekickt", value=str(stats.get("kick", 0)), inline=True)
+    embed.add_field(name="Timeouts", value=str(stats.get("timeout", 0)), inline=True)
+    await interaction.response.send_message(embed=embed, view=HoneypotStatsView(interaction.guild_id))
+
+
+@bot.tree.command(name="honeypot_publish", description="Veröffentlicht die konfigurierte Honeypot-Nachricht im Zielkanal.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def honeypot_publish(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    channel_id = cfg.get("honeypot_channel")
+    channel = interaction.guild.get_channel(int(channel_id)) if channel_id else None
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("Bitte zuerst im Dashboard einen Honeypot-Textkanal auswählen.", ephemeral=True)
+        return
+    message_text = str(cfg.get("honeypot_message") or "🍯 Honeypot aktiv. Bitte hier nicht schreiben.")[:1900]
+    try:
+        await channel.send(message_text, allowed_mentions=discord.AllowedMentions.none())
+        await interaction.response.send_message(f"Honeypot-Nachricht wurde in {channel.mention} veröffentlicht.", ephemeral=True)
+    except (discord.Forbidden, discord.HTTPException):
+        await interaction.response.send_message("Die Nachricht konnte nicht gesendet werden. Bitte Kanalrechte prüfen.", ephemeral=True)
+
+
 @bot.event
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
