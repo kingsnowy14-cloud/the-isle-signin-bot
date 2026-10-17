@@ -676,7 +676,7 @@ def clear_registration(user_id, guild_id):
     return previous
 
 
-async def send_public_registration(guild, user, action, dinosaur="", skin="", location=""):
+async def send_public_registration(guild, user, action, dinosaur="", skin="", location="", pack=""):
     cfg = guild_config(guild.id)
     channel_id = cfg.get("registration_channel")
     channel = guild.get_channel(channel_id) if channel_id else None
@@ -687,8 +687,9 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
         embed = create_embed(
             title="✅ Player Signed In",
             description=f"**Player:** {user.mention}\n**Dinosaur:** {discord.utils.escape_markdown(dinosaur)}\n"
-                        f"**Skin:** {discord.utils.escape_markdown(skin)}\n"
-                        f"**Location:** {discord.utils.escape_markdown(location)}",
+                        f"**Skin:** {discord.utils.escape_markdown(skin or 'Not provided')}\n"
+                        f"**Location:** {discord.utils.escape_markdown(location)}\n"
+                        f"**Pack / Herd:** {discord.utils.escape_markdown(pack or 'Solo / not provided')}",
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc),
         )
@@ -697,7 +698,8 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
             title="🚪 Player Signed Out",
             description=f"**Player:** {user.mention}\n**Dinosaur:** {discord.utils.escape_markdown(dinosaur or 'Not provided')}\n"
                         f"**Skin:** {discord.utils.escape_markdown(skin or 'Not provided')}\n"
-                        f"**Location:** {discord.utils.escape_markdown(location or 'Not provided')}",
+                        f"**Location:** {discord.utils.escape_markdown(location or 'Not provided')}\n"
+                        f"**Pack / Herd:** {discord.utils.escape_markdown(pack or 'Solo / not provided')}",
             color=discord.Color.orange(),
             timestamp=datetime.now(timezone.utc),
         )
@@ -748,9 +750,13 @@ class RegistrationModal(discord.ui.Modal):
         self.location = discord.ui.TextInput(
             label=t["location"], placeholder="Enter your location", max_length=150, required=(action == "Sign In")
         )
+        self.pack = discord.ui.TextInput(
+            label="Pack / Herd (optional)", placeholder="Pack name or leave blank for solo", max_length=100, required=False
+        )
         self.add_item(self.dinosaur)
         self.add_item(self.skin)
         self.add_item(self.location)
+        self.add_item(self.pack)
 
     async def on_submit(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -762,6 +768,7 @@ class RegistrationModal(discord.ui.Modal):
         dinosaur = str(self.dinosaur.value).strip()
         skin = str(self.skin.value).strip()
         location = str(self.location.value).strip()
+        pack = str(self.pack.value).strip()
 
         if self.action == "Sign In":
             if current:
@@ -783,10 +790,11 @@ class RegistrationModal(discord.ui.Modal):
                 "dinosaur": dinosaur,
                 "skin": skin,
                 "location": location,
+                "pack": pack,
                 "signed_in_at": datetime.now(timezone.utc).isoformat(),
             }
             set_registration(interaction.user.id, guild.id, registration)
-            announced = await send_public_registration(guild, interaction.user, "Sign In", dinosaur, skin, location)
+            announced = await send_public_registration(guild, interaction.user, "Sign In", dinosaur, skin, location, pack)
             message = t["signin_success"]
             if not announced:
                 message += " Die Anmeldung wurde gespeichert, aber die öffentliche Meldung konnte nicht gesendet werden." if self.language == "de" else " Your registration was saved, but the public announcement could not be sent."
@@ -797,7 +805,7 @@ class RegistrationModal(discord.ui.Modal):
                 return
             announced = await send_public_registration(
                 guild, interaction.user, "Sign Out",
-                current.get("dinosaur", ""), current.get("skin", ""), current.get("location", "")
+                current.get("dinosaur", ""), current.get("skin", ""), current.get("location", ""), current.get("pack", "")
             )
             clear_registration(interaction.user.id, guild.id)
             message = t["signout_success"]
