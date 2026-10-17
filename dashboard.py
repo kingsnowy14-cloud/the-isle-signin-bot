@@ -421,7 +421,7 @@ def steam_link_callback():
     if role_status in {"granted", "already_has_role"}:
         role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
     elif role_status == "nickname_set":
-        role_text = "Dein Discord-Nickname wurde auf deinen Steam-Namen gesetzt. Eine Verifizierungsrolle ist noch nicht konfiguriert oder war bereits vorhanden."
+        role_text = "Dein Discord-Nickname wurde auf deinen Steam-Namen gesetzt. Die Rollenvergabe wurde ebenfalls versucht, sofern eine Verifizierungsrolle konfiguriert ist."
     elif role_status == "not_configured":
         role_text = "Das Steam-Konto ist gespeichert. Im Dashboard ist für diesen Server noch keine Verifizierungsrolle ausgewählt."
     else:
@@ -647,7 +647,7 @@ def roblox_link_callback():
     if role_status in {"granted", "already_has_role"}:
         role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
     elif role_status == "nickname_set":
-        role_text = "Dein Discord-Nickname wurde auf deinen Roblox-Namen gesetzt. Eine Verifizierungsrolle ist noch nicht konfiguriert oder war bereits vorhanden."
+        role_text = "Dein Discord-Nickname wurde auf deinen Roblox-Namen gesetzt. Die Rollenvergabe wurde ebenfalls versucht, sofern eine Verifizierungsrolle konfiguriert ist."
     elif role_status == "not_configured":
         role_text = "Das Roblox-Konto wurde gespeichert. Wähle im Dashboard eine Verifizierungsrolle aus."
     else:
