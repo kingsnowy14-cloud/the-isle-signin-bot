@@ -5571,7 +5571,34 @@ async def ironwolf_profile(
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
-    """Guard the bot account nickname on servers where it is not allowlisted."""
+    """Handle configured server boosts and guard the bot account nickname."""
+    # Boost changes are tracked for every member, independently of nickname protection.
+    if before.premium_since != after.premium_since:
+        cfg = config.get(str(after.guild.id), {})
+        if cfg.get("server_boost_enabled"):
+            channel_id = cfg.get("server_boost_channel_id")
+            channel = after.guild.get_channel(int(channel_id)) if channel_id else None
+            role_id = cfg.get("server_boost_role_id")
+            role = after.guild.get_role(int(role_id)) if role_id else None
+            if after.premium_since is not None:
+                if role is not None and role not in after.roles:
+                    try:
+                        await after.add_roles(role, reason="Server-Boost-Belohnung")
+                    except (discord.Forbidden, discord.HTTPException) as exc:
+                        print(f"[SERVER BOOST] Could not assign booster role in guild {after.guild.id}: {type(exc).__name__}")
+                if isinstance(channel, discord.TextChannel):
+                    template = str(cfg.get("server_boost_message") or "🚀 Danke {mention} für den Server-Boost von **{server}**!")
+                    message = template.replace("{mention}", after.mention).replace("{server}", after.guild.name)
+                    try:
+                        await channel.send(message, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
+                    except (discord.Forbidden, discord.HTTPException) as exc:
+                        print(f"[SERVER BOOST] Could not send boost message in guild {after.guild.id}: {type(exc).__name__}")
+            elif role is not None and role in after.roles:
+                try:
+                    await after.remove_roles(role, reason="Server-Boost beendet")
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(f"[SERVER BOOST] Could not remove booster role in guild {after.guild.id}: {type(exc).__name__}")
+
     if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
         return
 
