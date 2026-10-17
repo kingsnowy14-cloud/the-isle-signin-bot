@@ -2752,6 +2752,9 @@ class AnonymousFeedbackView(discord.ui.View):
         await interaction.response.send_modal(AnonymousFeedbackModal(interaction.guild.id))
 
 
+bot.AnonymousFeedbackView = AnonymousFeedbackView
+
+
 @bot.listen("on_ready")
 async def register_anonymous_feedback_view():
     if getattr(bot, "_anonymous_feedback_view_registered", False):
