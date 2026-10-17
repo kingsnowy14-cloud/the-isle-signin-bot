@@ -7511,58 +7511,101 @@ async def wolfcheck_command(interaction: discord.Interaction):
 @commands.has_guild_permissions(manage_channels=True)
 async def englisch_command(ctx):
     """Translate all channel and category names in this server into English."""
-    try:
-        from deep_translator import GoogleTranslator
-        translator = GoogleTranslator(source="auto", target="en")
-    except Exception as exc:
+    guild = ctx.guild
+    bot_member = guild.me
+    if bot_member is None or not bot_member.guild_permissions.manage_channels:
         await ctx.reply(
-            f"❌ Übersetzer konnte nicht geladen werden: {type(exc).__name__}. "
-            "Bitte prüfe, ob deep-translator installiert ist.",
+            "❌ IronWolf fehlt die Serverberechtigung **Kanäle verwalten**. "
+            "Bitte erteile sie der Bot-Rolle und starte den Befehl erneut.",
             mention_author=False,
         )
         return
 
-    guild = ctx.guild
+    try:
+        from deep_translator import GoogleTranslator
+        translator = GoogleTranslator(source="auto", target="en")
+    except Exception as exc:
+        print(f"[ENGLISH TRANSLATION] Translator initialization failed: {type(exc).__name__}: {exc}", flush=True)
+        await ctx.reply(
+            f"❌ Übersetzer konnte nicht geladen werden ({type(exc).__name__}). "
+            "Bitte prüfe den Railway-Deployment-Log und ob deep-translator installiert ist.",
+            mention_author=False,
+        )
+        return
+
     status = await ctx.reply(
         "🌐 **IronWolf · English Translation**\n"
-        "Ich übersetze jetzt alle Kategorien und Kanäle ins Englische. "
-        "Das kann je nach Servergröße etwas dauern. Bitte den Bot nicht unterbrechen.",
+        "Ich übersetze jetzt Kategorien und Kanäle ins Englische. "
+        "Bei vielen Kanälen kann das einige Minuten dauern.",
         mention_author=False,
     )
     renamed = 0
     unchanged = 0
     failed = []
-    # Categories first, then all regular channels. Existing positions and permissions stay unchanged.
     channels = sorted(
         guild.channels,
         key=lambda channel: (0 if isinstance(channel, discord.CategoryChannel) else 1, channel.position),
     )
+
     for channel in channels:
         old_name = channel.name
         try:
-            translated = await asyncio.to_thread(translator.translate, old_name)
+            translated = None
+            last_error = None
+            # Translation providers can temporarily throttle requests; retry before giving up.
+            for attempt in range(3):
+                try:
+                    translated = await asyncio.to_thread(translator.translate, old_name)
+                    if translated and translated.strip():
+                        break
+                    last_error = "Leere Übersetzung"
+                except Exception as exc:
+                    last_error = f"{type(exc).__name__}: {exc}"
+                    if attempt < 2:
+                        await asyncio.sleep(1.0 * (attempt + 1))
             if not translated or not translated.strip():
-                unchanged += 1
+                failed.append((old_name, str(last_error or "Keine Übersetzung")[:100]))
+                print(
+                    f"[ENGLISH TRANSLATION] Translation failed for channel {channel.id} "
+                    f"({old_name}): {last_error}",
+                    flush=True,
+                )
                 continue
+
             new_name = translated.strip()[:100]
             if not isinstance(channel, discord.CategoryChannel):
-                # Discord text-channel names work best as lowercase slugs.
+                # Discord channel names should be lowercase slugs; retain Unicode letters.
                 new_name = re.sub(r"\s+", "-", new_name.lower())
+                new_name = re.sub(r"[!@#$%^&*()=+\[\]{}|\\:;\"'<>,.?/]", "", new_name)
                 new_name = re.sub(r"-{2,}", "-", new_name).strip("-") or old_name
             if new_name == old_name:
                 unchanged += 1
+                await asyncio.sleep(0.25)
                 continue
-            await channel.edit(name=new_name, reason=f"!englisch requested by {ctx.author} ({ctx.author.id})")
-            renamed += 1
-            await asyncio.sleep(0.45)
+
+            try:
+                await channel.edit(
+                    name=new_name,
+                    reason=f"!englisch requested by {ctx.author} ({ctx.author.id})",
+                )
+                renamed += 1
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                detail = f"{type(exc).__name__}: {getattr(exc, 'text', '') or str(exc)}"
+                failed.append((old_name, detail[:100]))
+                print(
+                    f"[ENGLISH TRANSLATION] Rename failed for channel {channel.id} "
+                    f"({old_name} -> {new_name}): {detail}",
+                    flush=True,
+                )
+            await asyncio.sleep(0.6)
         except Exception as exc:
-            failed.append((old_name, type(exc).__name__))
+            failed.append((old_name, f"{type(exc).__name__}: {str(exc)[:80]}"))
             print(
-                f"[ENGLISH TRANSLATION] Could not rename channel {channel.id} "
+                f"[ENGLISH TRANSLATION] Unexpected failure for channel {channel.id} "
                 f"({old_name}): {type(exc).__name__}: {exc}",
                 flush=True,
             )
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.5)
 
     summary = (
         "✅ **Übersetzung abgeschlossen!**\n"
@@ -7571,11 +7614,12 @@ async def englisch_command(ctx):
         f"⚠️ Fehlgeschlagen: **{len(failed)}**"
     )
     if failed:
-        summary += "\n\n**Nicht geändert (erste 10):**\n" + "\n".join(
-            f"• {name[:70]} — {error}" for name, error in failed[:10]
+        summary += "\n\n**Fehler (erste 8):**\n" + "\n".join(
+            f"• `{name[:55]}` — {error[:90]}" for name, error in failed[:8]
         )
+        summary += "\n\nPrüfe die Railway-Logs mit dem Präfix `[ENGLISH TRANSLATION]` für Details."
     try:
-        await status.edit(content=summary)
+        await status.edit(content=summary[:1950])
     except discord.HTTPException:
         await ctx.reply(summary[:1900], mention_author=False)
 
@@ -7591,7 +7635,11 @@ async def englisch_command_error(ctx, error):
         await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
     else:
         original = getattr(error, "original", error)
-        await ctx.reply(f"❌ !englisch ist fehlgeschlagen: {type(original).__name__}: {original}", mention_author=False)
+        print(f"[ENGLISH TRANSLATION] Command error: {type(original).__name__}: {original}", flush=True)
+        await ctx.reply(
+            f"❌ !englisch ist fehlgeschlagen: {type(original).__name__}: {str(original)[:300]}",
+            mention_author=False,
+        )
 
 
 if __name__ == "__main__":
