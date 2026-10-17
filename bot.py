@@ -6806,23 +6806,25 @@ _server_statistics_task = None
 
 
 async def server_statistics_worker():
-    """Refresh all configured server-statistics voice-channel names."""
+    """Refresh configured server-statistics voice-channel names independently."""
     await bot.wait_until_ready()
+    print("[SERVER-STATS] Worker started; refresh interval is 5 minutes.", flush=True)
     while not bot.is_closed():
         for guild in list(bot.guilds):
             try:
                 cfg = guild_config(guild.id)
                 configured = cfg.get("server_statistics_channels")
                 if not isinstance(configured, dict):
-                    # Support older configurations until the dashboard is saved again.
                     legacy = cfg.get("server_statistics_channel")
                     configured = {"members": legacy} if legacy else {}
                 if not configured:
                     continue
+
                 me = guild.me
                 if me is None or not me.guild_permissions.manage_channels:
                     print(f"[SERVER-STATS] Missing Manage Channels permission in guild {guild.id}.", flush=True)
                     continue
+
                 members = list(guild.members)
                 counts = {
                     "members": int(guild.member_count or len(members)),
@@ -6833,29 +6835,41 @@ async def server_statistics_worker():
                     "voice_channels": len(guild.voice_channels),
                 }
                 templates = {
-                    "members": "👥・Mitglieder: {count}",
+                    "members": "👥・Members: {count}",
                     "bots": "🤖・Bots: {count}",
-                    "boosters": "🚀・Booster: {count}",
-                    "roles": "🎭・Rollen: {count}",
-                    "text_channels": "💬・Textkanäle: {count}",
-                    "voice_channels": "🔊・Sprachkanäle: {count}",
+                    "boosters": "🚀・Boosters: {count}",
+                    "roles": "🎭・Roles: {count}",
+                    "text_channels": "💬・Text Channels: {count}",
+                    "voice_channels": "🔊・Voice Channels: {count}",
                 }
+
                 for stat_key, raw_channel_id in configured.items():
                     if not raw_channel_id or stat_key not in templates:
                         continue
                     try:
-                        channel = guild.get_channel(int(raw_channel_id))
+                        channel_id = int(raw_channel_id)
                     except (ValueError, TypeError):
-                        print(f"[SERVER-STATS] Invalid {stat_key} channel ID in guild {guild.id}.", flush=True)
+                        print(f"[SERVER-STATS] Invalid {stat_key} channel ID in guild {guild.id}: {raw_channel_id!r}", flush=True)
+                        continue
+
+                    channel = guild.get_channel(channel_id)
+                    if channel is None:
+                        print(f"[SERVER-STATS] Configured {stat_key} channel {channel_id} was not found in guild {guild.id}; reselect it in the dashboard.", flush=True)
                         continue
                     if not isinstance(channel, discord.VoiceChannel):
+                        print(f"[SERVER-STATS] Configured {stat_key} channel {channel_id} is {type(channel).__name__}, not a voice channel.", flush=True)
                         continue
+
                     new_name = templates[stat_key].format(count=counts[stat_key])[:100]
-                    if channel.name != new_name:
-                        await channel.edit(name=new_name, reason="IronWolf: Server-Statistik aktualisieren")
-                        print(f"[SERVER-STATS] Updated {stat_key} channel for guild {guild.id}: {new_name}", flush=True)
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                print(f"[SERVER-STATS] Could not update guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                    if channel.name == new_name:
+                        continue
+                    try:
+                        await channel.edit(name=new_name, reason="IronWolf: update server statistics")
+                        print(f"[SERVER-STATS] Updated {stat_key} channel {channel.id} in guild {guild.id}: {new_name}", flush=True)
+                    except (discord.Forbidden, discord.HTTPException) as exc:
+                        print(f"[SERVER-STATS] Could not rename {stat_key} channel {channel.id} in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                    except Exception as exc:
+                        print(f"[SERVER-STATS] Unexpected error renaming {stat_key} channel {channel.id} in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
             except Exception as exc:
                 print(f"[SERVER-STATS] Unexpected error in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
         await asyncio.sleep(300)
