@@ -105,6 +105,54 @@ async def dashboard_slash_command_check(interaction):
 
 bot.tree.interaction_check = dashboard_slash_command_check
 
+async def log_command_usage(guild, channel, user, command_name, command_type):
+    """Send a minimal command-use record to the configured log channel."""
+    if guild is None or channel is None or user is None or getattr(user, "bot", False):
+        return
+    cfg = guild_config(guild.id)
+    if not cfg.get("command_log_enabled", False):
+        return
+    watched = {str(value) for value in cfg.get("command_log_source_channel_ids", [])}
+    if str(channel.id) not in watched:
+        return
+    output_id = cfg.get("command_log_output_channel_id")
+    if not str(output_id or "").isdigit():
+        return
+    output = guild.get_channel(int(output_id))
+    if not isinstance(output, discord.TextChannel):
+        return
+    embed = discord.Embed(
+        title="⌘ IronWolf · Command Log",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Benutzer", value=f"{user.mention} (ID: {user.id})", inline=False)
+    embed.add_field(name="Befehl", value=f"`{discord.utils.escape_markdown(str(command_name)[:150])}`", inline=True)
+    embed.add_field(name="Typ", value=command_type, inline=True)
+    embed.add_field(name="Kanal", value=f"{channel.mention} (ID: {channel.id})", inline=False)
+    try:
+        await output.send(embed=embed)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[COMMAND-LOG] Could not write to log channel in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+
+
+@bot.listen("on_command_completion")
+async def command_log_prefix_completion(ctx):
+    if ctx.guild is None or ctx.channel is None:
+        return
+    command_name = getattr(ctx.command, "qualified_name", None) or getattr(ctx.command, "name", "unknown")
+    await log_command_usage(ctx.guild, ctx.channel, ctx.author, "!" + command_name, "Prefix")
+
+
+@bot.listen("on_app_command_completion")
+async def command_log_slash_completion(interaction, command):
+    if interaction.guild is None or interaction.channel is None:
+        return
+    command_name = getattr(command, "qualified_name", None) or getattr(command, "name", "unknown")
+    await log_command_usage(interaction.guild, interaction.channel, interaction.user, "/" + command_name, "Slash")
+
+
+
 
 MODULE_STATE_FILE = data_path("module_change_state.json")
 MODULE_LOG_FILE = data_path("module_changes.json")
