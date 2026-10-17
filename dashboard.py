@@ -320,23 +320,43 @@ async def _steam_grant_guild_role(guild_id, discord_id, nickname=None, provider=
             )
             nickname_status = "nickname_failed"
 
-    # Still attempt role assignment if nickname editing fails; report nickname failures afterward.
-    role_id = cfg.get("verified_accounts_role_id")
-    if not role_id:
+    # Grant every configured gaming-verification role (supports old single-role settings too).
+    configured_roles = cfg.get("verified_accounts_role_ids")
+    if configured_roles is None:
+        legacy_role = cfg.get("verified_accounts_role_id")
+        configured_roles = [legacy_role] if legacy_role else []
+    elif not isinstance(configured_roles, (list, tuple, set)):
+        configured_roles = [configured_roles]
+    if not configured_roles:
         role_result = "not_configured"
     else:
-        role = guild.get_role(int(role_id))
-        if role is None or role.is_default() or role.managed:
-            role_result = "invalid_role"
-        elif role in member.roles:
-            role_result = "already_has_role"
-        else:
+        roles_to_add = []
+        invalid_roles = []
+        already_had_roles = []
+        for raw_role_id in configured_roles:
             try:
-                await member.add_roles(role, reason=f"{provider}-Konto erfolgreich über den offiziellen Anbieter verifiziert")
+                role = guild.get_role(int(raw_role_id))
+            except (TypeError, ValueError):
+                role = None
+            if role is None or role.is_default() or role.managed:
+                invalid_roles.append(raw_role_id)
+            elif role in member.roles:
+                already_had_roles.append(role.id)
+            else:
+                roles_to_add.append(role)
+        if roles_to_add:
+            try:
+                await member.add_roles(*roles_to_add, reason=f"{provider}-Konto erfolgreich über den offiziellen Anbieter verifiziert")
                 role_result = "granted"
             except (discord.Forbidden, discord.HTTPException) as exc:
-                print(f"[GAMING LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
+                print(f"[GAMING LINK] Could not grant verification roles in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
                 role_result = "role_failed"
+        elif invalid_roles:
+            role_result = "invalid_role"
+        elif already_had_roles:
+            role_result = "already_has_role"
+        else:
+            role_result = "not_configured"
 
     # Make nickname failures visible instead of masking them with a successful role result.
     if nickname_status in {"nickname_failed", "nickname_missing"}:
@@ -2019,15 +2039,17 @@ def guild_verified_accounts(guild_id):
         if channel_raw and channel_raw not in channel_ids:
             abort(400, "Bitte wähle einen gültigen Textkanal.")
         role_ids = {str(role.id) for role in guild.roles}
-        role_raw = request.form.get("verified_accounts_role_id", "").strip()
-        if role_raw and role_raw not in role_ids:
-            abort(400, "Bitte wähle eine gültige Rolle.")
+        role_raws = request.form.getlist("verified_accounts_role_ids")
+        role_raws = [raw.strip() for raw in role_raws if raw.strip()]
+        if any(raw not in role_ids for raw in role_raws):
+            abort(400, "Bitte wähle nur gültige Rollen aus.")
         message_text = request.form.get("verified_accounts_message", "").strip()
         if len(message_text) > 1800:
             abort(400, "Die Nachricht darf höchstens 1800 Zeichen lang sein.")
         cfg["verified_accounts_enabled_platforms"] = selected
         cfg["verified_accounts_channel_id"] = int(channel_raw) if channel_raw else None
-        cfg["verified_accounts_role_id"] = int(role_raw) if role_raw else None
+        cfg["verified_accounts_role_ids"] = [int(raw) for raw in role_raws]
+        cfg["verified_accounts_role_id"] = int(role_raws[0]) if role_raws else None
         cfg["verified_accounts_nickname_enabled"] = request.form.get("nickname_enabled") == "on"
         cfg["verified_accounts_message"] = message_text
         _save_json(data_path("config.json"), _config)
@@ -2069,7 +2091,11 @@ def guild_verified_accounts(guild_id):
 
     selected = set(cfg.get("verified_accounts_enabled_platforms", ["steam", "roblox"]))
     channel_selected = str(cfg.get("verified_accounts_channel_id") or "")
-    role_selected = str(cfg.get("verified_accounts_role_id") or "")
+    role_selected_values = cfg.get("verified_accounts_role_ids")
+    if role_selected_values is None:
+        legacy_selected = cfg.get("verified_accounts_role_id")
+        role_selected_values = [legacy_selected] if legacy_selected else []
+    role_selected = {str(value) for value in role_selected_values}
     platform_fields = ""
     for key, (emoji, label) in platforms.items():
         checked = " checked" if key in selected else ""
@@ -2080,8 +2106,8 @@ def guild_verified_accounts(guild_id):
     channel_options = '<option value="">— Kanal auswählen —</option>' + "".join(
         '<option value="' + str(channel.id) + '"' + (' selected' if str(channel.id) == channel_selected else '') +
         '>' + html.escape("#" + channel.name) + '</option>' for channel in guild.text_channels)
-    role_options = '<option value="">— Keine Rolle automatisch vergeben —</option>' + "".join(
-        '<option value="' + str(role.id) + '"' + (' selected' if str(role.id) == role_selected else '') +
+    role_options = "".join(
+        '<option value="' + str(role.id) + '"' + (' selected' if str(role.id) in role_selected else '') +
         '>' + html.escape(role.name) + '</option>' for role in guild.roles if not role.is_default() and not role.managed)
     nickname_checked = ' checked' if cfg.get("verified_accounts_nickname_enabled", True) else ''
     notice = ''
@@ -2098,8 +2124,8 @@ def guild_verified_accounts(guild_id):
         '<h2 style="margin-top:24px">2. Discord-Einstellungen</h2>'
         '<label for="verified_accounts_channel_id">Zielkanal für die Verifizierungs-Nachricht</label>'
         '<select id="verified_accounts_channel_id" name="verified_accounts_channel_id">' + channel_options + '</select>'
-        '<label for="verified_accounts_role_id">Rolle nach erfolgreicher Verifizierung</label>'
-        '<select id="verified_accounts_role_id" name="verified_accounts_role_id">' + role_options + '</select>'
+        '<label for="verified_accounts_role_ids">Rollen nach erfolgreicher Verifizierung <small>Mehrere Rollen mit Strg (Windows) bzw. Cmd (Mac) auswählen.</small></label>'
+        '<select id="verified_accounts_role_ids" name="verified_accounts_role_ids" multiple size="6">' + role_options + '</select>'
         '<div class="check"><input type="checkbox" id="nickname_enabled" name="nickname_enabled"' + nickname_checked +
         '><label for="nickname_enabled">Discord-Nickname nach erfolgreicher Prüfung auf den Gaming-Namen setzen</label></div>'
         '<h2 style="margin-top:24px">3. Nachrichtentext</h2>'
