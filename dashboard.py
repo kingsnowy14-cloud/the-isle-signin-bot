@@ -24,6 +24,7 @@ import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response, send_file
 from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
+from wolfmirror import simulate_scenario, SCENARIOS
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -150,6 +151,7 @@ def _page(title, body):
         + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
@@ -3456,3 +3458,67 @@ def guild_wolfshield(guild_id):
         '</ol><p><a href="/guild/' + gid + '/wolfpulse">WolfPulse · Berechtigungen prüfen ↗</a> · <a href="/guild/' + gid + '">Zur Server-Konfiguration ↗</a></p></section>'
     )
     return _page("WolfShield · Anti-Raid", body)
+
+
+@app.route("/guild/<guild_id>/wolfmirror", methods=["GET", "POST"])
+def guild_wolfmirror(guild_id):
+    """Run a safe, read-only security tabletop simulation for this guild."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    scenario = request.form.get("scenario", "raid") if request.method == "POST" else request.args.get("scenario", "raid")
+    if scenario not in SCENARIOS:
+        abort(400, "Unbekanntes WolfMirror-Szenario.")
+    if request.method == "POST" and not _csrf_ok():
+        abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+
+    me = guild.me
+    permissions = me.guild_permissions if me else None
+    report = simulate_scenario(
+        cfg,
+        {
+            "moderate_members": bool(permissions and permissions.moderate_members),
+            "manage_messages": bool(permissions and permissions.manage_messages),
+            "view_audit_log": bool(permissions and permissions.view_audit_log),
+        },
+        scenario,
+        {"member_count": guild.member_count or 0, "channel_count": len(guild.channels)},
+    )
+    controls_html = "".join(
+        '<div class="setting-row"><span><strong>' + html.escape(item["name"]) + '</strong><small>' +
+        html.escape(item["detail"]) + '</small></span><strong>' +
+        ("✅" if item["active"] else "⚠️") + '</strong></div>'
+        for item in report["controls"]
+    )
+    gaps_html = "".join('<li>' + html.escape(gap) + '</li>' for gap in report["gaps"])
+    options_html = "".join(
+        '<option value="' + key + '"' + (' selected' if key == scenario else '') + '>' +
+        html.escape(value["label"]) + '</option>'
+        for key, value in SCENARIOS.items()
+    )
+    score = int(report["score"])
+    score_color = "#35c98b" if score >= 80 else ("#e6b450" if score >= 50 else "#f16c6c")
+    body = (
+        '<section class="card"><h1>🧪 WolfMirror · Security Digital Twin</h1>'
+        '<p class="muted">Teste die Reaktion deines Servers, bevor ein echter Vorfall passiert. '
+        'Website und Discord-Bot verwenden denselben Simulationskern und die gespeicherten Servereinstellungen.</p>'
+        '<form method="post">' + _csrf_field() +
+        '<label class="card">Szenario auswählen<select name="scenario">' + options_html + '</select></label>'
+        '<button type="submit">🧪 Dry-Run simulieren</button></form>'
+        '<p class="muted">Simulationen verändern weder Konfiguration noch Mitglieder, Nachrichten oder Serverobjekte.</p></section>'
+        '<section class="card"><h2>' + html.escape(report["label"]) + '</h2><p>' + html.escape(report["summary"]) + '</p>'
+        '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0">'
+        '<div style="width:112px;height:112px;border-radius:50%;display:grid;place-items:center;border:8px solid ' + score_color + ';font-size:25px;font-weight:800">' + str(score) + '<small style="font-size:12px">/100</small></div>'
+        '<div><h3>' + html.escape(report["verdict"]) + '</h3><p class="muted">' +
+        str(report["metrics"]["member_count"]) + ' Mitglieder · ' + str(report["metrics"]["channel_count"]) + ' Kanäle</p></div></div>'
+        + controls_html +
+        ('<h3>Verbesserungspotenzial</h3><ul>' + gaps_html + '</ul>' if gaps_html else '<p>✅ Keine Lücken in den geprüften Signalen gefunden.</p>') +
+        '<p class="muted">🧪 ' + html.escape(report["disclaimer"]) + '</p></section>'
+        '<section class="card"><h2>Warum WolfMirror anders ist</h2>'
+        '<p>Ein kontrollierter Sicherheits-Tabletop statt blindem Auto-Ban: Du siehst vorab, welche Regeln aktiv sind und welche Bot-Berechtigungen fehlen. '
+        'Der Score ist eine erklärbare Checkliste, keine wissenschaftliche Angriffswahrscheinlichkeit.</p>'
+        '<p><a href="/guild/' + str(guild.id) + '/wolfshield">WolfShield konfigurieren ↗</a> · '
+        '<a href="/guild/' + str(guild.id) + '/wolfpulse">WolfPulse prüfen ↗</a></p></section>'
+    )
+    return _page("WolfMirror · Security Digital Twin", body)
