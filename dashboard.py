@@ -1185,16 +1185,17 @@ def _command_records(guild_id):
     disabled_modules = set(cfg.get("disabled_modules", []))
     records = []
     seen = set()
-    for command in _bot.commands:
+    for command in _bot.walk_commands():
         if command.hidden or command.name == "help":
             continue
-        key = f"prefix:!{command.name}"
+        qualified_name = command.qualified_name
+        key = f"prefix:!{qualified_name}"
         if key in seen:
             continue
         seen.add(key)
         cog = command.cog
         module_name = cog.__class__.__name__ if cog is not None else None
-        records.append({"key": key, "name": "!" + command.name, "kind": "Prefix", "enabled": key not in disabled and module_name not in disabled_modules, "cog": command.cog_name or "Allgemein"})
+        records.append({"key": key, "name": "!" + qualified_name, "kind": "Prefix", "enabled": key not in disabled and module_name not in disabled_modules, "cog": command.cog_name or "Allgemein"})
     for command in _bot.tree.walk_commands():
         if isinstance(command, app_commands.Group):
             continue
