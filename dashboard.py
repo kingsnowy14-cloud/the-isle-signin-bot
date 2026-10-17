@@ -62,21 +62,11 @@ TEXT_SETTINGS = {
         "max_length": 1000,
     },
 
-    "honeypot_action": {
-        "label": "Honeypot-Aktion (ban/kick/timeout)",
-        "help": "Erlaubte Werte: ban, kick oder timeout. Standard: kick.",
-        "max_length": 10,
-    },
-    "honeypot_message": {
-        "label": "Honeypot-Nachricht",
-        "help": "Nachricht im Honeypot-Kanal (max. 1500 Zeichen).",
-        "max_length": 1500,
-    },}
+}
 BOOL_SETTINGS = {
     "welcome_bots_enabled": "Willkommensnachrichten für Bots",
     "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
-    "honeypot_enabled": "Honeypot aktivieren",
     "xp_enabled": "Level- und XP-System aktivieren",
     "anti_nuke_enabled": "Anti-Nuke-Schutz",
     "anti_raid_enabled": "Anti-Raid-Schutz",
@@ -88,7 +78,6 @@ CHANNEL_SETTINGS = {
     "levelup_channel": "Level-Up-Kanal",
     "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Sicherheits-Logkanal",
-    "honeypot_channel": "Honeypot-Kanal",
     "verify_channel": "Verifizierungskanal",
     "registration_channel": "Anmeldekanal",
     "ticket_log_channel": "Ticket-Logkanal",
