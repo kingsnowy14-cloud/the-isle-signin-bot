@@ -32,8 +32,6 @@ jobs:
 
       - name: Build Windows installer
         run: npm run dist:win
-        env:
-          IRONWOLF_DASHBOARD_URL: https://king-snowy-at.base44.app/
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
