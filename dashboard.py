@@ -16,7 +16,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import discord
 from discord import app_commands
@@ -109,6 +109,288 @@ CATEGORY_SETTINGS = {
 }
 
 
+
+_STEAM_OPENID_ENDPOINT = "https://steamcommunity.com/openid/login"
+_STEAM_OPENID_NS = "http://specs.openid.net/auth/2.0"
+_STEAM_LINK_STORE = data_path("steam_account_links.json")
+_STEAM_LINK_LOCK = threading.Lock()
+_STEAM_LINK_TTL_SECONDS = 600
+
+
+def _steam_callback_config():
+    """Return the explicitly configured HTTPS Steam OpenID callback and origin."""
+    callback_uri = (os.getenv("STEAM_OPENID_RETURN_URI") or "").strip()
+    parsed = urlparse(callback_uri)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path.rstrip("/") != "/gaming/steam/callback"
+    ):
+        raise ValueError(
+            "Steam-Verknüpfung ist noch nicht konfiguriert. Setze in Railway "
+            "STEAM_OPENID_RETURN_URI auf die öffentliche HTTPS-Adresse "
+            "mit dem Pfad /gaming/steam/callback."
+        )
+    origin = f"https://{parsed.netloc}"
+    return callback_uri, origin
+
+
+def _steam_read_store_locked():
+    try:
+        value = json.loads(_STEAM_LINK_STORE.read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            value.setdefault("pending", {})
+            value.setdefault("accounts", {})
+            if isinstance(value["pending"], dict) and isinstance(value["accounts"], dict):
+                return value
+    except (OSError, json.JSONDecodeError):
+        pass
+    return {"pending": {}, "accounts": {}}
+
+
+def _steam_write_store_locked(value):
+    temp = _STEAM_LINK_STORE.with_suffix(".tmp")
+    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp, _STEAM_LINK_STORE)
+
+
+def _create_steam_link_url(guild_id, discord_user_id):
+    if not guild_id:
+        raise ValueError("Steam kann nur über einen Verifizierungsbutton innerhalb eines Discord-Servers verknüpft werden.")
+    callback_uri, origin = _steam_callback_config()
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _STEAM_LINK_LOCK:
+        store = _steam_read_store_locked()
+        store["pending"] = {
+            key: row for key, row in store["pending"].items()
+            if isinstance(row, dict) and float(row.get("expires_at", 0) or 0) > now - 86400
+        }
+        store["pending"][token] = {
+            "discord_id": str(discord_user_id),
+            "guild_id": str(guild_id),
+            "created_at": now,
+            "expires_at": now + _STEAM_LINK_TTL_SECONDS,
+            "status": "pending",
+        }
+        _steam_write_store_locked(store)
+    return origin + "/gaming/steam/start?" + urlencode({"token": token})
+
+
+def _steam_get_pending(token):
+    now = time.time()
+    with _STEAM_LINK_LOCK:
+        store = _steam_read_store_locked()
+        row = store["pending"].get(token)
+        if not isinstance(row, dict) or float(row.get("expires_at", 0) or 0) <= now:
+            return None
+        return dict(row)
+
+
+def _steam_claim_pending(token):
+    now = time.time()
+    with _STEAM_LINK_LOCK:
+        store = _steam_read_store_locked()
+        row = store["pending"].get(token)
+        if (
+            not isinstance(row, dict)
+            or row.get("status") != "pending"
+            or float(row.get("expires_at", 0) or 0) <= now
+        ):
+            return None
+        row["status"] = "processing"
+        store["pending"][token] = row
+        _steam_write_store_locked(store)
+        return dict(row)
+
+
+def _steam_set_pending_status(token, status):
+    with _STEAM_LINK_LOCK:
+        store = _steam_read_store_locked()
+        row = store["pending"].get(token)
+        if isinstance(row, dict):
+            row["status"] = status
+            store["pending"][token] = row
+            _steam_write_store_locked(store)
+
+
+def _steam_save_verified_account(token, steam_id):
+    """Persist a verified SteamID once; never allow it to be claimed by another Discord user."""
+    with _STEAM_LINK_LOCK:
+        store = _steam_read_store_locked()
+        pending = store["pending"].get(token)
+        if not isinstance(pending, dict) or pending.get("status") != "processing":
+            return False, "Der Verknüpfungslink wurde bereits verwendet oder ist abgelaufen."
+        discord_id = str(pending.get("discord_id", ""))
+        guild_id = str(pending.get("guild_id", ""))
+        for owner_id, account in store["accounts"].items():
+            if isinstance(account, dict) and str(account.get("steam_id")) == steam_id and str(owner_id) != discord_id:
+                pending["status"] = "rejected"
+                store["pending"][token] = pending
+                _steam_write_store_locked(store)
+                return False, "Dieses Steam-Konto ist bereits mit einem anderen Discord-Konto verknüpft."
+        existing = store["accounts"].get(discord_id)
+        if isinstance(existing, dict) and str(existing.get("steam_id")) != steam_id:
+            pending["status"] = "rejected"
+            store["pending"][token] = pending
+            _steam_write_store_locked(store)
+            return False, "Dein Discord-Konto ist bereits mit einem anderen Steam-Konto verknüpft. Bitte wende dich an die Serveradministration."
+        account = existing if isinstance(existing, dict) else {
+            "discord_id": discord_id,
+            "steam_id": steam_id,
+            "linked_at": datetime.now(timezone.utc).isoformat(),
+            "guild_ids": [],
+        }
+        account["steam_id"] = steam_id
+        guild_ids = account.get("guild_ids", [])
+        if not isinstance(guild_ids, list):
+            guild_ids = []
+        if guild_id not in [str(value) for value in guild_ids]:
+            guild_ids.append(guild_id)
+        account["guild_ids"] = guild_ids
+        account["last_verified_at"] = datetime.now(timezone.utc).isoformat()
+        store["accounts"][discord_id] = account
+        pending["status"] = "linked"
+        pending["steam_id"] = steam_id
+        store["pending"][token] = pending
+        _steam_write_store_locked(store)
+        return True, guild_id
+
+
+async def _steam_grant_guild_role(guild_id, discord_id):
+    if not _bot or not _guild_config:
+        return "unavailable"
+    guild = _bot.get_guild(int(guild_id))
+    if guild is None:
+        return "unavailable"
+    cfg = _guild_config(int(guild_id))
+    role_id = cfg.get("verified_accounts_role_id")
+    if not role_id:
+        return "not_configured"
+    role = guild.get_role(int(role_id))
+    if role is None or role.is_default() or role.managed:
+        return "invalid_role"
+    member = guild.get_member(int(discord_id))
+    if member is None:
+        try:
+            member = await guild.fetch_member(int(discord_id))
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            return "member_missing"
+    if role in member.roles:
+        return "already_has_role"
+    try:
+        await member.add_roles(role, reason="Steam-Konto erfolgreich über Steam OpenID verifiziert")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[STEAM LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
+        return "role_failed"
+    return "granted"
+
+
+@app.route("/gaming/steam/start")
+def steam_link_start():
+    token = request.args.get("token", "")
+    if not token or len(token) > 128:
+        abort(400, "Ungültiger oder fehlender Verknüpfungslink.")
+    pending = _steam_get_pending(token)
+    if not pending or pending.get("status") != "pending":
+        return _render("Steam-Verknüpfung", '<section class="card"><h1>Link abgelaufen</h1><p>Dieser Steam-Link ist ungültig, abgelaufen oder wurde bereits verwendet. Starte die Verknüpfung erneut über Discord.</p></section>', 400)
+    try:
+        callback_uri, origin = _steam_callback_config()
+    except ValueError as exc:
+        return _render("Steam-Verknüpfung nicht eingerichtet", '<section class="card"><h1>Steam-Verknüpfung nicht eingerichtet</h1><p>' + html.escape(str(exc)) + '</p></section>', 503)
+    return_to = callback_uri + "?" + urlencode({"token": token})
+    params = {
+        "openid.ns": _STEAM_OPENID_NS,
+        "openid.mode": "checkid_setup",
+        "openid.return_to": return_to,
+        "openid.realm": origin + "/",
+        "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
+        "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select",
+    }
+    return redirect(_STEAM_OPENID_ENDPOINT + "?" + urlencode(params), code=302)
+
+
+@app.route("/gaming/steam/callback")
+def steam_link_callback():
+    token = request.args.get("token", "")
+    if not token or len(token) > 128:
+        abort(400, "Ungültiger oder fehlender Verknüpfungstoken.")
+    pending = _steam_get_pending(token)
+    if not pending or pending.get("status") != "pending":
+        return _render("Steam-Verknüpfung", '<section class="card"><h1>Verknüpfung nicht möglich</h1><p>Der Link ist abgelaufen oder wurde bereits verwendet. Starte den Vorgang erneut über Discord.</p></section>', 400)
+    try:
+        callback_uri, origin = _steam_callback_config()
+    except ValueError as exc:
+        return _render("Steam-Verknüpfung nicht eingerichtet", '<section class="card"><h1>Steam-Verknüpfung nicht eingerichtet</h1><p>' + html.escape(str(exc)) + '</p></section>', 503)
+
+    fields = {key: value for key, value in request.args.items() if key.startswith("openid.")}
+    claimed_id = fields.get("openid.claimed_id", "")
+    identity = fields.get("openid.identity", "")
+    endpoint = urlparse(fields.get("openid.op_endpoint", ""))
+    return_to = callback_uri + "?" + urlencode({"token": token})
+    match = re.fullmatch(r"https?://steamcommunity\.com/openid/id/(\d{15,20})", claimed_id)
+    if (
+        fields.get("openid.ns") != _STEAM_OPENID_NS
+        or fields.get("openid.mode") != "id_res"
+        or fields.get("openid.return_to") != return_to
+        or identity != claimed_id
+        or not match
+        or endpoint.scheme != "https"
+        or endpoint.hostname != "steamcommunity.com"
+        or endpoint.path.rstrip("/") not in {"/openid", "/openid/login"}
+    ):
+        return _render("Steam-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Steam-Anmeldung konnte nicht bestätigt werden</h1><p>Die Rückgabe von Steam war ungültig. Bitte starte den Vorgang erneut über Discord.</p></section>', 400)
+
+    claimed = _steam_claim_pending(token)
+    if not claimed:
+        return _render("Steam-Verknüpfung", '<section class="card"><h1>Link bereits verwendet</h1><p>Dieser Link wurde bereits verwendet oder ist abgelaufen. Starte den Vorgang erneut über Discord.</p></section>', 400)
+    verification_fields = dict(fields)
+    verification_fields["openid.mode"] = "check_authentication"
+    try:
+        response = requests.post(_STEAM_OPENID_ENDPOINT, data=verification_fields, timeout=12)
+        response.raise_for_status()
+        verified = bool(re.search(r"(?m)^is_valid:true\s*$", response.text.strip()))
+    except requests.RequestException as exc:
+        print(f"[STEAM LINK] OpenID verification request failed: {type(exc).__name__}", flush=True)
+        _steam_set_pending_status(token, "failed")
+        return _render("Steam-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Steam ist gerade nicht erreichbar</h1><p>Die Bestätigung konnte nicht geprüft werden. Bitte starte den Vorgang erneut über Discord.</p></section>', 502)
+    if not verified:
+        _steam_set_pending_status(token, "failed")
+        return _render("Steam-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Steam-Anmeldung ungültig</h1><p>Steam konnte die Anmeldung nicht bestätigen. Bitte starte den Vorgang erneut über Discord.</p></section>', 400)
+
+    steam_id = match.group(1)
+    saved, result = _steam_save_verified_account(token, steam_id)
+    if not saved:
+        return _render("Steam-Verknüpfung fehlgeschlagen", '<section class="card"><h1>Verknüpfung nicht möglich</h1><p>' + html.escape(result) + '</p></section>', 409)
+    guild_id = result
+    role_status = "unavailable"
+    if _bot and getattr(_bot, "loop", None) and _bot.loop.is_running():
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                _steam_grant_guild_role(guild_id, pending["discord_id"]), _bot.loop
+            )
+            role_status = future.result(timeout=18)
+        except Exception as exc:
+            print(f"[STEAM LINK] Role assignment failed in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
+            role_status = "role_failed"
+    if role_status in {"granted", "already_has_role"}:
+        role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
+    elif role_status == "not_configured":
+        role_text = "Das Steam-Konto ist gespeichert. Im Dashboard ist für diesen Server noch keine Verifizierungsrolle ausgewählt."
+    else:
+        role_text = "Das Steam-Konto ist gespeichert, aber die Discord-Rolle konnte nicht vergeben werden. Bitte prüfe die Bot-Berechtigung „Rollen verwalten“ und die Rollenposition des Bots."
+    return _render(
+        "Steam erfolgreich verknüpft",
+        '<section class="card"><h1>✅ Steam erfolgreich verknüpft</h1><p>Deine Steam-ID <code>' +
+        html.escape(steam_id) + '</code> wurde sicher deinem Discord-Konto zugeordnet.</p><p>' +
+        html.escape(role_text) + '</p><p>Du kannst dieses Fenster jetzt schließen.</p></section>',
+    )
+
+
 class _GamingAccountVerifyView(discord.ui.View):
     """Gaming provider buttons; provider ownership flows are not yet configured."""
     def __init__(self, enabled_platforms):
@@ -125,7 +407,26 @@ class _GamingAccountVerifyView(discord.ui.View):
             if key not in set(enabled_platforms):
                 continue
             button = discord.ui.Button(label=label, style=style, custom_id="gaming_verify:" + key)
-            async def callback(interaction, message=explanation):
+            async def callback(interaction, message=explanation, provider=key):
+                if provider == "steam":
+                    try:
+                        link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
+                    except ValueError as exc:
+                        await interaction.response.send_message(str(exc), ephemeral=True)
+                        return
+                    except Exception as exc:
+                        print(f"[STEAM LINK] Could not create link: {type(exc).__name__}: {exc}", flush=True)
+                        await interaction.response.send_message(
+                            "Der Steam-Link konnte gerade nicht erstellt werden. Bitte versuche es später erneut.",
+                            ephemeral=True,
+                        )
+                        return
+                    await interaction.response.send_message(
+                        "🔐 **Steam sicher verknüpfen**\nÖffne diesen Link und melde dich direkt bei Steam an. Dein Steam-Passwort wird niemals an IronWolf übermittelt. "
+                        "Der Link ist 10 Minuten gültig und kann nur einmal verwendet werden.\n" + link_url,
+                        ephemeral=True,
+                    )
+                    return
                 await interaction.response.send_message(message, ephemeral=True)
             button.callback = callback
             self.add_item(button)
@@ -1428,7 +1729,7 @@ def guild_verified_accounts(guild_id):
         '<label for="verified_accounts_message">Text der Discord-Nachricht <small>Maximal 1800 Zeichen; leer lassen für den Standardtext.</small></label>'
         '<textarea id="verified_accounts_message" name="verified_accounts_message" rows="5" maxlength="1800" placeholder="Wähle den Gaming-Anbieter aus, dessen Konto du verknüpfen möchtest:">' + message_value + '</textarea>'
         '<p class="notice">🔐 Niemals Passwörter oder Login-Codes im Discord-Chat abfragen. Die echten Konto-Anmelde- und Verifizierungsabläufe müssen separat eingerichtet sein.</p>'
-        '<p class="muted">Der Versand veröffentlicht aktuell eine Nachricht mit den ausgewählten Anbietern. Die Anbieter-Konto-Prüfung und interaktiven Verifizierungsbuttons sind noch nicht aktiv.</p>'
+        '<p class="muted">Steam verwendet eine echte Steam-OpenID-Anmeldung, sobald <code>STEAM_OPENID_RETURN_URI</code> in Railway auf die öffentliche HTTPS-Adresse mit <code>/gaming/steam/callback</code> gesetzt ist. Fortnite und Roblox bleiben bis zur Einrichtung eines unterstützten Kontonachweises deaktiviert.</p>'
         '<button type="submit" name="action" value="save">💾 Einstellungen speichern</button> '
         '<button type="submit" name="action" value="send_panel">📨 Nachricht jetzt senden</button> '
         '<a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form></section>')
