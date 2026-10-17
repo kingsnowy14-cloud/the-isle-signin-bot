@@ -6534,32 +6534,54 @@ _server_statistics_task = None
 
 
 async def server_statistics_worker():
-    """Refresh configured statistics voice-channel names periodically."""
+    """Refresh all configured server-statistics voice-channel names."""
     await bot.wait_until_ready()
     while not bot.is_closed():
         for guild in list(bot.guilds):
             try:
                 cfg = guild_config(guild.id)
-                raw_channel_id = cfg.get("server_statistics_channel")
-                if not raw_channel_id:
-                    continue
-                channel = guild.get_channel(int(raw_channel_id))
-                if not isinstance(channel, discord.VoiceChannel):
+                configured = cfg.get("server_statistics_channels")
+                if not isinstance(configured, dict):
+                    # Support older configurations until the dashboard is saved again.
+                    legacy = cfg.get("server_statistics_channel")
+                    configured = {"members": legacy} if legacy else {}
+                if not configured:
                     continue
                 me = guild.me
                 if me is None or not me.guild_permissions.manage_channels:
                     print(f"[SERVER-STATS] Missing Manage Channels permission in guild {guild.id}.", flush=True)
                     continue
                 members = list(guild.members)
-                total = int(guild.member_count or len(members))
-                bots = sum(1 for member in members if member.bot)
-                boosters = int(guild.premium_subscription_count or 0)
-                new_name = f"👥 {total} · 🤖 {bots} · 🚀 {boosters}"[:100]
-                if channel.name != new_name:
-                    await channel.edit(name=new_name, reason="IronWolf: Server-Statistik aktualisieren")
-                    print(f"[SERVER-STATS] Updated voice channel for guild {guild.id}: {new_name}", flush=True)
-            except (ValueError, TypeError):
-                print(f"[SERVER-STATS] Invalid channel configuration for guild {guild.id}.", flush=True)
+                counts = {
+                    "members": int(guild.member_count or len(members)),
+                    "bots": sum(1 for member in members if member.bot),
+                    "boosters": int(guild.premium_subscription_count or 0),
+                    "roles": len(guild.roles),
+                    "text_channels": len(guild.text_channels),
+                    "voice_channels": len(guild.voice_channels),
+                }
+                templates = {
+                    "members": "👥・Mitglieder: {count}",
+                    "bots": "🤖・Bots: {count}",
+                    "boosters": "🚀・Booster: {count}",
+                    "roles": "🎭・Rollen: {count}",
+                    "text_channels": "💬・Textkanäle: {count}",
+                    "voice_channels": "🔊・Sprachkanäle: {count}",
+                }
+                for stat_key, raw_channel_id in configured.items():
+                    if not raw_channel_id or stat_key not in templates:
+                        continue
+                    try:
+                        channel = guild.get_channel(int(raw_channel_id))
+                    except (ValueError, TypeError):
+                        print(f"[SERVER-STATS] Invalid {stat_key} channel ID in guild {guild.id}.", flush=True)
+                        continue
+                    if not isinstance(channel, discord.VoiceChannel):
+                        continue
+                    new_name = templates[stat_key].format(count=counts[stat_key])[:100]
+                    if channel.name != new_name:
+                        await channel.edit(name=new_name, reason="IronWolf: Server-Statistik aktualisieren")
+                        print(f"[SERVER-STATS] Updated {stat_key} channel for guild {guild.id}: {new_name}", flush=True)
             except (discord.Forbidden, discord.HTTPException) as exc:
                 print(f"[SERVER-STATS] Could not update guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
             except Exception as exc:
