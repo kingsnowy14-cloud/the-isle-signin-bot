@@ -1295,7 +1295,7 @@ def teamlist_dashboard(guild_id):
 
 @app.route("/guild/<guild_id>/verified-accounts", methods=["GET", "POST"])
 def guild_verified_accounts(guild_id):
-    """Configure gaming account verification choices for this server."""
+    """Configure gaming account verification choices and publish a panel message."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
@@ -1312,6 +1312,7 @@ def guild_verified_accounts(guild_id):
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        action = request.form.get("action", "save")
         selected = [key for key in platforms if request.form.get("platform_" + key) == "on"]
         channel_ids = {str(channel.id) for channel in guild.text_channels}
         channel_raw = request.form.get("verified_accounts_channel_id", "").strip()
@@ -1321,11 +1322,46 @@ def guild_verified_accounts(guild_id):
         role_raw = request.form.get("verified_accounts_role_id", "").strip()
         if role_raw and role_raw not in role_ids:
             abort(400, "Bitte wähle eine gültige Rolle.")
+        message_text = request.form.get("verified_accounts_message", "").strip()
+        if len(message_text) > 1800:
+            abort(400, "Die Nachricht darf höchstens 1800 Zeichen lang sein.")
         cfg["verified_accounts_enabled_platforms"] = selected
         cfg["verified_accounts_channel_id"] = int(channel_raw) if channel_raw else None
         cfg["verified_accounts_role_id"] = int(role_raw) if role_raw else None
         cfg["verified_accounts_nickname_enabled"] = request.form.get("nickname_enabled") == "on"
+        cfg["verified_accounts_message"] = message_text
         _save_json(data_path("config.json"), _config)
+
+        if action == "send_panel":
+            if not channel_raw:
+                abort(400, "Wähle zuerst einen Kanal für das Verifizierungs-Panel.")
+            if not selected:
+                abort(400, "Aktiviere mindestens einen Anbieter-Button.")
+            if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
+                abort(503, "Der Discord-Bot ist gerade nicht verbunden. Bitte versuche es später erneut.")
+            channel = guild.get_channel(int(channel_raw))
+            if channel is None or not hasattr(channel, "send"):
+                abort(400, "Der ausgewählte Kanal ist nicht verfügbar.")
+            labels = "\n".join(platforms[key][0] + " **" + platforms[key][1] + "**" for key in selected)
+            content = message_text or "Wähle den Gaming-Anbieter aus, dessen Konto du verknüpfen möchtest:"
+            embed = discord.Embed(
+                title="🎮 Gaming-Account-Verifizierung",
+                description=content + "\n\n**Verfügbare Anbieter**\n" + labels,
+                color=discord.Color.blurple(),
+            )
+            embed.set_footer(text="Kontoprüfung muss über sichere, offizielle Kontonachweise erfolgen.")
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none()),
+                    _bot.loop,
+                ).result(timeout=20)
+            except Exception as exc:
+                print(f"[DASHBOARD] Gaming verification panel send failed: {type(exc).__name__}: {exc}", flush=True)
+                abort(502, "Die Nachricht konnte nicht gesendet werden. Prüfe die Bot-Berechtigung „Nachrichten senden“ und „Links einbetten“.")
+            _audit_dashboard_change(guild.id, "Gaming-Account-Verifizierung", session.get("user_id"),
+                "Verifizierungs-Nachricht gesendet; Anbieter: " + ", ".join(selected))
+            return redirect(url_for("guild_verified_accounts", guild_id=gid, sent="1"))
+
         _audit_dashboard_change(guild.id, "Gaming-Account-Verifizierung", session.get("user_id"),
             "Anbieter: " + (", ".join(selected) if selected else "keiner") +
             "; Nickname-Automatik: " + ("an" if cfg["verified_accounts_nickname_enabled"] else "aus"))
@@ -1340,7 +1376,7 @@ def guild_verified_accounts(guild_id):
         platform_fields += ('<div class="row"><strong>' + emoji + ' ' + html.escape(label) +
             '</strong><div class="check"><input type="checkbox" id="platform_' + key +
             '" name="platform_' + key + '"' + checked + '><label for="platform_' + key +
-            '">Button anzeigen</label></div></div>')
+            '">Anbieter anzeigen</label></div></div>')
     channel_options = '<option value="">— Kanal auswählen —</option>' + "".join(
         '<option value="' + str(channel.id) + '"' + (' selected' if str(channel.id) == channel_selected else '') +
         '>' + html.escape("#" + channel.name) + '</option>' for channel in guild.text_channels)
@@ -1348,22 +1384,31 @@ def guild_verified_accounts(guild_id):
         '<option value="' + str(role.id) + '"' + (' selected' if str(role.id) == role_selected else '') +
         '>' + html.escape(role.name) + '</option>' for role in guild.roles if not role.is_default() and not role.managed)
     nickname_checked = ' checked' if cfg.get("verified_accounts_nickname_enabled", True) else ''
-    notice = '<div class="notice">✅ Einstellungen gespeichert.</div>' if request.args.get("saved") == "1" else ''
+    notice = ''
+    if request.args.get("saved") == "1":
+        notice = '<div class="notice">✅ Verifizierungseinstellungen gespeichert.</div>'
+    elif request.args.get("sent") == "1":
+        notice = '<div class="notice">✅ Die Verifizierungs-Nachricht wurde in den ausgewählten Kanal gesendet.</div>'
+    message_value = html.escape(str(cfg.get("verified_accounts_message", "")), quote=False)
     body = (
         '<section class="card"><span class="pill">EIGENE VERIFIZIERUNGS-KATEGORIE</span>'
         '<h1 style="margin-top:12px">🎮 Gaming-Account-Verifizierung</h1>'
-        '<p class="muted">Wähle pro Discord-Server aus, welche Anbieter-Buttons später im Verifizierungs-Panel erscheinen.</p>' + notice +
-        '<form method="post">' + _csrf_field() + '<h2>1. Welche Buttons sollen erscheinen?</h2>' + platform_fields +
+        '<p class="muted">Wähle die Anbieter, den Zielkanal und schreibe die Nachricht direkt hier im Dashboard. Mit „Nachricht jetzt senden“ wird sie sofort in Discord veröffentlicht.</p>' + notice +
+        '<form method="post">' + _csrf_field() + '<h2>1. Welche Anbieter sollen erscheinen?</h2>' + platform_fields +
         '<h2 style="margin-top:24px">2. Discord-Einstellungen</h2>'
-        '<label for="verified_accounts_channel_id">Kanal für das Verifizierungs-Panel</label>'
+        '<label for="verified_accounts_channel_id">Zielkanal für die Verifizierungs-Nachricht</label>'
         '<select id="verified_accounts_channel_id" name="verified_accounts_channel_id">' + channel_options + '</select>'
         '<label for="verified_accounts_role_id">Rolle nach erfolgreicher Verifizierung</label>'
         '<select id="verified_accounts_role_id" name="verified_accounts_role_id">' + role_options + '</select>'
         '<div class="check"><input type="checkbox" id="nickname_enabled" name="nickname_enabled"' + nickname_checked +
         '><label for="nickname_enabled">Discord-Nickname nach erfolgreicher Prüfung auf den Gaming-Namen setzen</label></div>'
-        '<p class="notice">🔐 Niemals Passwörter oder Login-Codes im Discord-Chat abfragen. Die Kontoprüfung muss über offizielle Anmeldungen bzw. sichere Kontonachweise laufen.</p>'
-        '<p class="muted">Diese Seite speichert die Auswahl. Die echten Login-/Kontonachweis-Abläufe müssen eingerichtet sein, bevor die Buttons Konten verifizieren können.</p>'
-        '<button type="submit">💾 Verifizierungs-Kategorie speichern</button> '
+        '<h2 style="margin-top:24px">3. Nachrichtentext</h2>'
+        '<label for="verified_accounts_message">Text der Discord-Nachricht <small>Maximal 1800 Zeichen; leer lassen für den Standardtext.</small></label>'
+        '<textarea id="verified_accounts_message" name="verified_accounts_message" rows="5" maxlength="1800" placeholder="Wähle den Gaming-Anbieter aus, dessen Konto du verknüpfen möchtest:">' + message_value + '</textarea>'
+        '<p class="notice">🔐 Niemals Passwörter oder Login-Codes im Discord-Chat abfragen. Die echten Konto-Anmelde- und Verifizierungsabläufe müssen separat eingerichtet sein.</p>'
+        '<p class="muted">Der Versand veröffentlicht aktuell eine Nachricht mit den ausgewählten Anbietern. Die Anbieter-Konto-Prüfung und interaktiven Verifizierungsbuttons sind noch nicht aktiv.</p>'
+        '<button type="submit" name="action" value="save">💾 Einstellungen speichern</button> '
+        '<button type="submit" name="action" value="send_panel">📨 Nachricht jetzt senden</button> '
         '<a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form></section>')
     return _render(guild.name + " · Gaming-Verifizierung", body)
 
