@@ -61,22 +61,11 @@ TEXT_SETTINGS = {
         "help": "Platzhalter: {user}, {server}, {count}",
         "max_length": 1000,
     },
-
-    "honeypot_action": {
-        "label": "Honeypot-Aktion (ban/kick/timeout)",
-        "help": "Erlaubte Werte: ban, kick oder timeout. Standard: kick.",
-        "max_length": 10,
-    },
-    "honeypot_message": {
-        "label": "Honeypot-Nachricht",
-        "help": "Nachricht im Honeypot-Kanal (max. 1500 Zeichen).",
-        "max_length": 1500,
-    },}
+}
 BOOL_SETTINGS = {
     "welcome_bots_enabled": "Willkommensnachrichten für Bots",
     "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
-    "honeypot_enabled": "Honeypot aktivieren",
     "xp_enabled": "Level- und XP-System aktivieren",
     "anti_nuke_enabled": "Anti-Nuke-Schutz",
     "anti_raid_enabled": "Anti-Raid-Schutz",
@@ -1330,7 +1319,7 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled", "honeypot_enabled"):
+                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                         cfg[key] = request.form.get(key) == "on"
                     numeric_settings = {
                         "automod_threshold": (3, 20, 6),
@@ -1466,7 +1455,7 @@ def guild_page(guild_id):
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled", "honeypot_enabled"):
+            for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                 label = {"welcome_embed": "Willkommensnachricht als Embed senden", "leave_enabled": "Auf-Wiedersehen-Nachricht aktivieren", "leave_embed": "Auf-Wiedersehen-Nachricht als Embed senden"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'

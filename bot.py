@@ -346,10 +346,6 @@ DEFAULT_GUILD_CONFIG = {
     "ticket_counter": 0,
     "security_log_channel": None,
     "honeypot_channel": None,
-    "honeypot_enabled": False,
-    "honeypot_action": "kick",
-    "honeypot_timeout_minutes": 60,
-    "honeypot_message": "🍯 **Honeypot aktiv**\nDieser Kanal dient der Sicherheitsüberwachung. Bitte hier nicht schreiben.",
     "anti_nuke_enabled": False,
     "anti_nuke_threshold": 4,
     "anti_raid_enabled": False,
@@ -4452,54 +4448,6 @@ async def voice_support_waiting_room(member, before, after):
         _support_pending.discard(key)
 
 
-class HoneypotStatsView(discord.ui.View):
-    def __init__(self, guild_id: int):
-        super().__init__(timeout=300)
-        self.guild_id = guild_id
-
-    @discord.ui.button(label="Statistik aktualisieren", style=discord.ButtonStyle.secondary, emoji="🔄")
-    async def refresh_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.guild_id != self.guild_id:
-            await interaction.response.send_message("Diese Statistik gehört zu einem anderen Server.", ephemeral=True)
-            return
-        stats = data.setdefault("honeypot_stats", {}).setdefault(str(self.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
-        embed = discord.Embed(title="🍯 IronWolf Honeypot-Statistik", color=discord.Color.orange())
-        embed.add_field(name="Gebannt", value=str(stats.get("ban", 0)), inline=True)
-        embed.add_field(name="Gekickt", value=str(stats.get("kick", 0)), inline=True)
-        embed.add_field(name="Timeouts", value=str(stats.get("timeout", 0)), inline=True)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-
-@bot.tree.command(name="honeypot_stats", description="Zeigt die gespeicherte Honeypot-Moderationsstatistik.")
-@app_commands.guild_only()
-@app_commands.checks.has_permissions(manage_guild=True)
-async def honeypot_stats(interaction: discord.Interaction):
-    stats = data.setdefault("honeypot_stats", {}).setdefault(str(interaction.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
-    embed = discord.Embed(title="🍯 IronWolf Honeypot-Statistik", color=discord.Color.orange())
-    embed.add_field(name="Gebannt", value=str(stats.get("ban", 0)), inline=True)
-    embed.add_field(name="Gekickt", value=str(stats.get("kick", 0)), inline=True)
-    embed.add_field(name="Timeouts", value=str(stats.get("timeout", 0)), inline=True)
-    await interaction.response.send_message(embed=embed, view=HoneypotStatsView(interaction.guild_id))
-
-
-@bot.tree.command(name="honeypot_publish", description="Veröffentlicht die konfigurierte Honeypot-Nachricht im Zielkanal.")
-@app_commands.guild_only()
-@app_commands.checks.has_permissions(manage_guild=True)
-async def honeypot_publish(interaction: discord.Interaction):
-    cfg = guild_config(interaction.guild_id)
-    channel_id = cfg.get("honeypot_channel")
-    channel = interaction.guild.get_channel(int(channel_id)) if channel_id else None
-    if not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message("Bitte zuerst im Dashboard einen Honeypot-Textkanal auswählen.", ephemeral=True)
-        return
-    message_text = str(cfg.get("honeypot_message") or "🍯 Honeypot aktiv. Bitte hier nicht schreiben.")[:1900]
-    try:
-        await channel.send(message_text, allowed_mentions=discord.AllowedMentions.none())
-        await interaction.response.send_message(f"Honeypot-Nachricht wurde in {channel.mention} veröffentlicht.", ephemeral=True)
-    except (discord.Forbidden, discord.HTTPException):
-        await interaction.response.send_message("Die Nachricht konnte nicht gesendet werden. Bitte Kanalrechte prüfen.", ephemeral=True)
-
-
 @bot.event
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
@@ -4589,49 +4537,95 @@ async def on_message(message: discord.Message):
                 except (discord.Forbidden, discord.HTTPException):
                     pass
 
-        # Honeypot: configurable action and durable per-guild statistics.
+        # Honeypot: log the violation, remove recent messages, then kick.
         cfg = guild_config(guild.id)
         honeypot_id = cfg.get("honeypot_channel")
-        if cfg.get("honeypot_enabled", False) and honeypot_id and message.channel.id == int(honeypot_id):
+        if honeypot_id and message.channel.id == honeypot_id:
             member = message.author if isinstance(message.author, discord.Member) else None
-            if member is not None and member.id != guild.owner_id and not member.guild_permissions.administrator:
-                action = str(cfg.get("honeypot_action", "kick")).lower()
-                if action not in {"ban", "kick", "timeout"}:
-                    action = "kick"
-                reason = f"Honeypot-Regelverstoß in #{getattr(message.channel, 'name', 'unbekannt')}"
-                stats = data.setdefault("honeypot_stats", {}).setdefault(str(guild.id), {"ban": 0, "kick": 0, "timeout": 0})
+            if member is not None and member.id != guild.owner_id:
+                reason = (
+                    f"Honeypot-Regelverstoß: Nachricht im Honeypot-Kanal "
+                    f"#{getattr(message.channel, 'name', 'unbekannt')}"
+                )
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+                deleted_count = 0
+                failed_channels = []
+                original_message = message.content or "[Keine Textnachricht / möglicherweise nur ein Anhang]"
+                original_message = discord.utils.escape_markdown(original_message[:700])
+
                 try:
-                    await message.delete()
+                    dm_embed = create_embed(
+                        title="🚫 Du wurdest vom Server entfernt",
+                        description=(
+                            f"Du wurdest von **{guild.name}** gekickt, weil du im "
+                            f"versteckten Honeypot-Kanal {message.channel.mention} geschrieben hast.\n\n"
+                            "**Grund:** Dieser Kanal dient der Erkennung von Mitgliedern, "
+                            "die verborgene Moderations-/Sicherheitskanäle aufrufen oder verwenden.\n\n"
+                            "Zusätzlich werden deine Nachrichten aus den letzten 24 Stunden "
+                            "auf diesem Server entfernt."
+                        ),
+                        color=discord.Color.red(),
+                    )
+                    await member.send(embed=dm_embed)
                 except (discord.Forbidden, discord.HTTPException):
                     pass
-                succeeded = False
+
+                channels = list(guild.text_channels)
                 try:
-                    if action == "ban":
-                        await member.ban(reason=reason, delete_message_seconds=0)
-                        stats["ban"] = int(stats.get("ban", 0)) + 1
-                    elif action == "timeout":
-                        minutes = max(1, min(40320, int(cfg.get("honeypot_timeout_minutes", 60))))
-                        await member.timeout(timedelta(minutes=minutes), reason=reason)
-                        stats["timeout"] = int(stats.get("timeout", 0)) + 1
-                    else:
-                        await member.kick(reason=reason)
-                        stats["kick"] = int(stats.get("kick", 0)) + 1
-                    succeeded = True
-                    save_json(DATA_FILE, data)
-                except (discord.Forbidden, discord.HTTPException, ValueError) as exc:
-                    print(f"[HONEYPOT] Action failed in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
-                try:
-                    log_id = cfg.get("security_log_channel") or cfg.get("log_channel_id")
-                    log = guild.get_channel(int(log_id)) if log_id else None
-                    if isinstance(log, discord.TextChannel):
-                        embed = discord.Embed(title="🍯 Honeypot ausgelöst", color=discord.Color.red())
-                        embed.add_field(name="Mitglied", value=f"{member} ({member.id})", inline=False)
-                        embed.add_field(name="Aktion", value=action.upper(), inline=True)
-                        embed.add_field(name="Ergebnis", value="Erfolgreich" if succeeded else "Fehlgeschlagen", inline=True)
-                        embed.add_field(name="Statistik", value=f"Ban: {stats.get('ban',0)} · Kick: {stats.get('kick',0)} · Timeout: {stats.get('timeout',0)}", inline=False)
-                        await log.send(embed=embed)
-                except (discord.Forbidden, discord.HTTPException, ValueError):
+                    channels.extend(thread for thread in guild.threads if thread not in channels)
+                except (AttributeError, discord.HTTPException):
                     pass
+
+                for channel in channels:
+                    if not hasattr(channel, "history"):
+                        continue
+                    try:
+                        async for old_message in channel.history(limit=None, after=cutoff, oldest_first=False):
+                            if old_message.author.id != member.id:
+                                continue
+                            try:
+                                await old_message.delete()
+                                deleted_count += 1
+                            except (discord.Forbidden, discord.HTTPException):
+                                if channel.name not in failed_channels:
+                                    failed_channels.append(channel.name)
+                    except (discord.Forbidden, discord.HTTPException, discord.InvalidData):
+                        if getattr(channel, "name", None) and channel.name not in failed_channels:
+                            failed_channels.append(channel.name)
+
+                kick_succeeded = False
+                kick_error = None
+                try:
+                    await member.kick(reason=reason)
+                    kick_succeeded = True
+                except discord.Forbidden:
+                    kick_error = "Fehlende Berechtigung oder Bot-Rolle steht nicht hoch genug."
+                except discord.HTTPException as exc:
+                    kick_error = f"Discord-Fehler: {type(exc).__name__}"
+
+                log_description = (
+                    f"**Mitglied:** {member.mention} (`{member.id}`)\n"
+                    f"**Kanal:** {message.channel.mention} (`{message.channel.id}`)\n"
+                    f"**Grund:** Nachricht im Honeypot-Kanal\n"
+                    f"**Nachricht:** {original_message}\n"
+                    f"**Nachrichten aus den letzten 24 Stunden gelöscht:** {deleted_count}\n"
+                    f"**Kick:** {'Erfolgreich' if kick_succeeded else 'FEHLGESCHLAGEN'}"
+                )
+                if failed_channels:
+                    log_description += (
+                        "\n**Kanäle mit fehlgeschlagenen Löschungen/fehlendem Zugriff:** "
+                        + ", ".join(f"`{discord.utils.escape_markdown(name)}`" for name in failed_channels[:20])
+                    )
+                if kick_error:
+                    log_description += f"\n**Fehler:** {kick_error}"
+
+                await security_log(
+                    guild,
+                    "🍯 Honeypot ausgelöst — Mitglied gekickt",
+                    log_description,
+                    discord.Color.red(),
+                )
+                # Do not allow a honeypot message to execute a prefix command.
                 return
 
     await bot.process_commands(message)
