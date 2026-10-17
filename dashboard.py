@@ -889,7 +889,7 @@ def epic_link_callback():
 
 
 class _GamingAccountVerifyView(discord.ui.View):
-    """Gaming provider buttons; provider ownership flows are not yet configured."""
+    """Gaming provider buttons for official provider-owned account verification flows."""
     def __init__(self, enabled_platforms):
         super().__init__(timeout=None)
         details = {
@@ -919,7 +919,7 @@ class _GamingAccountVerifyView(discord.ui.View):
                         )
                         return
                     await interaction.response.send_message(
-                        "🔐 **Epic Games sicher verknüpfen**\\nÖffne den Link und melde dich direkt bei Epic Games an. IronWolf fragt niemals dein Passwort ab. Der Link ist 10 Minuten gültig und einmalig.\\n"
+                        "🔐 **Epic Games sicher verknüpfen**\nÖffne den Link und melde dich direkt bei Epic Games an. IronWolf fragt niemals dein Passwort ab. Der Link ist 10 Minuten gültig und einmalig.\n"
                         + link_url,
                         ephemeral=True,
                     )
