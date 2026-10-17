@@ -31,8 +31,11 @@ def list_incidents(config: dict[str, Any], limit: int = 20) -> list[dict[str, An
         dict(item) for item in records
         if isinstance(item, dict)
         and isinstance(item.get("id"), str)
+        and isinstance(item.get("type"), str)
         and item.get("type") in INCIDENT_TYPES
+        and isinstance(item.get("severity"), str)
         and item.get("severity") in SEVERITIES
+        and isinstance(item.get("status"), str)
         and item.get("status") in STATUSES
     ]
     safe.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
