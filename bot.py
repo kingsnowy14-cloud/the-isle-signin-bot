@@ -23,6 +23,7 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 from wolfmirror import simulate_scenario
+from wolfchronicle import create_incident, list_incidents
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
@@ -6914,6 +6915,93 @@ async def filmserver_error(ctx, error):
     else:
         await ctx.reply(f"❌ Fehler bei !filmserver: {error}", mention_author=False)
 
+
+
+@bot.tree.command(name="wolfincident", description="Legt einen Vorfall im gemeinsamen IronWolf Incident-Center an")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(incident_type=[
+    app_commands.Choice(name="Mitglieder-Raid", value="raid"),
+    app_commands.Choice(name="Spam-Welle", value="spam"),
+    app_commands.Choice(name="Berechtigungsproblem", value="permissions"),
+    app_commands.Choice(name="Channel-/Rollen-Angriff", value="nuke"),
+    app_commands.Choice(name="Sonstiger Vorfall", value="other"),
+])
+@app_commands.choices(severity=[
+    app_commands.Choice(name="Niedrig", value="low"),
+    app_commands.Choice(name="Mittel", value="medium"),
+    app_commands.Choice(name="Hoch", value="high"),
+    app_commands.Choice(name="Kritisch", value="critical"),
+])
+@app_commands.describe(titel="Kurzer Titel (maximal 120 Zeichen)", beschreibung="Zusammenfassung ohne private Nachrichteninhalte (maximal 500 Zeichen)")
+async def wolfincident_command(
+    interaction: discord.Interaction,
+    incident_type: app_commands.Choice[str],
+    severity: app_commands.Choice[str],
+    titel: app_commands.Range[str, 1, 120],
+    beschreibung: app_commands.Range[str, 1, 500],
+):
+    """Create a structured incident that appears in the web dashboard."""
+    if interaction.guild is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild.id)
+    try:
+        incident = create_incident(
+            cfg,
+            incident_type=incident_type.value,
+            severity=severity.value,
+            title=titel,
+            summary=beschreibung,
+            reporter_id=interaction.user.id,
+            source="discord",
+        )
+    except ValueError as exc:
+        await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
+        return
+    save_json(CONFIG_FILE, config)
+    embed = create_embed(
+        title=f"📌 WolfChronicle · {incident['title']}",
+        description=(
+            f"**ID:** `{incident['id']}`\n"
+            f"**Typ:** {incident['type_label']} · **Priorität:** {incident['severity_label']}\n"
+            f"**Status:** {incident['status_label']}\n\n"
+            f"{incident['summary']}\n\n"
+            "Der Vorfall wurde im gemeinsamen Incident-Center gespeichert. "
+            "Öffne das IronWolf-Dashboard, um den Status zu verfolgen."
+        ),
+        color=discord.Color.red() if severity.value == "critical" else discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="wolfincidents", description="Zeigt die letzten Vorfälle im gemeinsamen IronWolf Incident-Center")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def wolfincidents_command(interaction: discord.Interaction):
+    """List recent shared incidents without collecting message contents."""
+    if interaction.guild is None:
+        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        return
+    incidents = list_incidents(guild_config(interaction.guild.id), limit=8)
+    if not incidents:
+        await interaction.response.send_message("🐺 WolfChronicle: Es sind noch keine Vorfälle dokumentiert.", ephemeral=True)
+        return
+    lines = []
+    for item in incidents:
+        stamp = str(item.get("created_at", ""))[:16].replace("T", " ")
+        lines.append(
+            f"**`{item['id']}` · {item['title']}**\n"
+            f"{item['severity_label']} · {item['status_label']} · {item['type_label']} · {stamp} UTC"
+        )
+    embed = create_embed(
+        title="🐺 WolfChronicle · Letzte Vorfälle",
+        description="\n\n".join(lines)[:4000],
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text="Details und Statusverwaltung im IronWolf-Web-Dashboard")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="wolfmirror", description="Simuliert einen Sicherheitsvorfall ohne Moderationsaktionen")
