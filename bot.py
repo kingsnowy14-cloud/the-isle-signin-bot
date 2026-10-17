@@ -24,6 +24,7 @@ from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
+from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
@@ -660,12 +661,19 @@ def set_user_language(user_id, language):
 
 
 def set_registration(user_id, guild_id, registration):
-    data.setdefault("registrations", {}).setdefault(str(guild_id), {})[str(user_id)] = registration
+    _set_isle_registration(data, user_id, guild_id, registration)
     save_json(DATA_FILE, data)
 
 
 def get_registration(user_id, guild_id):
-    return data.setdefault("registrations", {}).setdefault(str(guild_id), {}).get(str(user_id))
+    return _get_isle_registration(data, user_id, guild_id)
+
+
+def clear_registration(user_id, guild_id):
+    previous = _remove_isle_registration(data, user_id, guild_id)
+    if previous is not None:
+        save_json(DATA_FILE, data)
+    return previous
 
 
 async def send_public_registration(guild, user, action, dinosaur="", skin="", location=""):
@@ -673,7 +681,7 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
     channel_id = cfg.get("registration_channel")
     channel = guild.get_channel(channel_id) if channel_id else None
     if not isinstance(channel, discord.TextChannel):
-        return
+        return False
     # Public registration announcements are ALWAYS in English.
     if action == "Sign In":
         embed = create_embed(
@@ -694,7 +702,12 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
             timestamp=datetime.now(timezone.utc),
         )
     embed.set_footer(text="Created by KingSnowy")
-    await channel.send(embed=embed)
+    try:
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        return True
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[REGISTRATION] Could not post public {action.lower()} announcement in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+        return False
 
 
 class LanguageSelect(discord.ui.Select):
@@ -751,6 +764,21 @@ class RegistrationModal(discord.ui.Modal):
         location = str(self.location.value).strip()
 
         if self.action == "Sign In":
+            if current:
+                await interaction.response.send_message(
+                    "Du bist bereits angemeldet. Melde dich zuerst ab, bevor du deine Registrierung änderst."
+                    if self.language == "de" else
+                    "You are already signed in. Please sign out before creating a new registration.",
+                    ephemeral=True,
+                )
+                return
+            if not dinosaur or not location:
+                await interaction.response.send_message(
+                    "Dinosaurier und Standort dürfen nicht leer sein." if self.language == "de"
+                    else "Dinosaur and location cannot be empty.",
+                    ephemeral=True,
+                )
+                return
             registration = {
                 "dinosaur": dinosaur,
                 "skin": skin,
@@ -758,19 +786,24 @@ class RegistrationModal(discord.ui.Modal):
                 "signed_in_at": datetime.now(timezone.utc).isoformat(),
             }
             set_registration(interaction.user.id, guild.id, registration)
-            await send_public_registration(guild, interaction.user, "Sign In", dinosaur, skin, location)
-            await interaction.response.send_message(t["signin_success"], ephemeral=True)
+            announced = await send_public_registration(guild, interaction.user, "Sign In", dinosaur, skin, location)
+            message = t["signin_success"]
+            if not announced:
+                message += " Die Anmeldung wurde gespeichert, aber die öffentliche Meldung konnte nicht gesendet werden." if self.language == "de" else " Your registration was saved, but the public announcement could not be sent."
+            await interaction.response.send_message(message, ephemeral=True)
         else:
             if not current:
                 await interaction.response.send_message(t["need_signin"], ephemeral=True)
                 return
-            await send_public_registration(
+            announced = await send_public_registration(
                 guild, interaction.user, "Sign Out",
                 current.get("dinosaur", ""), current.get("skin", ""), current.get("location", "")
             )
-            data.setdefault("registrations", {}).setdefault(str(guild.id), {}).pop(str(interaction.user.id), None)
-            save_json(DATA_FILE, data)
-            await interaction.response.send_message(t["signout_success"], ephemeral=True)
+            clear_registration(interaction.user.id, guild.id)
+            message = t["signout_success"]
+            if not announced:
+                message += " Du wurdest abgemeldet, aber die öffentliche Meldung konnte nicht gesendet werden." if self.language == "de" else " You were signed out, but the public announcement could not be sent."
+            await interaction.response.send_message(message, ephemeral=True)
 
 
 class RegistrationView(discord.ui.View):
