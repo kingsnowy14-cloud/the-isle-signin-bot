@@ -354,6 +354,11 @@ DEFAULT_GUILD_CONFIG = {
     "anti_nuke_threshold": 4,
     "anti_raid_enabled": False,
     "raid_threshold": 8,
+    "raid_window_seconds": 10,
+    "raid_lockdown_seconds": 60,
+    "raid_timeout_minutes": 10,
+    "raid_action": "timeout",
+    "raid_min_account_age_days": 0,
     "trusted_security_role": None,
     "welcome_channel": None,
     "goodbye_channel": None,
@@ -5001,37 +5006,78 @@ async def on_member_join(member: discord.Member):
         return
 
     now = time.monotonic()
-    joins = _raid_joins[member.guild.id]
+    guild_id = member.guild.id
+    joins = _raid_joins[guild_id]
+    try:
+        window_seconds = max(5, min(60, int(cfg.get("raid_window_seconds", 10) or 10)))
+    except (TypeError, ValueError):
+        window_seconds = 10
+    try:
+        lockdown_seconds = max(15, min(600, int(cfg.get("raid_lockdown_seconds", 60) or 60)))
+    except (TypeError, ValueError):
+        lockdown_seconds = 60
+    try:
+        threshold = max(3, min(30, int(cfg.get("raid_threshold", 8) or 8)))
+    except (TypeError, ValueError):
+        threshold = 8
+    try:
+        timeout_minutes = max(1, min(60, int(cfg.get("raid_timeout_minutes", 10) or 10)))
+    except (TypeError, ValueError):
+        timeout_minutes = 10
+    try:
+        min_account_age_days = max(0, min(365, int(cfg.get("raid_min_account_age_days", 0) or 0)))
+    except (TypeError, ValueError):
+        min_account_age_days = 0
+
     joins.append((now, member.id))
-    while joins and now - joins[0][0] > 10:
+    while joins and now - joins[0][0] > window_seconds:
         joins.popleft()
 
-    threshold = max(3, min(30, int(cfg.get("raid_threshold", 8))))
-    if len(joins) >= threshold and now >= _raid_lockdown_until.get(member.guild.id, 0):
-        _raid_lockdown_until[member.guild.id] = now + 60
+    lockdown_until = _raid_lockdown_until.get(guild_id, 0)
+    if len(joins) >= threshold and now >= lockdown_until:
+        lockdown_until = now + lockdown_seconds
+        _raid_lockdown_until[guild_id] = lockdown_until
         await security_log(
             member.guild, "🚨 Anti-Raid: Beitrittswelle erkannt",
-            f"**{len(joins)} Mitglieder in 10 Sekunden.**\n"
-            f"Raid-Schutz für 60 Sekunden aktiviert. Neu beitretende Nicht-Bots werden in dieser Zeit "
-            f"für 10 Minuten timeoutet, sofern die Bot-Berechtigungen dies erlauben.",
+            f"**{len(joins)} Mitglieder in {window_seconds} Sekunden.**\\n"
+            f"Schutzphase: {lockdown_seconds} Sekunden · Aktion: {cfg.get('raid_action', 'timeout')}.",
             discord.Color.red(),
         )
 
-    if now < _raid_lockdown_until.get(member.guild.id, 0):
-        try:
-            await member.timeout(datetime.now(timezone.utc) + timedelta(minutes=10),
-                                 reason="Anti-Raid: member joined during raid lockdown")
+    # Account age is a signal, not a standalone punishment. During a detected raid,
+    # it is included in the log to help moderators prioritize review.
+    account_age_days = max(0, (datetime.now(timezone.utc) - member.created_at).days)
+    raid_active = time.monotonic() < _raid_lockdown_until.get(guild_id, 0)
+    if raid_active:
+        action = str(cfg.get("raid_action", "timeout")).lower()
+        if action == "timeout":
+            try:
+                await member.timeout(
+                    datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes),
+                    reason="IronWolf Anti-Raid: join during active raid protection",
+                )
+                age_note = f"Accountalter: {account_age_days} Tage."
+                if min_account_age_days and account_age_days < min_account_age_days:
+                    age_note += f" Unter der konfigurierten Altersgrenze von {min_account_age_days} Tagen."
+                await security_log(
+                    member.guild, "🧯 Anti-Raid: Beitritt eingeschränkt",
+                    f"{member.mention} (`{member.id}`) wurde während der aktiven Schutzphase für "
+                    f"{timeout_minutes} Minute(n) timeoutet. {age_note}",
+                    discord.Color.orange(),
+                )
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                await security_log(
+                    member.guild, "⚠️ Anti-Raid: Timeout fehlgeschlagen",
+                    f"{member.mention} konnte nicht timeoutet werden. Prüfe Moderationsrechte und Rollenposition. "
+                    f"Fehler: {type(exc).__name__}.",
+                    discord.Color.red(),
+                )
+        elif action == "alert":
             await security_log(
-                member.guild, "🧯 Anti-Raid: Beitritt eingeschränkt",
-                f"{member.mention} (`{member.id}`) wurde während des Raid-Schutzes für 10 Minuten timeoutet.",
+                member.guild, "🔎 Anti-Raid: Beitritt während Schutzphase",
+                f"{member.mention} (`{member.id}`) ist während der Schutzphase beigetreten. "
+                f"Accountalter: {account_age_days} Tage; keine automatische Moderationsaktion konfiguriert.",
                 discord.Color.orange(),
-            )
-        except (discord.Forbidden, discord.HTTPException):
-            await security_log(
-                member.guild, "⚠️ Anti-Raid: Timeout fehlgeschlagen",
-                f"{member.mention} ist während des Raid-Schutzes beigetreten, konnte aber nicht timeoutet werden. "
-                "Prüfe die Bot-Berechtigungen und Rollenposition.",
-                discord.Color.red(),
             )
 
 
