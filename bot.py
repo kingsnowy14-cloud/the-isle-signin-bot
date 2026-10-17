@@ -6499,24 +6499,16 @@ async def on_ready():
     # Discord allows at most 100 global application commands. The economy
     # extension currently registers 15 slash commands, so reserve that capacity
     # before loading it rather than letting add_cog fail part-way through.
+    # Load economy commands even when the global Discord command limit is reached.
+    # They are registered per guild during command sync below.
     if not getattr(bot, "_economy_loaded", False):
-        global_command_count = len(bot.tree.get_commands())
-        economy_slash_command_count = 15
-        if global_command_count + economy_slash_command_count > 100:
-            print(
-                f"[ECONOMY] Skipping economy extension: {global_command_count} global "
-                f"slash commands are registered and economy needs about "
-                f"{economy_slash_command_count} more (Discord limit: 100). "
-                "Reduce global commands or combine economy commands into subcommands.",
-                flush=True,
-            )
-        else:
-            try:
-                await bot.load_extension("economy")
-                bot._economy_loaded = True
-                print("IronWolf economy extension loaded.")
-            except Exception as exc:
-                print(f"Could not load economy extension: {type(exc).__name__}: {exc}", flush=True)
+        try:
+            await bot.load_extension("economy")
+            bot._economy_loaded = True
+            print("IronWolf economy extension loaded.", flush=True)
+        except Exception as exc:
+            print(f"Could not load economy extension: {type(exc).__name__}: {exc}", flush=True)
+
 
     # Resume giveaway timers saved in data.json after a reconnect/restart.
     if not getattr(bot, "_giveaways_resumed", False):
@@ -6566,18 +6558,35 @@ async def on_ready():
             except Exception:
                 pass
     try:
-        # Always publish the full command tree globally so commands are available
-        # on every server the bot is installed on, not only the optional GUILD_ID.
+        # Discord allows at most 100 global slash commands. Keep economy commands
+        # guild-scoped so they do not prevent the main command set from syncing.
+        economy_names = {
+            "candyshop", "bank", "konto", "bank-zinsen", "bank-limit",
+            "steuern", "shop", "shop-hinzufuegen", "shop-entfernen",
+            "shop-kaufen", "suesses", "spook", "halloween-shop",
+            "halloween-kaufen", "halloween-guthaben",
+        }
+        economy_commands = []
+        for command_name in economy_names:
+            command = bot.tree.remove_command(command_name)
+            if command is not None:
+                economy_commands.append(command)
+
         global_synced = await bot.tree.sync()
         print(f"Synced {len(global_synced)} global slash commands.")
-        # Copy and sync to each connected guild so new commands appear immediately
-        # instead of waiting for Discord's global-command propagation.
         for guild_obj in bot.guilds:
             bot.tree.copy_global_to(guild=guild_obj)
+            for command in economy_commands:
+                try:
+                    bot.tree.add_command(command, guild=guild_obj)
+                except app_commands.CommandAlreadyRegistered:
+                    pass
             guild_synced = await bot.tree.sync(guild=guild_obj)
             print(f"Synced {len(guild_synced)} slash commands to guild {guild_obj.id}.")
+        if not bot.guilds and economy_commands:
+            print("[ECONOMY] Commands loaded, but no guilds available for guild-scoped sync.", flush=True)
     except Exception as exc:
-        print(f"Could not sync slash commands: {type(exc).__name__}: {exc}")
+        print(f"Could not sync slash commands: {type(exc).__name__}: {exc}", flush=True)
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     # Show the current server count in IronWolf's Discord activity.
     try:
