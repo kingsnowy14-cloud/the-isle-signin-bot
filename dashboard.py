@@ -972,6 +972,64 @@ def _render(title, body, status=200):
     return make_response(_page(title, body), status)
 
 
+@app.route("/privacy")
+def public_privacy_policy():
+    """Public privacy notice for Roblox OAuth review."""
+    body = """
+    <section class="card">
+      <h1>IronWolf – Datenschutzerklärung</h1>
+      <p><strong>Stand:</strong> 17. Oktober 2026</p>
+      <p>IronWolf ist ein Discord-Bot mit einer Weboberfläche zur Kontoverifizierung. Diese Erklärung beschreibt die Verarbeitung bei der freiwilligen Verknüpfung eines Roblox-Kontos mit einem Discord-Konto.</p>
+      <h2>Welche Daten verarbeitet werden</h2>
+      <ul>
+        <li>Discord-Nutzer-ID und gegebenenfalls die Discord-Server-ID, um die Verknüpfung dem richtigen Konto und Server zuzuordnen.</li>
+        <li>Roblox-Benutzer-ID und Roblox-Benutzername, die Roblox nach der OAuth-Autorisierung bereitstellt.</li>
+        <li>Verknüpfungs- und Verifizierungsstatus sowie Zeitstempel, die zur Vermeidung doppelter oder missbräuchlicher Verknüpfungen benötigt werden.</li>
+        <li>OAuth-Statusdaten, die vorübergehend für den sicheren Abschluss des Autorisierungsablaufs benötigt werden.</li>
+      </ul>
+      <h2>Wofür die Daten verwendet werden</h2>
+      <p>Die Daten werden ausschließlich zur Kontoverknüpfung und Verifizierung in Discord verwendet. Abhängig von der Serverkonfiguration kann IronWolf nach erfolgreicher Verifizierung eine Discord-Rolle vergeben und den Discord-Nickname auf den verifizierten Roblox-Benutzernamen setzen.</p>
+      <h2>Roblox OAuth und Passwörter</h2>
+      <p>Die Anmeldung und Zustimmung erfolgen auf Roblox. IronWolf fordert weder dein Roblox-Passwort noch deinen Roblox-Anmeldecode an. Die App verwendet die von Roblox im OAuth-Ablauf bereitgestellten Informationen für die oben genannten Funktionen.</p>
+      <h2>Speicherung und Weitergabe</h2>
+      <p>Verknüpfungsdaten werden in der vom Betreiber gehosteten Anwendungsumgebung gespeichert und sind für die Verifizierungsfunktion erforderlich. Sie werden nicht verkauft. Daten können durch die für den Betrieb notwendige Hosting-Infrastruktur verarbeitet werden. Eine Weitergabe erfolgt nur, soweit sie für die Funktion erforderlich ist, gesetzlich vorgeschrieben wird oder du sie selbst veranlasst.</p>
+      <h2>Aufbewahrung und Löschung</h2>
+      <p>Die Daten werden so lange gespeichert, wie die Kontoverknüpfung für die Verifizierung benötigt wird. Wenn du die Löschung oder Aufhebung einer Verknüpfung anfragen möchtest, kontaktiere den Betreiber über das <a href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/issues">GitHub-Repository von IronWolf</a>. Bitte veröffentliche dort keine privaten Kontodaten; beschreibe nur, dass du eine Datenschutzanfrage stellen möchtest, und nutze anschließend einen privaten Kontaktweg.</p>
+      <h2>Deine Wahl</h2>
+      <p>Die Verknüpfung ist freiwillig. Du kannst die Autorisierung auf Roblox abbrechen, bevor du zustimmst. Ohne Zustimmung kann die Roblox-Verifizierung nicht abgeschlossen werden.</p>
+      <h2>Kontakt</h2>
+      <p>Für Datenschutzanfragen nutze zunächst das <a href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot">IronWolf-Projekt auf GitHub</a>. Diese Seite benennt derzeit keine postalische Anschrift oder direkte E-Mail-Adresse des Betreibers; diese Kontaktdaten sollten ergänzt werden, bevor die App öffentlich eingereicht wird.</p>
+    </section>
+    """
+    return make_response(_page("Datenschutzerklärung – IronWolf", body), 200)
+
+
+@app.route("/terms")
+def public_terms_of_service():
+    """Public terms of service for Roblox OAuth review."""
+    body = """
+    <section class="card">
+      <h1>IronWolf – Nutzungsbedingungen</h1>
+      <p><strong>Stand:</strong> 17. Oktober 2026</p>
+      <h2>1. Zweck des Dienstes</h2>
+      <p>IronWolf bietet Funktionen für Discord-Communitys, darunter die freiwillige Verknüpfung eines Roblox-Kontos zur Identitätsbestätigung innerhalb eines Discord-Servers.</p>
+      <h2>2. Nutzung und Autorisierung</h2>
+      <p>Du musst zur Nutzung berechtigt sein, die angegebenen Konten zu verwenden. Die Roblox-Verknüpfung wird über den offiziellen OAuth-Ablauf von Roblox autorisiert. Teile IronWolf niemals dein Roblox-Passwort mit.</p>
+      <h2>3. Verifizierungsfunktionen</h2>
+      <p>Nach erfolgreicher Autorisierung kann IronWolf Roblox-Kontoinformationen speichern und – abhängig von der Konfiguration und den Berechtigungen des Discord-Bots – eine Discord-Rolle vergeben oder den Discord-Nickname ändern. Das Ergebnis kann von den Einstellungen und Berechtigungen des jeweiligen Discord-Servers abhängen.</p>
+      <h2>4. Missbrauch</h2>
+      <p>Du darfst den Dienst nicht zur Täuschung, zum Umgehen von Sicherheitsmaßnahmen, zur unbefugten Kontonutzung oder für rechtswidrige Zwecke verwenden. Versuche nicht, den OAuth-Ablauf zu manipulieren oder fremde Konten zu verknüpfen.</p>
+      <h2>5. Verfügbarkeit und Änderungen</h2>
+      <p>Der Dienst wird ohne Garantie einer ununterbrochenen Verfügbarkeit bereitgestellt. Funktionen können aus Sicherheits-, Wartungs- oder technischen Gründen geändert oder eingestellt werden.</p>
+      <h2>6. Externe Dienste</h2>
+      <p>Roblox und Discord sind eigenständige Dienste und unterliegen ihren jeweiligen Nutzungsbedingungen und Datenschutzbestimmungen. IronWolf wird nicht von Roblox oder Discord betrieben oder offiziell unterstützt, sofern nicht ausdrücklich anders angegeben.</p>
+      <h2>7. Datenschutz und Anfragen</h2>
+      <p>Informationen zur Verarbeitung von Kontodaten findest du in der <a href="/privacy">Datenschutzerklärung</a>. Für Support- oder Datenschutzanfragen besuche das <a href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot">IronWolf-Projekt auf GitHub</a>. Veröffentliche keine Passwörter, Tokens oder anderen vertraulichen Daten.</p>
+    </section>
+    """
+    return make_response(_page("Nutzungsbedingungen – IronWolf", body), 200)
+
+
 def _require_login():
     if not session.get("access_token"):
         return redirect(url_for("login"))
