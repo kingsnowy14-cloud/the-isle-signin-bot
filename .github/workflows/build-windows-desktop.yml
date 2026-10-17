@@ -8,7 +8,7 @@ on:
       - ".github/workflows/build-windows-desktop.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -40,3 +40,14 @@ jobs:
           path: desktop-app/dist/*.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish downloadable Windows installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: IronWolf Desktop (latest)
+          prerelease: true
+          make_latest: false
+          files: desktop-app/dist/IronWolf-Setup.exe
+          overwrite_files: true
+          fail_on_unmatched_files: true
