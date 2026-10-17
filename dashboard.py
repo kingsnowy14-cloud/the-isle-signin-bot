@@ -159,7 +159,7 @@ def _page(title, body):
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
         + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a>'
-        + '<button type="button" id="theme-toggle" aria-label="Dashboard-Farbschema wechseln" style="white-space:nowrap;margin:0;padding:8px 12px">☀️ Hell</button><span></span>'
+        + '<button type="button" id="theme-toggle" aria-label="Dashboard-Farbschema wechseln" onclick="if(window.ironwolfToggleTheme){window.ironwolfToggleTheme();}return false;" style="white-space:nowrap;margin:0;padding:8px 12px">☀️ Hell</button><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -247,7 +247,7 @@ html[data-theme="light"] .select-search-wrap:before{{color:var(--muted)}}
 #theme-toggle{{border:1px solid var(--border);border-radius:11px;background:var(--panel);color:var(--text);cursor:pointer;font:inherit;font-weight:700}}
 #theme-toggle:hover{{border-color:var(--accent)}}
 </style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}<script>
-(function(){{var root=document.documentElement;var button=document.getElementById("theme-toggle");var key="ironwolf-dashboard-theme";var theme="dark";try{{var saved=localStorage.getItem(key);if(saved==="light"||saved==="dark")theme=saved;}}catch(e){{}}function apply(value){{theme=value;root.setAttribute("data-theme",value);if(button){{button.textContent=value==="dark"?"☀️ Hell":"🌙 Dark";button.setAttribute("aria-label",value==="dark"?"Zu hellem Design wechseln":"Zu dunklem Design wechseln");}}}}apply(theme);if(button)button.addEventListener("click",function(){{var next=theme==="dark"?"light":"dark";apply(next);try{{localStorage.setItem(key,next);}}catch(e){{}}}});}})();
+(function(){{var root=document.documentElement;var button=document.getElementById("theme-toggle");var key="ironwolf-dashboard-theme";var theme="dark";try{{var saved=window.localStorage.getItem(key);if(saved==="light"||saved==="dark")theme=saved;}}catch(e){{}}function apply(value){{theme=value==="light"?"light":"dark";root.setAttribute("data-theme",theme);root.style.colorScheme=theme;if(button){{button.textContent=theme==="dark"?"☀️ Hell":"🌙 Dark";button.setAttribute("aria-label",theme==="dark"?"Zu hellem Design wechseln":"Zu dunklem Design wechseln");button.setAttribute("aria-pressed",theme==="light"?"true":"false");}}}}window.ironwolfToggleTheme=function(){{apply(theme==="dark"?"light":"dark");try{{window.localStorage.setItem(key,theme);}}catch(e){{}}return false;}};apply(theme);}})();
 </script></body></html>"""
 
 
