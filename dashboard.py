@@ -158,7 +158,8 @@ def _page(title, body):
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
-        + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a><span></span>'
+        + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a>'
+        + '<button type="button" id="theme-toggle" aria-label="Dashboard-Farbschema wechseln" style="white-space:nowrap;margin:0;padding:8px 12px">☀️ Hell</button><span></span>'
         + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
@@ -232,7 +233,22 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 .role-picker-tools{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}}
 .role-picker-tools button{{margin:0;padding:7px 10px}}
 .selection-summary{{font-size:12px;color:var(--muted);margin-left:auto}}
-{custom_theme_css}</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
+{custom_theme_css}
+html[data-theme="light"]{{--bg:#f3f6fb;--panel:#ffffff;--panel2:#e9eef7;--text:#172033;--muted:#59677d;--border:rgba(44,62,91,.18);--shadow:0 16px 45px rgba(25,42,70,.10);--glow:rgba(91,141,255,.08);color-scheme:light}}
+html[data-theme="light"] body{{background:linear-gradient(180deg,#edf3fc 0%,var(--bg) 60%,#f8faff 100%);color:var(--text)}}
+html[data-theme="light"] nav{{background:rgba(248,250,255,.92);border-bottom-color:var(--border);box-shadow:0 8px 30px rgba(25,42,70,.08)}}
+html[data-theme="light"] .card,html[data-theme="light"] .notice,html[data-theme="light"] .section-nav,html[data-theme="light"] .command-group{{background:#fff;border-color:var(--border);color:var(--text);box-shadow:0 10px 28px rgba(25,42,70,.04)}}
+html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),html[data-theme="light"] textarea,html[data-theme="light"] select,html[data-theme="light"] .select-search-wrap input{{background-color:#fff;color:var(--text);border-color:var(--border)}}
+html[data-theme="light"] select option,html[data-theme="light"] select optgroup{{background:#fff;color:#172033}}
+html[data-theme="light"] code,html[data-theme="light"] pre{{background:#edf1f8;color:#172033;border-color:var(--border)}}
+html[data-theme="light"] .role-option,html[data-theme="light"] .section-nav a{{background:#f6f8fc;color:var(--text);border-color:var(--border)}}
+html[data-theme="light"] table,html[data-theme="light"] th,html[data-theme="light"] td{{border-color:var(--border)}}
+html[data-theme="light"] .select-search-wrap:before{{color:var(--muted)}}
+#theme-toggle{{border:1px solid var(--border);border-radius:11px;background:var(--panel);color:var(--text);cursor:pointer;font:inherit;font-weight:700}}
+#theme-toggle:hover{{border-color:var(--accent)}}
+</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}<script>
+(function(){{var root=document.documentElement;var button=document.getElementById("theme-toggle");var key="ironwolf-dashboard-theme";var theme="dark";try{{var saved=localStorage.getItem(key);if(saved==="light"||saved==="dark")theme=saved;}}catch(e){{}}function apply(value){{theme=value;root.setAttribute("data-theme",value);if(button){{button.textContent=value==="dark"?"☀️ Hell":"🌙 Dark";button.setAttribute("aria-label",value==="dark"?"Zu hellem Design wechseln":"Zu dunklem Design wechseln");}}}}apply(theme);if(button)button.addEventListener("click",function(){{var next=theme==="dark"?"light":"dark";apply(next);try{{localStorage.setItem(key,next);}}catch(e){{}}}});}})();
+</script></body></html>"""
 
 
 
