@@ -418,7 +418,12 @@ def _authorized_guild(guild_id):
     ]
     guild = _bot.get_guild(target) if _bot else None
     if not matches or guild is None:
-        abort(403)
+        print(
+            f"[DASHBOARD] Guild authorization failed: guild={target}, "
+            f"oauth_match={bool(matches)}, bot_in_guild={guild is not None}.",
+            flush=True,
+        )
+        abort(403, "Server nicht verfügbar: Prüfe, ob der Bot noch auf dem Server ist und dein Discord-Konto Server verwalten darf.")
     return guild, None
 
 
@@ -2451,9 +2456,12 @@ def guild_verification(guild_id):
     return _render(guild.name + " · Verifizierung", body)
 
 
+@app.route("/guild/<guild_id>/server-booster", methods=["GET", "POST"])
+@app.route("/guild/<guild_id>/serverboost", methods=["GET", "POST"])
 @app.route("/guild/<guild_id>/server-boost", methods=["GET", "POST"])
 def guild_server_boost(guild_id):
     """Configure boost announcements and the optional booster role."""
+    print(f"[DASHBOARD] Server-Booster route opened for guild {guild_id}.", flush=True)
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
