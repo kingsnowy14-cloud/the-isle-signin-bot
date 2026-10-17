@@ -6975,7 +6975,8 @@ async def the_isle_bau(ctx):
                 is_staff_category = category_name == "🔒 TEAM-BEREICH"
                 category = await guild.create_category(
                     category_name,
-                    overwrites=staff_overwrites if is_staff_category else None,
+                    # discord.py requires overwrites to be a dict, never None.
+                    overwrites=staff_overwrites if is_staff_category else {},
                     reason="IronWolf !TheIsleBau: The Isle Community Setup",
                 )
                 created_categories += 1
@@ -7030,6 +7031,18 @@ async def the_isle_bau_error(ctx, error):
         )
     elif isinstance(error, commands.NoPrivateMessage):
         await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+    elif isinstance(error, commands.CommandInvokeError):
+        original = error.original
+        print(f"[THEISLEBAU] Fehler in !TheIsleBau: {type(original).__name__}: {original}", flush=True)
+        try:
+            await ctx.reply(
+                "❌ Beim Erstellen der Serverstruktur ist ein Fehler aufgetreten. "
+                "Bitte prüfe die Railway-Logs; bereits erstellte Rollen/Kanäle bleiben bestehen. "
+                "Du kannst den Befehl nach dem Fix erneut ausführen.",
+                mention_author=False,
+            )
+        except discord.HTTPException:
+            pass
     else:
         raise error
 
