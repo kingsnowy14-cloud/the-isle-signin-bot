@@ -519,6 +519,9 @@ def cleanup_expired_trial_premium(guild_id):
             if isinstance(labels, list) and len(labels) > 1:
                 panel["labels"] = labels[:1]
                 changed = True
+            if panel.get("display_mode") != "buttons":
+                panel["display_mode"] = "buttons"
+                changed = True
         # Extra panels are a Premium feature; retain the first configured panel.
         if len(panels) > 1:
             first_key = next(iter(panels))
