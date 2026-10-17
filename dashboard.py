@@ -261,33 +261,45 @@ def _steam_save_verified_account(token, steam_id):
         return True, guild_id
 
 
-async def _steam_grant_guild_role(guild_id, discord_id):
+async def _steam_grant_guild_role(guild_id, discord_id, nickname=None, provider="Gaming"):
     if not _bot or not _guild_config:
         return "unavailable"
     guild = _bot.get_guild(int(guild_id))
     if guild is None:
         return "unavailable"
     cfg = _guild_config(int(guild_id))
-    role_id = cfg.get("verified_accounts_role_id")
-    if not role_id:
-        return "not_configured"
-    role = guild.get_role(int(role_id))
-    if role is None or role.is_default() or role.managed:
-        return "invalid_role"
     member = guild.get_member(int(discord_id))
     if member is None:
         try:
             member = await guild.fetch_member(int(discord_id))
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return "member_missing"
+
+    nickname_status = "nickname_unchanged"
+    if nickname and cfg.get("verified_accounts_nickname_enabled", True):
+        safe_nickname = str(nickname).strip()[:32]
+        if safe_nickname and safe_nickname != member.nick:
+            try:
+                await member.edit(nick=safe_nickname, reason=f"{provider}-Konto erfolgreich verifiziert")
+                nickname_status = "nickname_set"
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[GAMING LINK] Could not set nickname in guild {guild_id}: {type(exc).__name__}", flush=True)
+                nickname_status = "nickname_failed"
+
+    role_id = cfg.get("verified_accounts_role_id")
+    if not role_id:
+        return "not_configured" if nickname_status != "nickname_set" else "nickname_set"
+    role = guild.get_role(int(role_id))
+    if role is None or role.is_default() or role.managed:
+        return "invalid_role"
     if role in member.roles:
-        return "already_has_role"
+        return "already_has_role" if nickname_status != "nickname_set" else "nickname_set"
     try:
-        await member.add_roles(role, reason="Gaming-Konto erfolgreich über den offiziellen Anbieter verifiziert")
+        await member.add_roles(role, reason=f"{provider}-Konto erfolgreich über den offiziellen Anbieter verifiziert")
     except (discord.Forbidden, discord.HTTPException) as exc:
-        print(f"[STEAM LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
+        print(f"[GAMING LINK] Could not grant verification role in guild {guild_id}: {type(exc).__name__}: {exc}", flush=True)
         return "role_failed"
-    return "granted"
+    return "granted" if nickname_status != "nickname_set" else "nickname_set"
 
 
 @app.route("/gaming/steam/start")
@@ -601,7 +613,7 @@ def roblox_link_callback():
     if _bot and getattr(_bot, "loop", None) and _bot.loop.is_running():
         try:
             future = asyncio.run_coroutine_threadsafe(
-                _steam_grant_guild_role(guild_id, pending["discord_id"]), _bot.loop
+                _steam_grant_guild_role(guild_id, pending["discord_id"], nickname=username, provider="Roblox"), _bot.loop
             )
             role_status = future.result(timeout=18)
         except Exception as exc:
@@ -609,6 +621,8 @@ def roblox_link_callback():
             role_status = "role_failed"
     if role_status in {"granted", "already_has_role"}:
         role_text = "Die konfigurierte Discord-Verifizierungsrolle wurde vergeben."
+    elif role_status == "nickname_set":
+        role_text = "Dein Discord-Nickname wurde auf deinen Roblox-Namen gesetzt. Eine Verifizierungsrolle ist noch nicht konfiguriert oder war bereits vorhanden."
     elif role_status == "not_configured":
         role_text = "Das Roblox-Konto wurde gespeichert. Wähle im Dashboard eine Verifizierungsrolle aus."
     else:
