@@ -2385,38 +2385,78 @@ def guild_config_backup(guild_id):
 
 @app.route("/guild/<guild_id>/server-statistics", methods=["GET", "POST"])
 def guild_server_statistics(guild_id):
-    """Configure a voice channel whose name displays live server counts."""
+    """Configure separate voice channels for live server statistics."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
+    stats_types = [
+        ("members", "👥 Mitglieder", "👥・Mitglieder: {count}", lambda: int(guild.member_count or len(guild.members))),
+        ("bots", "🤖 Bots", "🤖・Bots: {count}", lambda: sum(1 for member in guild.members if member.bot)),
+        ("boosters", "🚀 Booster", "🚀・Booster: {count}", lambda: int(guild.premium_subscription_count or 0)),
+        ("roles", "🎭 Rollen", "🎭・Rollen: {count}", lambda: len(guild.roles)),
+        ("text_channels", "💬 Textkanäle", "💬・Textkanäle: {count}", lambda: len(guild.text_channels)),
+        ("voice_channels", "🔊 Sprachkanäle", "🔊・Sprachkanäle: {count}", lambda: len(guild.voice_channels)),
+    ]
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
-        raw = request.form.get("server_statistics_channel", "").strip()
+        selected = {}
         valid_ids = {str(channel.id) for channel in guild.voice_channels}
-        if raw and raw not in valid_ids:
-            abort(400, "Bitte einen gültigen Sprachkanal auswählen.")
-        cfg["server_statistics_channel"] = int(raw) if raw else None
+        used_ids = []
+        for key, _label, _template, _counter in stats_types:
+            raw = request.form.get("stat_" + key, "").strip()
+            if raw and raw not in valid_ids:
+                abort(400, "Bitte für jede Statistik einen gültigen Sprachkanal auswählen.")
+            if raw:
+                used_ids.append(raw)
+            selected[key] = int(raw) if raw else None
+        if len(used_ids) != len(set(used_ids)):
+            abort(400, "Jede Statistik benötigt einen eigenen Sprachkanal. Bitte doppelte Auswahl korrigieren.")
+        cfg["server_statistics_channels"] = selected
+        # Clear the legacy single-channel setting so the old worker cannot overwrite a channel.
+        cfg.pop("server_statistics_channel", None)
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Server-Statistik", session.get("user_id"),
-                                "Sprachkanal: " + (raw or "deaktiviert"))
+                                "Statistikkanäle gespeichert: " + ", ".join(key for key, value in selected.items() if value))
         return redirect(url_for("guild_server_statistics", guild_id=gid, saved="1"))
-    selected = str(cfg.get("server_statistics_channel") or "")
-    options = ['<option value="">— Deaktiviert —</option>']
-    for channel in sorted(guild.voice_channels, key=lambda item: item.position):
-        mark = " selected" if str(channel.id) == selected else ""
-        options.append(f'<option value="{channel.id}"{mark}>{html.escape(channel.name)}</option>')
+    saved = cfg.get("server_statistics_channels", {})
+    if not isinstance(saved, dict):
+        saved = {}
+    # Migrate a previous single statistics channel to the member counter by default.
+    legacy = cfg.get("server_statistics_channel")
+    if legacy and not saved.get("members"):
+        saved = dict(saved)
+        saved["members"] = legacy
+    options_by_type = {}
+    for key, _label, _template, _counter in stats_types:
+        options = ['<option value="">— Nicht verwenden —</option>']
+        current = str(saved.get(key) or "")
+        for channel in sorted(guild.voice_channels, key=lambda item: item.position):
+            mark = " selected" if str(channel.id) == current else ""
+            options.append(f'<option value="{channel.id}"{mark}>{html.escape(channel.name)}</option>')
+        options_by_type[key] = ''.join(options)
+    rows = []
+    for key, label, template, counter in stats_types:
+        channel_id = saved.get(key) or (legacy if key == "members" else None)
+        channel = guild.get_channel(int(channel_id)) if str(channel_id or "").isdigit() else None
+        current_preview = template.format(count=counter()) if channel else "Nicht aktiviert"
+        rows.append(
+            '<div class="stat-setting" style="padding:12px 0;border-bottom:1px solid var(--border)">'
+            + '<label>' + html.escape(label) + '</label>'
+            + '<select name="stat_' + key + '">' + options_by_type[key] + '</select>'
+            + '<small class="muted">Vorschau: ' + html.escape(current_preview) + '</small></div>'
+        )
     body = (
-        '<section class="card"><h1>📊 Server-Statistik im Sprachkanal</h1>'
-        '<p class="muted">Wähle einen Sprachkanal aus. Der Bot aktualisiert seinen Namen ungefähr alle fünf Minuten, damit Mitglieder, Bots und Booster direkt sichtbar sind.</p>'
-        + ('<p class="pill">Einstellung gespeichert</p>' if request.args.get("saved") == "1" else '')
-        + '<form method="post">' + _csrf_field()
-        + '<label>Sprachkanal für Statistiken</label><select name="server_statistics_channel">'
-        + ''.join(options) + '</select><button type="submit">Einstellung speichern</button></form>'
-        + '<h2>Beispiel für den Kanalnamen</h2><p><code>👥 120 · 🤖 8 · 🚀 14</code></p>'
-        + '<p class="muted">👥 Mitglieder · 🤖 Bots · 🚀 Server-Booster. Zum Deaktivieren „Deaktiviert“ auswählen. Der Bot braucht die Berechtigung „Kanäle verwalten“.</p>'
+        '<section class="card"><h1>📊 Server-Statistik</h1>'
+        '<p class="muted">Wie bei GalaxyBot bekommt jede Statistik ihren eigenen Sprachkanal. Wähle für jede Zahl einen anderen Kanal oder „Nicht verwenden“. Die Namen werden automatisch etwa alle fünf Minuten aktualisiert.</p>'
+        + ('<p class="pill">Einstellungen gespeichert</p>' if request.args.get("saved") == "1" else '')
+        + '<form method="post">' + _csrf_field() + ''.join(rows)
+        + '<button type="submit">Statistikkanäle speichern</button></form>'
+        + '<h2>Beispiele</h2><p><code>👥・Mitglieder: 1250</code></p>'
+        + '<p><code>🤖・Bots: 18</code></p><p><code>🚀・Booster: 24</code></p>'
+        + '<p class="muted">Der Bot benötigt „Kanäle verwalten“. Die Mitglieder- und Bot-Zahlen richten sich nach den Mitgliederdaten, die Discord dem Bot bereitstellt.</p>'
         + '<p><a class="button secondary" href="/guild/' + gid + '">← Zur Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Server-Statistik", body)
