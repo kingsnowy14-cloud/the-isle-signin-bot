@@ -4496,8 +4496,15 @@ async def honeypot_publish(interaction: discord.Interaction):
     try:
         embed = discord.Embed(title="🍯 IronWolf · Honeypot", description=message_text,
                               color=discord.Color.orange(), timestamp=datetime.now(timezone.utc))
+        embed.add_field(name="Ausgewählte Aktion", value=str(cfg.get("honeypot_action", "kick")).upper(), inline=False)
+        stats = data.setdefault("honeypot_stats", {}).setdefault(str(interaction.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
+        embed.add_field(name="🍯 Zähler · Ban", value=str(stats.get("ban", 0)), inline=True)
+        embed.add_field(name="👢 Zähler · Kick", value=str(stats.get("kick", 0)), inline=True)
+        embed.add_field(name="⏳ Zähler · Timeout", value=str(stats.get("timeout", 0)), inline=True)
         embed.set_footer(text="Sicherheits-System · IronWolf")
-        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        posted = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        cfg["honeypot_message_id"] = posted.id
+        save_json(data_path("config.json"), _config)
         await interaction.response.send_message(f"Honeypot-Nachricht wurde in {channel.mention} veröffentlicht.", ephemeral=True)
     except (discord.Forbidden, discord.HTTPException):
         await interaction.response.send_message("Die Nachricht konnte nicht gesendet werden. Bitte Kanalrechte prüfen.", ephemeral=True)
@@ -4627,6 +4634,22 @@ async def on_message(message: discord.Message):
                     save_json(DATA_FILE, data)
                 except (discord.Forbidden, discord.HTTPException, ValueError) as exc:
                     print(f"[HONEYPOT] Action failed in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                try:
+                    published_id = cfg.get("honeypot_message_id")
+                    published = await message.channel.fetch_message(int(published_id)) if published_id else None
+                    if published and published.embeds:
+                        counter_embed = published.embeds[0].copy()
+                        current_stats = data.setdefault("honeypot_stats", {}).setdefault(str(guild.id), {"ban": 0, "kick": 0, "timeout": 0})
+                        fields = {"ban": "🍯 Zähler · Ban", "kick": "👢 Zähler · Kick", "timeout": "⏳ Zähler · Timeout"}
+                        for key, field_name in fields.items():
+                            index = next((i for i, field in enumerate(counter_embed.fields) if field.name == field_name), None)
+                            if index is None:
+                                counter_embed.add_field(name=field_name, value=str(current_stats.get(key, 0)), inline=True)
+                            else:
+                                counter_embed.set_field_at(index, name=field_name, value=str(current_stats.get(key, 0)), inline=True)
+                        await published.edit(embed=counter_embed)
+                except (discord.Forbidden, discord.HTTPException, ValueError) as exc:
+                    print(f"[HONEYPOT] Could not update counter in guild {guild.id}: {exc}", flush=True)
                 try:
                     action_names = {"ban": "vom Server gebannt", "kick": "vom Server gekickt", "timeout": "mit einem Timeout belegt"}
                     result_text = action_names[action] if succeeded else "nicht erfolgreich ausgeführt (möglicherweise fehlen dem Bot Rechte)"
