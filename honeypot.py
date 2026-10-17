@@ -81,7 +81,7 @@ class Honeypot(commands.Cog):
             print(f"[HONEYPOT] {type(exc).__name__}: {exc}", flush=True)
         core.save_json(core.DATA_FILE, core.data)
 
-        log_id = cfg.get("security_log_channel") or cfg.get("log_channel_id")
+        log_id = cfg.get("honeypot_log_channel") or cfg.get("security_log_channel") or cfg.get("log_channel_id")
         log_channel = message.guild.get_channel(int(log_id)) if log_id else None
         if isinstance(log_channel, discord.TextChannel):
             embed = discord.Embed(title="🍯 Honeypot ausgelöst", color=discord.Color.red())
