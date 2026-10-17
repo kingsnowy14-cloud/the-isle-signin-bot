@@ -543,7 +543,19 @@ class HalloweenEconomy(commands.Cog):
         await interaction.response.send_message(f"🍬 Süßigkeiten: **{sweets_amount(u['sweets'])}**\\n🎒 Halloween-Inventar: {items}", ephemeral=True)
 
 async def setup(bot):
-    await bot.add_cog(Economy(bot))
+    # Register economy slash commands per server, not globally. Discord limits
+    # global application commands to 100, and IronWolf already uses most of them.
+    # The extension is loaded after on_ready, so bot.guilds is populated here.
+    guilds = list(bot.guilds)
+    if guilds:
+        await bot.add_cog(Economy(bot), guilds=guilds)
+        await bot.add_cog(HalloweenEconomy(bot), guilds=guilds)
+        print(f"[ECONOMY] Registered economy commands for {len(guilds)} guild(s).", flush=True)
+    else:
+        # Prefix commands and views can still load if the bot has no guild cache.
+        await bot.add_cog(Economy(bot))
+        await bot.add_cog(HalloweenEconomy(bot))
+        print("[ECONOMY] No guilds cached; slash commands may need guild registration.", flush=True)
     # Persistent views: these buttons continue working after bot restarts.
     bot.add_view(BankView())
     bot.add_view(ShopView())
