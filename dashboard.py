@@ -1588,8 +1588,16 @@ def guild_honeypot(guild_id):
                     color=discord.Color.orange(),
                     timestamp=datetime.now(timezone.utc),
                 )
+                embed.add_field(name="Ausgewählte Aktion", value=str(cfg.get("honeypot_action", "kick")).upper(), inline=False)
+                stats = _config.setdefault("honeypot_stats", {}).setdefault(str(guild.id), {"ban": 0, "kick": 0, "timeout": 0})
+                embed.add_field(name="🍯 Zähler · Ban", value=str(stats.get("ban", 0)), inline=True)
+                embed.add_field(name="👢 Zähler · Kick", value=str(stats.get("kick", 0)), inline=True)
+                embed.add_field(name="⏳ Zähler · Timeout", value=str(stats.get("timeout", 0)), inline=True)
                 embed.set_footer(text="Sicherheits-System · IronWolf")
-                return await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                posted = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                cfg["honeypot_message_id"] = posted.id
+                _save_json(data_path("config.json"), _config)
+                return posted
             try:
                 asyncio.run_coroutine_threadsafe(_publish_honeypot(), _bot.loop).result(timeout=20)
             except Exception as exc:
