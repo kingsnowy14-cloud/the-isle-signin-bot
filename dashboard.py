@@ -109,6 +109,28 @@ CATEGORY_SETTINGS = {
 }
 
 
+class _GamingAccountVerifyView(discord.ui.View):
+    """Gaming provider buttons; provider ownership flows are not yet configured."""
+    def __init__(self, enabled_platforms):
+        super().__init__(timeout=None)
+        details = {
+            "fortnite": ("🎮 Fortnite / Epic Games", discord.ButtonStyle.primary,
+                "Fortnite/Epic-Kontoverknüpfung ist noch nicht aktiviert. Ein unterstützter Epic-Kontennachweis muss eingerichtet werden. Gib dein Passwort niemals im Discord ein."),
+            "steam": ("🚂 Steam", discord.ButtonStyle.secondary,
+                "Steam-Verknüpfung ist noch nicht aktiviert. Dafür muss Steam OpenID mit einer sicheren Rückleitungs-URL eingerichtet werden. Gib dein Steam-Passwort niemals im Discord ein."),
+            "roblox": ("🟥 Roblox", discord.ButtonStyle.danger,
+                "Roblox-Verknüpfung ist noch nicht aktiviert. Die Kontoinhaberschaft muss erst über einen sicheren Profilnachweis geprüft werden. Teile hier kein Passwort oder Login-Code."),
+        }
+        for key, (label, style, explanation) in details.items():
+            if key not in set(enabled_platforms):
+                continue
+            button = discord.ui.Button(label=label, style=style, custom_id="gaming_verify:" + key)
+            async def callback(interaction, message=explanation):
+                await interaction.response.send_message(message, ephemeral=True)
+            button.callback = callback
+            self.add_item(button)
+
+
 def _env(name):
     return (os.getenv(name) or "").strip()
 
@@ -1352,7 +1374,7 @@ def guild_verified_accounts(guild_id):
             embed.set_footer(text="Kontoprüfung muss über sichere, offizielle Kontonachweise erfolgen.")
             try:
                 asyncio.run_coroutine_threadsafe(
-                    channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none()),
+                    channel.send(embed=embed, view=_GamingAccountVerifyView(selected), allowed_mentions=discord.AllowedMentions.none()),
                     _bot.loop,
                 ).result(timeout=20)
             except Exception as exc:
