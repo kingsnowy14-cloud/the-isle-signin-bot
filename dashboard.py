@@ -233,8 +233,7 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 .role-picker-tools button{{margin:0;padding:7px 10px}}
 .selection-summary{{font-size:12px;color:var(--muted);margin-left:auto}}
 {custom_theme_css}
-</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}<script>
-</script></body></html>"""
+</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
 
 
 
