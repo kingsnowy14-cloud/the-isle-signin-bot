@@ -6861,6 +6861,179 @@ async def server_statistics_worker():
         await asyncio.sleep(300)
 
 
+
+@bot.command(name="TheIsleBau")
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True, manage_channels=True, manage_roles=True)
+async def the_isle_bau(ctx):
+    """Creates a The Isle community Discord layout; existing matching roles/channels are kept."""
+    guild = ctx.guild
+    await ctx.reply(
+        "🦖 **The Isle-Serverstruktur wird eingerichtet.**\n"
+        "Ich erstelle fehlende Rollen, Kategorien und Kanäle. Vorhandene Kanäle werden nicht gelöscht oder überschrieben.",
+        mention_author=False,
+    )
+
+    # Create roles first. These are deliberately non-administrator roles.
+    role_specs = [
+        ("Serverleitung", discord.Colour.from_rgb(190, 55, 55)),
+        ("Admin", discord.Colour.from_rgb(230, 85, 65)),
+        ("Moderator", discord.Colour.from_rgb(235, 145, 55)),
+        ("Support", discord.Colour.from_rgb(65, 155, 220)),
+        ("The Isle | Evrima", discord.Colour.from_rgb(75, 170, 95)),
+        ("The Isle | Legacy", discord.Colour.from_rgb(100, 135, 175)),
+        ("Event-Team", discord.Colour.from_rgb(175, 100, 210)),
+        ("Mitglied", discord.Colour.from_rgb(170, 180, 190)),
+    ]
+    created_roles = 0
+    failed = []
+    for role_name, colour in role_specs:
+        if discord.utils.get(guild.roles, name=role_name):
+            continue
+        try:
+            await guild.create_role(
+                name=role_name,
+                colour=colour,
+                hoist=role_name in {"Serverleitung", "Admin", "Moderator", "Support"},
+                mentionable=False,
+                reason="IronWolf !TheIsleBau: The Isle Community Setup",
+            )
+            created_roles += 1
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            failed.append(f"Rolle **{role_name}**: {type(exc).__name__}")
+    
+    everyone = guild.default_role
+    bot_member = guild.me
+    staff_roles = [
+        role for role in guild.roles
+        if role.name in {"Serverleitung", "Admin", "Moderator", "Support"}
+    ]
+    staff_overwrites = {
+        everyone: discord.PermissionOverwrite(view_channel=False),
+    }
+    for role in staff_roles:
+        staff_overwrites[role] = discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, read_message_history=True
+        )
+    if bot_member:
+        staff_overwrites[bot_member] = discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, read_message_history=True,
+            manage_channels=True, manage_messages=True
+        )
+
+    # category -> (channel name, channel type, topic)
+    layout = [
+        ("📌 START-HIER", [
+            ("👋・willkommen", "text", "Willkommen in der The Isle Community! Lies zuerst die Regeln."),
+            ("📜・regeln", "text", "Serverregeln und Verhalten auf unserem The Isle Server."),
+            ("✅・verifizierung", "text", "Informationen zur Verifizierung und zum Freischalten."),
+            ("📢・ankündigungen", "text", "Wichtige Ankündigungen des Serverteams."),
+        ]),
+        ("🦖 SERVER-INFORMATIONEN", [
+            ("📖・server-info", "text", "Name, Spielmodus, Karte und wichtige Serverinformationen."),
+            ("🔗・server-links", "text", "Nützliche Links und offizielle The Isle Ressourcen."),
+            ("🧭・beitreten", "text", "So findest du unseren The Isle Server und trittst bei."),
+            ("❓・faq", "text", "Häufige Fragen zu Regeln, Gameplay und Verbindungsproblemen."),
+            ("🔄・updates", "text", "Neuigkeiten, Updates und geplante Wartungen."),
+        ]),
+        ("🌿 THE-ISLE COMMUNITY", [
+            ("💬・allgemeiner-chat", "text", "Chat rund um The Isle und die Community."),
+            ("🦕・evrima-chat", "text", "Alles rund um The Isle: Evrima."),
+            ("🦴・legacy-chat", "text", "Alles rund um The Isle: Legacy."),
+            ("📸・screenshots", "text", "Teile deine Screenshots und Clips aus dem Spiel."),
+            ("🎮・mitspieler-suche", "text", "Finde Mitspieler und Gruppen."),
+            ("🐣・dino-talk", "text", "Diskussionen über Dinosaurier, Wachstum und Spielstil."),
+            ("📊・umfragen", "text", "Community-Umfragen und Abstimmungen."),
+        ]),
+        ("🛡️ SUPPORT & MELDUNGEN", [
+            ("🎫・support-info", "text", "Wie du Hilfe vom Team bekommst."),
+            ("🚨・spieler-meldungen", "text", "Melde Vorfälle sachlich und mit Belegen; private Daten vermeiden."),
+            ("💡・vorschläge", "text", "Vorschläge und Feedback für den Server."),
+        ]),
+        ("🔊 SPRACHKANÄLE", [
+            ("🔊・Lobby", "voice", None),
+            ("🦖・Evrima 1", "voice", None),
+            ("🦕・Evrima 2", "voice", None),
+            ("🎮・Mitspieler-Suche", "voice", None),
+            ("💤・AFK", "voice", None),
+        ]),
+        ("🔒 TEAM-BEREICH", [
+            ("💬・team-chat", "text", "Interne Teamkommunikation."),
+            ("📋・team-protokoll", "text", "Interne Notizen und Teamabsprachen."),
+            ("🚨・team-meldungen", "text", "Interne Bearbeitung von Meldungen."),
+            ("🔊・Team-Besprechung", "voice", None),
+        ]),
+    ]
+
+    created_categories = 0
+    created_channels = 0
+    skipped_existing = 0
+    for category_name, channel_specs in layout:
+        category = discord.utils.get(guild.categories, name=category_name)
+        if category is None:
+            try:
+                is_staff_category = category_name == "🔒 TEAM-BEREICH"
+                category = await guild.create_category(
+                    category_name,
+                    overwrites=staff_overwrites if is_staff_category else None,
+                    reason="IronWolf !TheIsleBau: The Isle Community Setup",
+                )
+                created_categories += 1
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                failed.append(f"Kategorie **{category_name}**: {type(exc).__name__}")
+                continue
+        for channel_name, channel_type, topic in channel_specs:
+            existing = discord.utils.get(guild.channels, name=channel_name)
+            if existing is not None:
+                skipped_existing += 1
+                continue
+            try:
+                if channel_type == "voice":
+                    await guild.create_voice_channel(
+                        channel_name,
+                        category=category,
+                        reason="IronWolf !TheIsleBau: The Isle Community Setup",
+                    )
+                else:
+                    await guild.create_text_channel(
+                        channel_name,
+                        category=category,
+                        topic=topic,
+                        reason="IronWolf !TheIsleBau: The Isle Community Setup",
+                    )
+                created_channels += 1
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                failed.append(f"Kanal **{channel_name}**: {type(exc).__name__}")
+
+    summary = (
+        "🦖 **The Isle-Grundstruktur ist fertig!**\n"
+        f"• Neue Rollen: **{created_roles}**\n"
+        f"• Neue Kategorien: **{created_categories}**\n"
+        f"• Neue Kanäle: **{created_channels}**\n"
+        f"• Bereits vorhandene Kanäle übersprungen: **{skipped_existing}**\n\n"
+        "**Wichtig:** Passe Rollenrechte, Regeln, Server-IP/Port, Karte, Spielmodus und Beitrittsanleitung im Anschluss an. "
+        "Ich habe keine vorhandenen Kanäle gelöscht."
+    )
+    if failed:
+        summary += "\n\n⚠️ **Nicht erstellt (fehlende Rechte oder Discord-Fehler):**\n" + "\n".join(f"• {item}" for item in failed[:12])
+        if len(failed) > 12:
+            summary += f"\n• ... und {len(failed) - 12} weitere."
+    await ctx.send(summary)
+
+@the_isle_bau.error
+async def the_isle_bau_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply(
+            "❌ Dafür brauchst du die Serverberechtigung **Server verwalten**, **Kanäle verwalten** und **Rollen verwalten**. "
+            "Auch IronWolf benötigt **Kanäle verwalten** und **Rollen verwalten**; seine höchste Rolle muss über den neu zu erstellenden Rollen stehen.",
+            mention_author=False,
+        )
+    elif isinstance(error, commands.NoPrivateMessage):
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+    else:
+        raise error
+
+
 @bot.event
 async def on_ready():
     migrate_all_guild_configs()
