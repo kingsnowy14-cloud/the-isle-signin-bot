@@ -2677,6 +2677,89 @@ async def _refresh_poll(payload: discord.RawReactionActionEvent):
         pass
 
 
+class AnonymousFeedbackModal(discord.ui.Modal):
+    def __init__(self, guild_id: int):
+        cfg = guild_config(guild_id)
+        title = str(cfg.get("feedback_title") or "Feedback")[:45]
+        super().__init__(title=title, timeout=300)
+        self.guild_id = guild_id
+        self.feedback_text = discord.ui.TextInput(
+            label="Dein Feedback",
+            placeholder="Schreibe dein Feedback hier …",
+            style=discord.TextStyle.paragraph,
+            min_length=3,
+            max_length=1500,
+            required=True,
+        )
+        self.add_item(self.feedback_text)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        cfg = guild_config(self.guild_id)
+        try:
+            channel_id = int(cfg.get("feedback_channel_id") or 0)
+        except (TypeError, ValueError):
+            channel_id = 0
+        channel = interaction.guild.get_channel(channel_id) if interaction.guild else None
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "Das Feedback-Ziel ist momentan nicht korrekt eingerichtet. Bitte informiere das Serverteam.",
+                ephemeral=True,
+            )
+            return
+        text = str(self.feedback_text.value).strip()
+        if not text:
+            await interaction.response.send_message("Bitte gib ein Feedback ein.", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title="📨 Anonymes Feedback",
+            description=text[:4000],
+            color=discord.Color.blurple(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_footer(text="IronWolf · Anonymes Feedback")
+        try:
+            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.response.send_message(
+                "Dein Feedback konnte nicht gesendet werden. Bitte versuche es später erneut.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            "✅ Danke! Dein Feedback wurde anonym übermittelt.",
+            ephemeral=True,
+        )
+
+
+class AnonymousFeedbackView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Feedback schreiben",
+        style=discord.ButtonStyle.primary,
+        emoji="💬",
+        custom_id="ironwolf:anonymous_feedback:open",
+    )
+    async def open_feedback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None:
+            await interaction.response.send_message("Dieser Button funktioniert nur auf einem Server.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        if not cfg.get("feedback_enabled", False) or not cfg.get("feedback_channel_id"):
+            await interaction.response.send_message("Das Feedback-Modul ist momentan nicht aktiviert.", ephemeral=True)
+            return
+        await interaction.response.send_modal(AnonymousFeedbackModal(interaction.guild.id))
+
+
+@bot.listen("on_ready")
+async def register_anonymous_feedback_view():
+    if getattr(bot, "_anonymous_feedback_view_registered", False):
+        return
+    bot.add_view(AnonymousFeedbackView())
+    bot._anonymous_feedback_view_registered = True
+
+
 async def _handle_reaction_role(payload: discord.RawReactionActionEvent, add: bool):
     if payload.guild_id is None or (bot.user and payload.user_id == bot.user.id):
         return
