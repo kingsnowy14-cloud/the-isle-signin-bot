@@ -7552,8 +7552,9 @@ async def englisch_command(ctx):
         try:
             translated = None
             last_error = None
-            # Translation providers can temporarily throttle requests; retry before giving up.
-            for attempt in range(3):
+            # Google can temporarily throttle the Railway IP. Use exponential backoff,
+            # with longer waits for rate-limit responses instead of hammering the provider.
+            for attempt in range(5):
                 try:
                     translated = await asyncio.to_thread(translator.translate, old_name)
                     if translated and translated.strip():
@@ -7561,8 +7562,18 @@ async def englisch_command(ctx):
                     last_error = "Leere Übersetzung"
                 except Exception as exc:
                     last_error = f"{type(exc).__name__}: {exc}"
-                    if attempt < 2:
-                        await asyncio.sleep(1.0 * (attempt + 1))
+                    if attempt < 4:
+                        message = str(exc).lower()
+                        if "toomanyrequests" in message or "too many requests" in message or "429" in message:
+                            delay = (5, 12, 25, 40)[attempt]
+                        else:
+                            delay = (2, 4, 8, 15)[attempt]
+                        print(
+                            f"[ENGLISH TRANSLATION] Retry {attempt + 1}/4 for "
+                            f"channel {channel.id} after {delay}s: {last_error[:180]}",
+                            flush=True,
+                        )
+                        await asyncio.sleep(delay)
             if not translated or not translated.strip():
                 failed.append((old_name, str(last_error or "Keine Übersetzung")[:100]))
                 print(
@@ -7597,7 +7608,8 @@ async def englisch_command(ctx):
                     f"({old_name} -> {new_name}): {detail}",
                     flush=True,
                 )
-            await asyncio.sleep(0.6)
+            # Keep requests well below Google's published per-second limit.
+            await asyncio.sleep(2.0)
         except Exception as exc:
             failed.append((old_name, f"{type(exc).__name__}: {str(exc)[:80]}"))
             print(
