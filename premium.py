@@ -77,6 +77,7 @@ PREMIUM_FEATURES = {
     "automation": "Automation Pro",
     "invite_tracker": "Invite Tracker",
     "voice_support": "Premium Voice Support (bis zu 5 Warteräume)",
+    "server_boost": "Server-Boost-System",
 }
 
 PLAN_FEATURES = {
