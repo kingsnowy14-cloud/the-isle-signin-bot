@@ -128,7 +128,7 @@ def _steam_callback_config():
         or parsed.password
         or parsed.query
         or parsed.fragment
-        or parsed.path.rstrip("/") != "/gaming/steam/callback"
+        or parsed.path != "/gaming/steam/callback"
     ):
         raise ValueError(
             "Steam-Verknüpfung ist noch nicht konfiguriert. Setze in Railway "
@@ -333,12 +333,18 @@ def steam_link_callback():
     endpoint = urlparse(fields.get("openid.op_endpoint", ""))
     return_to = callback_uri + "?" + urlencode({"token": token})
     match = re.fullmatch(r"https?://steamcommunity\.com/openid/id/(\d{15,20})", claimed_id)
+    signed_fields = set(fields.get("openid.signed", "").split(","))
+    required_signed_fields = {"op_endpoint", "claimed_id", "identity", "return_to", "response_nonce", "assoc_handle"}
     if (
         fields.get("openid.ns") != _STEAM_OPENID_NS
         or fields.get("openid.mode") != "id_res"
         or fields.get("openid.return_to") != return_to
         or identity != claimed_id
         or not match
+        or not required_signed_fields.issubset(signed_fields)
+        or not fields.get("openid.sig")
+        or not fields.get("openid.assoc_handle")
+        or not fields.get("openid.response_nonce")
         or endpoint.scheme != "https"
         or endpoint.hostname != "steamcommunity.com"
         or endpoint.path.rstrip("/") not in {"/openid", "/openid/login"}
