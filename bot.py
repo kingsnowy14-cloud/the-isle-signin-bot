@@ -4492,9 +4492,12 @@ async def honeypot_publish(interaction: discord.Interaction):
     if not isinstance(channel, discord.TextChannel):
         await interaction.response.send_message("Bitte zuerst im Dashboard einen Honeypot-Textkanal auswählen.", ephemeral=True)
         return
-    message_text = str(cfg.get("honeypot_message") or "🍯 Honeypot aktiv. Bitte hier nicht schreiben.")[:1900]
+    message_text = str(cfg.get("honeypot_message") or "Dieser Kanal ist ein Honeypot. Bitte hier nicht schreiben.")[:1900]
     try:
-        await channel.send(message_text, allowed_mentions=discord.AllowedMentions.none())
+        embed = discord.Embed(title="🍯 IronWolf · Honeypot", description=message_text,
+                              color=discord.Color.orange(), timestamp=datetime.now(timezone.utc))
+        embed.set_footer(text="Sicherheits-System · IronWolf")
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         await interaction.response.send_message(f"Honeypot-Nachricht wurde in {channel.mention} veröffentlicht.", ephemeral=True)
     except (discord.Forbidden, discord.HTTPException):
         await interaction.response.send_message("Die Nachricht konnte nicht gesendet werden. Bitte Kanalrechte prüfen.", ephemeral=True)
@@ -4599,6 +4602,10 @@ async def on_message(message: discord.Message):
                 if action not in {"ban", "kick", "timeout"}:
                     action = "kick"
                 reason = f"Honeypot-Regelverstoß in #{getattr(message.channel, 'name', 'unbekannt')}"
+                try:
+                    await message.add_reaction("🍯")
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
                 stats = data.setdefault("honeypot_stats", {}).setdefault(str(guild.id), {"ban": 0, "kick": 0, "timeout": 0})
                 try:
                     await message.delete()
@@ -4620,6 +4627,21 @@ async def on_message(message: discord.Message):
                     save_json(DATA_FILE, data)
                 except (discord.Forbidden, discord.HTTPException, ValueError) as exc:
                     print(f"[HONEYPOT] Action failed in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                try:
+                    action_names = {"ban": "vom Server gebannt", "kick": "vom Server gekickt", "timeout": "mit einem Timeout belegt"}
+                    result_text = action_names[action] if succeeded else "nicht erfolgreich ausgeführt (möglicherweise fehlen dem Bot Rechte)"
+                    await member.send(embed=discord.Embed(
+                        title="🍯 IronWolf Honeypot ausgelöst",
+                        description=(
+                            f"Du hast im Honeypot-Kanal **#{getattr(message.channel, 'name', 'unbekannt')}** geschrieben. "
+                            f"Diese Nachricht hat den Sicherheitsschutz ausgelöst.\n\n"
+                            f"**Ergebnis:** Du wurdest {result_text}.\n**Grund:** {reason}"
+                        ),
+                        color=discord.Color.red() if succeeded else discord.Color.orange(),
+                        timestamp=datetime.now(timezone.utc),
+                    ))
+                except (discord.Forbidden, discord.HTTPException):
+                    print(f"[HONEYPOT] Could not DM member {member.id} in guild {guild.id}", flush=True)
                 try:
                     log_id = cfg.get("security_log_channel") or cfg.get("log_channel_id")
                     log = guild.get_channel(int(log_id)) if log_id else None
