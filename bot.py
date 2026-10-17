@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
-from premium import guild_has_feature, account_plan, expired_grants, mark_expiry_dm_sent
+from premium import guild_has_feature, account_plan, expired_grants, mark_expiry_dm_sent, grant_server_boost_premium
 from collections import defaultdict, deque
 import discord
 from discord import app_commands
@@ -5623,6 +5623,14 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     # Boost changes are tracked for every member, independently of nickname protection.
     if before.premium_since != after.premium_since:
         cfg = config.get(str(after.guild.id), {})
+        # This specific server grants account Premium for six months to each new booster.
+        if after.guild.id == 1549797626268881026 and after.premium_since is not None:
+            try:
+                grant = grant_server_boost_premium(after.id, after.guild.id, days=183)
+                if grant:
+                    print(f"[PREMIUM] Server boost reward granted to user {after.id} in guild {after.guild.id}; expires {grant.get('expires_at')}.", flush=True)
+            except Exception as exc:
+                print(f"[PREMIUM] Could not grant server boost reward to user {after.id}: {type(exc).__name__}: {exc}", flush=True)
         if cfg.get("server_boost_enabled"):
             channel_id = cfg.get("server_boost_channel_id")
             channel = after.guild.get_channel(int(channel_id)) if channel_id else None
