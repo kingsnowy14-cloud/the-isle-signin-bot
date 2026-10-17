@@ -7506,6 +7506,94 @@ async def wolfcheck_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+@bot.command(name="englisch", aliases=["english", "translateenglish"])
+@commands.guild_only()
+@commands.has_guild_permissions(manage_channels=True)
+async def englisch_command(ctx):
+    """Translate all channel and category names in this server into English."""
+    try:
+        from deep_translator import GoogleTranslator
+        translator = GoogleTranslator(source="auto", target="en")
+    except Exception as exc:
+        await ctx.reply(
+            f"❌ Übersetzer konnte nicht geladen werden: {type(exc).__name__}. "
+            "Bitte prüfe, ob deep-translator installiert ist.",
+            mention_author=False,
+        )
+        return
+
+    guild = ctx.guild
+    status = await ctx.reply(
+        "🌐 **IronWolf · English Translation**\n"
+        "Ich übersetze jetzt alle Kategorien und Kanäle ins Englische. "
+        "Das kann je nach Servergröße etwas dauern. Bitte den Bot nicht unterbrechen.",
+        mention_author=False,
+    )
+    renamed = 0
+    unchanged = 0
+    failed = []
+    # Categories first, then all regular channels. Existing positions and permissions stay unchanged.
+    channels = sorted(
+        guild.channels,
+        key=lambda channel: (0 if isinstance(channel, discord.CategoryChannel) else 1, channel.position),
+    )
+    for channel in channels:
+        old_name = channel.name
+        try:
+            translated = await asyncio.to_thread(translator.translate, old_name)
+            if not translated or not translated.strip():
+                unchanged += 1
+                continue
+            new_name = translated.strip()[:100]
+            if not isinstance(channel, discord.CategoryChannel):
+                # Discord text-channel names work best as lowercase slugs.
+                new_name = re.sub(r"\s+", "-", new_name.lower())
+                new_name = re.sub(r"-{2,}", "-", new_name).strip("-") or old_name
+            if new_name == old_name:
+                unchanged += 1
+                continue
+            await channel.edit(name=new_name, reason=f"!englisch requested by {ctx.author} ({ctx.author.id})")
+            renamed += 1
+            await asyncio.sleep(0.45)
+        except Exception as exc:
+            failed.append((old_name, type(exc).__name__))
+            print(
+                f"[ENGLISH TRANSLATION] Could not rename channel {channel.id} "
+                f"({old_name}): {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            await asyncio.sleep(0.25)
+
+    summary = (
+        "✅ **Übersetzung abgeschlossen!**\n"
+        f"🌐 Umbenannt: **{renamed}**\n"
+        f"⏭️ Unverändert: **{unchanged}**\n"
+        f"⚠️ Fehlgeschlagen: **{len(failed)}**"
+    )
+    if failed:
+        summary += "\n\n**Nicht geändert (erste 10):**\n" + "\n".join(
+            f"• {name[:70]} — {error}" for name, error in failed[:10]
+        )
+    try:
+        await status.edit(content=summary)
+    except discord.HTTPException:
+        await ctx.reply(summary[:1900], mention_author=False)
+
+
+@englisch_command.error
+async def englisch_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply(
+            "❌ Für !englisch brauchst du die Berechtigung **Kanäle verwalten**.",
+            mention_author=False,
+        )
+    elif isinstance(error, commands.NoPrivateMessage):
+        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+    else:
+        original = getattr(error, "original", error)
+        await ctx.reply(f"❌ !englisch ist fehlgeschlagen: {type(original).__name__}: {original}", mention_author=False)
+
+
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
