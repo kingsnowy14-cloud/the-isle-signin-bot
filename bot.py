@@ -79,7 +79,7 @@ async def dashboard_slash_command_check(interaction):
         return True
     key = f"slash:/{command.qualified_name}"
     if not await dashboard_command_enabled(interaction.guild_id, key):
-        message = "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert."
+        message = bot_text(interaction.guild_id, "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
@@ -90,14 +90,14 @@ async def dashboard_slash_command_check(interaction):
     premium_feature = {"SecurityTools": "security", "EventTools": "automation"}.get(module_name)
     # Seasonal slash commands are available without a premium feature flag.
     if premium_feature and not guild_has_feature(guild_config(interaction.guild_id), premium_feature):
-        message = "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto."
+        message = bot_text(interaction.guild_id, "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
             await interaction.response.send_message(message, ephemeral=True)
         return False
     if not await dashboard_module_enabled(interaction.guild_id, module_name):
-        message = "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert."
+        message = bot_text(interaction.guild_id, "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
@@ -341,6 +341,7 @@ def format_duration(seconds):
 # Defaults are merged recursively into existing per-server settings. Existing values,
 # unknown keys and module-specific configuration are deliberately never overwritten.
 DEFAULT_GUILD_CONFIG = {
+    "bot_language": "de",
     "registration_channel": None,
     "ticket_category": None,
     "ticket_log_channel": None,
@@ -434,6 +435,41 @@ def guild_config(guild_id):
         print(f"[CONFIG] Merged missing defaults for guild {gid}; existing settings were preserved.", flush=True)
     return cfg
 
+
+SUPPORTED_BOT_LANGUAGES = {"de", "en", "cs", "fr", "es"}
+BOT_TRANSLATIONS = {
+    "en": {
+        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "This command has been disabled for this server in the web dashboard.",
+        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "This Pro module requires an active Premium+ account linked to this server.",
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "This module has been disabled for this server in the web dashboard."
+    },
+    "cs": {
+        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento příkaz byl pro tento server vypnut ve webovém dashboardu.",
+        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Tento modul Pro vyžaduje aktivní účet Premium+ propojený s tímto serverem.",
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento modul byl pro tento server vypnut ve webovém dashboardu."
+    },
+    "fr": {
+        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Cette commande a été désactivée pour ce serveur dans le tableau de bord.",
+        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Ce module Pro nécessite un compte Premium+ actif lié à ce serveur.",
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Ce module a été désactivé pour ce serveur dans le tableau de bord."
+    },
+    "es": {
+        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Este comando se ha desactivado para este servidor en el panel web.",
+        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Este módulo Pro requiere una cuenta Premium+ activa vinculada a este servidor.",
+        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Este módulo se ha desactivado para este servidor en el panel web."
+    }
+}
+
+def server_language(guild_id):
+    """Return the configured language for a server, defaulting safely to German."""
+    if guild_id is None:
+        return "de"
+    language = guild_config(guild_id).get("bot_language", "de")
+    return language if language in SUPPORTED_BOT_LANGUAGES else "de"
+
+def bot_text(guild_id, text):
+    """Translate catalogued common bot messages; unknown text remains unchanged."""
+    return BOT_TRANSLATIONS.get(server_language(guild_id), {}).get(text, text)
 
 def migrate_all_guild_configs():
     """Apply new defaults to every known server while preserving existing settings."""
