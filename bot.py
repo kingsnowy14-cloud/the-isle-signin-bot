@@ -5683,10 +5683,8 @@ class Applications(commands.Cog):
         panels = settings.setdefault("panels", {})
         if not panels and any(key in settings for key in ("panel_channel_id", "review_channel_id", "questions")):
             panels["default"] = {key: settings[key] for key in ("panel_channel_id", "review_channel_id", "log_channel_id", "review_role_id", "ping_role_id", "panel_title", "panel_description", "questions") if key in settings}
-        premium = guild_has_feature(guild_config(guild.id), "applications")
-        max_panels = 5 if premium else 1
-        if len(panels) >= max_panels:
-            raise ValueError("Dein Tarif erlaubt maximal {} Bewerbungs-Panel(s).{}".format(max_panels, " Upgrade auf Premium für bis zu 5 Panels." if not premium else ""))
+        # Bewerbungs-Panels sind nicht mehr durch den Tarif begrenzt.
+        # Praktische Grenzen ergeben sich weiterhin aus Discord und den Serverressourcen.
         panel_id = str(int(datetime.now(timezone.utc).timestamp()))
         while panel_id in panels:
             panel_id = str(int(panel_id) + 1)
