@@ -3974,6 +3974,20 @@ def guild_applications(guild_id):
         channel_ids = {channel.id for channel in guild.text_channels}
         role_ids = {role.id for role in guild.roles if not role.is_default() and not role.managed}
         panel_channel_id = selected_id("panel_channel_id", channel_ids, "Panel-Kanal")
+        panel_name = request.form.get("panel_name", "").strip()[:80] or request.form.get("panel_title", "").strip()[:80] or "Bewerbung"
+        settings_for_limit = {}
+        try:
+            saved_config_for_limit = json.loads(data_path("applications_config.json").read_text(encoding="utf-8"))
+            settings_for_limit = saved_config_for_limit.get("guilds", {}).get(gid, {})
+        except (OSError, ValueError, AttributeError):
+            pass
+        existing_panels = settings_for_limit.get("panels", {}) if isinstance(settings_for_limit, dict) else {}
+        legacy_exists = not existing_panels and any(key in settings_for_limit for key in ("panel_channel_id", "review_channel_id", "questions"))
+        panel_count = len(existing_panels) if existing_panels else (1 if legacy_exists else 0)
+        premium_enabled = guild_has_feature(_guild_config(guild.id), "applications")
+        max_panels = 5 if premium_enabled else 1
+        if panel_count >= max_panels:
+            abort(403, "Dein Tarif erlaubt maximal {} Bewerbungs-Panel(s).{}".format(max_panels, " Upgrade auf Premium für bis zu 5 Panels." if not premium_enabled else ""))
         review_channel_id = selected_id("review_channel_id", channel_ids, "Prüfkanal")
         log_channel_id = selected_id("log_channel_id", channel_ids, "Protokollkanal")
         review_role_id = selected_id("review_role_id", role_ids, "Prüfrolle", optional=True)
@@ -3990,7 +4004,7 @@ def guild_applications(guild_id):
             abort(503, "Das Bewerbungssystem ist gerade nicht verfügbar. Bitte prüfe die Railway-Logs.")
         try:
             future = asyncio.run_coroutine_threadsafe(
-                cog.dashboard_create_panel(guild.id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id, ping_role_id),
+                cog.dashboard_create_panel(guild.id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id, ping_role_id, panel_name),
                 _bot.loop,
             )
             result_message = future.result(timeout=25)
@@ -4021,10 +4035,15 @@ def guild_applications(guild_id):
             result += '<option value="{}"{}>{}</option>'.format(role[0], selected, html.escape(role[1]))
         return result
     questions = settings.get("questions") or ["Wie lautet dein RP-Name?", "Wie lautet dein Roblox-Name?", "Wie alt bist du (OOC)?", "Welche Erfahrung bringst du mit?", "Warum möchtest du beitreten?"]
-    body = '<span class="pill">IRONWOLF · BEWERBUNGEN</span><h1 style="margin-top:12px">📝 Bewerbungen verwalten</h1><p class="muted">Erstelle das Bewerbungs-Panel direkt hier, passe Fragen an und lege fest, wohin neue Bewerbungen geschickt werden.</p>'
+    panels = settings.get("panels", {}) if isinstance(settings, dict) else {}
+    legacy_exists = not panels and any(key in settings for key in ("panel_channel_id", "review_channel_id", "questions"))
+    panel_count = len(panels) if panels else (1 if legacy_exists else 0)
+    premium_enabled = guild_has_feature(_guild_config(guild.id), "applications")
+    max_panels = 5 if premium_enabled else 1
+    body = '<span class="pill">IRONWOLF · BEWERBUNGEN</span><h1 style="margin-top:12px">📝 Bewerbungen verwalten</h1><p class="muted">Erstelle getrennte Bewerbungs-Panels mit eigenen Fragen und Kanälen.</p><div class="notice">Aktive Panels: {} / {} · {}</div>'.format(panel_count, max_panels, "Premium" if premium_enabled else "Free")
     if request.args.get("saved") == "1":
         body += '<div class="notice">✅ Bewerbungs-Panel wurde veröffentlicht und die Einstellungen gespeichert.</div>'
-    body += '<form method="post">' + _csrf_field() + '<div class="grid"><section class="card"><h2>Panel gestalten</h2><label for="panel_title">Titel</label><input id="panel_title" name="panel_title" maxlength="256" required value="' + html.escape(str(settings.get("panel_title") or "🐺 IronWolf – Bewerbungen"), quote=True) + '"><label for="panel_description">Beschreibung</label><textarea id="panel_description" name="panel_description" rows="5" maxlength="4000">' + html.escape(str(settings.get("panel_description") or "Du möchtest dich bewerben? Klicke auf den Button. Ich stelle dir die Fragen anschließend einzeln per DM.")) + '</textarea><label for="questions">Bewerbungsfragen (eine pro Zeile, maximal 10)</label><textarea id="questions" name="questions" rows="8" required>' + html.escape("\n".join(str(q) for q in questions)) + '</textarea></section><section class="card"><h2>Discord-Kanäle</h2><label for="panel_channel_id">Öffentlicher Panel-Kanal</label><select id="panel_channel_id" name="panel_channel_id" required>' + channel_options("panel_channel_id") + '</select><label for="review_channel_id">Privater Bewerbungs-Prüfkanal</label><select id="review_channel_id" name="review_channel_id" required>' + channel_options("review_channel_id") + '</select><label for="log_channel_id">Protokoll-Kanal</label><select id="log_channel_id" name="log_channel_id" required>' + channel_options("log_channel_id") + '</select><label for="review_role_id">Rolle, die Bewerbungen bearbeiten darf (optional)</label><select id="review_role_id" name="review_role_id">' + role_options("review_role_id") + '</select><label for="ping_role_id">Rolle bei neuen Bewerbungen anpingen (optional)</label><select id="ping_role_id" name="ping_role_id">' + role_options("ping_role_id") + '</select><p class="muted">Mit Administrator- oder Server-verwalten-Rechten kann man Bewerbungen ebenfalls bearbeiten.</p></section></div><button type="submit">💾 Speichern und Bewerbungs-Panel veröffentlichen</button> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form>'
+    body += '<form method="post">' + _csrf_field() + '<div class="grid"><section class="card"><h2>Panel gestalten</h2><label for="panel_name">Interner Panel-Name</label><input id="panel_name" name="panel_name" maxlength="80" required value="Bewerbung"><label for="panel_title">Titel</label><input id="panel_title" name="panel_title" maxlength="256" required value="' + html.escape(str(settings.get("panel_title") or "🐺 IronWolf – Bewerbungen"), quote=True) + '"><label for="panel_description">Beschreibung</label><textarea id="panel_description" name="panel_description" rows="5" maxlength="4000">' + html.escape(str(settings.get("panel_description") or "Du möchtest dich bewerben? Klicke auf den Button. Ich stelle dir die Fragen anschließend einzeln per DM.")) + '</textarea><label for="questions">Bewerbungsfragen (eine pro Zeile, maximal 10)</label><textarea id="questions" name="questions" rows="8" required>' + html.escape("\n".join(str(q) for q in questions)) + '</textarea></section><section class="card"><h2>Discord-Kanäle</h2><label for="panel_channel_id">Öffentlicher Panel-Kanal</label><select id="panel_channel_id" name="panel_channel_id" required>' + channel_options("panel_channel_id") + '</select><label for="review_channel_id">Privater Bewerbungs-Prüfkanal</label><select id="review_channel_id" name="review_channel_id" required>' + channel_options("review_channel_id") + '</select><label for="log_channel_id">Protokoll-Kanal</label><select id="log_channel_id" name="log_channel_id" required>' + channel_options("log_channel_id") + '</select><label for="review_role_id">Rolle, die Bewerbungen bearbeiten darf (optional)</label><select id="review_role_id" name="review_role_id">' + role_options("review_role_id") + '</select><label for="ping_role_id">Rolle bei neuen Bewerbungen anpingen (optional)</label><select id="ping_role_id" name="ping_role_id">' + role_options("ping_role_id") + '</select><p class="muted">Mit Administrator- oder Server-verwalten-Rechten kann man Bewerbungen ebenfalls bearbeiten.</p></section></div><button type="submit">💾 Speichern und Bewerbungs-Panel veröffentlichen</button> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form>'
     return _render(guild.name + " · Bewerbungen", body)
 
 
