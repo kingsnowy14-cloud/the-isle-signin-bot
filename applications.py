@@ -219,7 +219,11 @@ class Applications(commands.Cog):
         self.bot = bot
 
     async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None, panel_name="Bewerbung", button_label=None):
-        """Create and persist a dashboard-managed application panel."""
+        """Create and persist a dashboard-managed application panel.
+
+        Keep panel_name and button_label optional so older slash-command callers
+        remain compatible while the dashboard can customize each panel.
+        """
         settings = guild_settings(guild_id)
         panels = settings.setdefault("panels", {})
         panel_id = str(int(datetime.now(timezone.utc).timestamp() * 1000))
