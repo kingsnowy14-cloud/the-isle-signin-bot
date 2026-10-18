@@ -5579,26 +5579,29 @@ def safe_text(value, limit=1000):
 ACTIVE_APPLICATIONS = {}
 
 class ApplicationPanelView(discord.ui.View):
-    def __init__(self, cog, guild_id):
+    def __init__(self, cog, guild_id, panel_id="default"):
         super().__init__(timeout=None)
-        self.add_item(ApplicationStartButton(cog, guild_id))
+        self.add_item(ApplicationStartButton(cog, guild_id, panel_id))
 
 class ApplicationStartButton(discord.ui.Button):
-    def __init__(self, cog, guild_id):
-        super().__init__(label="Jetzt bewerben", emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
-        self.cog, self.guild_id = cog, guild_id
+    def __init__(self, cog, guild_id, panel_id="default"):
+        custom_id = "ironwolf:application:start:{}".format(guild_id) if panel_id == "default" else "ironwolf:application:start:{}:{}".format(guild_id, panel_id)
+        super().__init__(label="Jetzt bewerben", emoji="📝", style=discord.ButtonStyle.success, custom_id=custom_id)
+        self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
 
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
             await interaction.response.send_message("Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
             return
-        questions = guild_settings(self.guild_id).get("questions") or ["Wie lautet dein Name?", "Wie alt bist du?", "Warum möchtest du dich bewerben?", "Welche Erfahrungen bringst du mit?", "Warum sollten wir dich auswählen?"]
+        settings = guild_settings(self.guild_id)
+        panel = settings.get("panels", {}).get(self.panel_id, settings if self.panel_id == "default" else {})
+        questions = panel.get("questions") or ["Wie lautet dein Name?", "Wie alt bist du?", "Warum möchtest du dich bewerben?", "Welche Erfahrungen bringst du mit?", "Warum sollten wir dich auswählen?"]
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
             return
         try:
             dm = interaction.user.dm_channel or await interaction.user.create_dm()
-            ACTIVE_APPLICATIONS[(self.guild_id, interaction.user.id)] = {"questions": questions, "answers": [], "index": 0}
+            ACTIVE_APPLICATIONS[(self.guild_id, interaction.user.id)] = {"questions": questions, "answers": [], "index": 0, "panel_id": self.panel_id}
             await dm.send("👋 **Deine Bewerbung für {}**\nIch stelle dir die Fragen einzeln. Antworte einfach direkt hier in diesem Chat. Schreibe abbrechen, um aufzuhören.\n\n**Frage 1/{}:** {}".format(interaction.guild.name, len(questions), questions[0]))
         except (discord.Forbidden, discord.HTTPException):
             ACTIVE_APPLICATIONS.pop((self.guild_id, interaction.user.id), None)
@@ -5621,15 +5624,16 @@ class ApplicationDecisionButton(discord.ui.Button):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("Nur Teammitglieder auf dem Server können Bewerbungen bearbeiten.", ephemeral=True)
             return
-        settings = guild_settings(interaction.guild.id)
+        row = RECORDS.setdefault("applications", {}).get(self.app_id)
+        if not row or row.get("guild_id") != interaction.guild.id:
+            await interaction.response.send_message("Bewerbung nicht gefunden.", ephemeral=True)
+            return
+        base_settings = guild_settings(interaction.guild.id)
+        settings = base_settings.get("panels", {}).get(row.get("panel_id", "default"), base_settings)
         role_id = settings.get("review_role_id")
         allowed_role = role_id and any(role.id == role_id for role in interaction.user.roles)
         if not (interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.manage_guild or allowed_role):
             await interaction.response.send_message("Dir fehlt die Berechtigung, Bewerbungen zu bearbeiten.", ephemeral=True)
-            return
-        row = RECORDS.setdefault("applications", {}).get(self.app_id)
-        if not row or row.get("guild_id") != interaction.guild.id:
-            await interaction.response.send_message("Bewerbung nicht gefunden.", ephemeral=True)
             return
         if row.get("status") != "pending":
             await interaction.response.send_message("Diese Bewerbung wurde bereits bearbeitet.", ephemeral=True)
@@ -5658,7 +5662,7 @@ class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None):
+    async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None, panel_name=None):
         guild = self.bot.get_guild(int(guild_id))
         if guild is None:
             raise ValueError("Der Discord-Server ist nicht verfügbar.")
@@ -5673,19 +5677,33 @@ class Applications(commands.Cog):
         if len(questions) > 10:
             raise ValueError("Es sind maximal 10 Fragen erlaubt.")
         settings = guild_settings(guild.id)
-        settings.update({
+        panels = settings.setdefault("panels", {})
+        if not panels and any(key in settings for key in ("panel_channel_id", "review_channel_id", "questions")):
+            panels["default"] = {key: settings[key] for key in ("panel_channel_id", "review_channel_id", "log_channel_id", "review_role_id", "ping_role_id", "panel_title", "panel_description", "questions") if key in settings}
+        premium = guild_has_feature(guild_config(guild.id), "applications")
+        max_panels = 5 if premium else 1
+        if len(panels) >= max_panels:
+            raise ValueError("Dein Tarif erlaubt maximal {} Bewerbungs-Panel(s).{}".format(max_panels, " Upgrade auf Premium für bis zu 5 Panels." if not premium else ""))
+        panel_id = str(int(datetime.now(timezone.utc).timestamp()))
+        while panel_id in panels:
+            panel_id = str(int(panel_id) + 1)
+        panel_settings = {
+            "name": str(panel_name or title or "Bewerbung").strip()[:80] or "Bewerbung",
             "panel_channel_id": panel_channel.id, "review_channel_id": review_channel.id,
             "log_channel_id": log_channel.id, "review_role_id": int(review_role_id) if review_role_id else None,
             "ping_role_id": int(ping_role_id) if ping_role_id else None,
             "panel_title": str(title).strip()[:256] or "🐺 IronWolf – Bewerbungen",
             "panel_description": str(description).strip()[:4000], "questions": questions,
-        })
+        }
+        panels[panel_id] = panel_settings
+        settings.update({key: value for key, value in panel_settings.items() if key != "name"})
         save_config()
-        embed = discord.Embed(title=settings["panel_title"], description=settings["panel_description"], color=discord.Color.dark_blue())
-        embed.set_footer(text="IronWolf RP • Bewerbungen")
-        self.bot.add_view(ApplicationPanelView(self, guild.id))
-        await panel_channel.send(embed=embed, view=ApplicationPanelView(self, guild.id))
-        return "Bewerbungs-Panel wurde in #{} veröffentlicht.".format(panel_channel.name)
+        embed = discord.Embed(title=panel_settings["panel_title"], description=panel_settings["panel_description"], color=discord.Color.dark_blue())
+        embed.set_footer(text="IronWolf RP • Bewerbungen · " + panel_settings["name"])
+        view = ApplicationPanelView(self, guild.id, panel_id)
+        self.bot.add_view(view)
+        await panel_channel.send(embed=embed, view=view)
+        return "Bewerbungs-Panel '{}' wurde in #{} veröffentlicht.".format(panel_settings["name"], panel_channel.name)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -5709,7 +5727,9 @@ class Applications(commands.Cog):
             ACTIVE_APPLICATIONS.pop(key, None)
             await message.channel.send("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.")
             return
-        settings = guild_settings(guild_id)
+        base_settings = guild_settings(guild_id)
+        panel_id = session.get("panel_id", "default")
+        settings = base_settings.get("panels", {}).get(panel_id, base_settings)
         guild = self.bot.get_guild(guild_id)
         channel = guild.get_channel(settings.get("review_channel_id") or 0) if guild else None
         if not isinstance(channel, discord.TextChannel):
@@ -5717,7 +5737,7 @@ class Applications(commands.Cog):
             await message.channel.send("Der Bewerbungs-Prüfkanal ist nicht eingerichtet. Bitte informiere das Team.")
             return
         app_id = "{}-{}-{}".format(guild_id, user_id, int(datetime.now(timezone.utc).timestamp()))
-        row = {"id": app_id, "guild_id": guild_id, "user_id": user_id, "answers": session["answers"], "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None}
+        row = {"id": app_id, "guild_id": guild_id, "user_id": user_id, "panel_id": panel_id, "answers": session["answers"], "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None}
         RECORDS["applications"][app_id] = row
         save_records()
         embed = discord.Embed(title="📨 Neue Bewerbung", description="**Bewerber:** <@{}>\n**Status:** ⏳ Offen".format(user_id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
@@ -5739,9 +5759,14 @@ class Applications(commands.Cog):
         await message.channel.send("✅ Vielen Dank! Deine Bewerbung wurde eingereicht. Das Team prüft sie und meldet sich bei dir.")
 
     async def cog_load(self):
-        for guild_id in CONFIG.get("guilds", {}):
+        for guild_id, settings in CONFIG.get("guilds", {}).items():
             try:
-                self.bot.add_view(ApplicationPanelView(self, int(guild_id)))
+                panels = settings.get("panels", {}) if isinstance(settings, dict) else {}
+                if panels:
+                    for panel_id in panels:
+                        self.bot.add_view(ApplicationPanelView(self, int(guild_id), str(panel_id)))
+                else:
+                    self.bot.add_view(ApplicationPanelView(self, int(guild_id)))
             except (TypeError, ValueError):
                 pass
         for app_id, row in RECORDS.get("applications", {}).items():
