@@ -1436,9 +1436,11 @@ def add_message_xp(guild_id: int, user_id: int):
     cfg = guild_config(guild_id)
     if not cfg.get("xp_enabled", True):
         return 0, 0
-    cooldown = max(10, min(600, int(cfg.get("xp_cooldown_seconds", 60) or 60)))
-    xp_min = max(1, min(100, int(cfg.get("xp_min", 5) or 5)))
-    xp_max = max(xp_min, min(100, int(cfg.get("xp_max", 15) or 15)))
+    # 0 cooldown means XP can be earned on every message.
+    cooldown = max(0, min(600, int(cfg.get("xp_cooldown_seconds", 60))))
+    # 0 XP is allowed; only enforce the supported 0-100 range.
+    xp_min = max(0, min(100, int(cfg.get("xp_min", 5))))
+    xp_max = max(xp_min, min(100, int(cfg.get("xp_max", 15))))
     stats = get_user_stats(guild_id, user_id)
     now = time.time()
     last_xp_at = float(stats.get("last_xp_at", 0))
@@ -1505,19 +1507,28 @@ async def award_message_xp(message):
     if not content:
         return
 
+    cfg = guild_config(message.guild.id)
+    if not cfg.get("xp_enabled", True):
+        return
+
+    cooldown = max(0, min(600, int(cfg.get("xp_cooldown_seconds", 60))))
+    xp_min = max(0, min(100, int(cfg.get("xp_min", 5))))
+    xp_max = max(xp_min, min(100, int(cfg.get("xp_max", 15))))
+
     key = (message.guild.id, message.author.id)
     now = time.monotonic()
 
     last_award = _level_cooldowns.get(key, 0)
-    if now - last_award < XP_COOLDOWN:
+    if cooldown > 0 and now - last_award < cooldown:
         return
 
-    _level_cooldowns[key] = now
+    if cooldown > 0:
+        _level_cooldowns[key] = now
 
     stats = get_level_xp(message.guild.id, message.author.id)
     old_level = int(stats.get("level", 0))
 
-    stats["xp"] = int(stats.get("xp", 0)) + random.randint(XP_MIN, XP_MAX)
+    stats["xp"] = int(stats.get("xp", 0)) + random.randint(xp_min, xp_max)
     new_level = calculate_level(stats["xp"])
     stats["level"] = new_level
 
