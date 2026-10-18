@@ -92,11 +92,14 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
 class ApplicationPanelView(discord.ui.View):
     def __init__(self, cog, guild_id):
         super().__init__(timeout=None)
-        self.add_item(ApplicationStartButton(cog, guild_id))
+        saved_label = guild_settings(guild_id).get("button_label")
+        self.add_item(ApplicationStartButton(cog, guild_id, saved_label))
 
 class ApplicationStartButton(discord.ui.Button):
-    def __init__(self, cog, guild_id):
-        super().__init__(label="Apply Now" if guild_id == 1561027077984227371 else "Jetzt bewerben", emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
+    def __init__(self, cog, guild_id, button_label=None):
+        default_label = "Apply Now" if guild_id == 1561027077984227371 else "Jetzt bewerben"
+        label = str(button_label or default_label).strip()[:80] or default_label
+        super().__init__(label=label, emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
         self.cog, self.guild_id = cog, guild_id
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
@@ -172,20 +175,20 @@ class Applications(commands.Cog):
     @app_commands.command(name="bewerbung-panel", description="Erstellt ein dauerhaftes Bewerbungs-Panel")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
-    @app_commands.describe(kanal="Kanal für das Bewerbungs-Panel", review_kanal="Kanal für eingehende Bewerbungen", log_kanal="Kanal für Entscheidungsprotokolle", review_rolle="Optionale Rolle für Bewerbungsprüfer")
-    async def application_panel(self, interaction: discord.Interaction, kanal: discord.TextChannel, review_kanal: discord.TextChannel, log_kanal: discord.TextChannel, review_rolle: discord.Role = None):
+    @app_commands.describe(kanal="Kanal für das Bewerbungs-Panel", review_kanal="Kanal für eingehende Bewerbungen", log_kanal="Kanal für Entscheidungsprotokolle", review_rolle="Optionale Rolle für Bewerbungsprüfer", button_name="Custom name for the application button (max. 80 characters)")
+    async def application_panel(self, interaction: discord.Interaction, kanal: discord.TextChannel, review_kanal: discord.TextChannel, log_kanal: discord.TextChannel, review_rolle: discord.Role = None, button_name: str = None):
         if not interaction.guild:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
             return
         gid = interaction.guild.id
-        guild_settings(gid).update({"panel_channel_id": kanal.id, "review_channel_id": review_kanal.id, "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None})
+        guild_settings(gid).update({"panel_channel_id": kanal.id, "review_channel_id": review_kanal.id, "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None, "button_label": (str(button_name).strip()[:80] if button_name and str(button_name).strip() else None)})
         save_config()
         english = gid == 1561027077984227371
         embed = discord.Embed(title="🐺 IronWolf – Applications" if english else "🐺 IronWolf – Fraktionsbewerbungen", description=("Would you like to join our team?\n\nClick **Apply Now** and complete the form. Your answers will be sent confidentially to the team. You can only have one pending application at a time." if english else "Du möchtest Teil unseres Teams werden?\n\nKlicke auf **Jetzt bewerben** und fülle das Formular vollständig aus. Deine Angaben werden vertraulich an das zuständige Team übermittelt. Du kannst immer nur eine offene Bewerbung gleichzeitig haben."), color=discord.Color.dark_blue())
         embed.set_footer(text="IronWolf RP • Applications" if english else "IronWolf RP • Bewerbungen")
         self.bot.add_view(ApplicationPanelView(self, gid))
         await kanal.send(embed=embed, view=ApplicationPanelView(self, gid))
-        await interaction.response.send_message(("✅ Application panel created in {}. Review channel: {} · Log channel: {}".format(kanal.mention, review_kanal.mention, log_kanal.mention)) if english else ("✅ Bewerbungs-Panel in {} erstellt. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, review_kanal.mention, log_kanal.mention)), ephemeral=True)
+        await interaction.response.send_message(("✅ Application panel created in {}. Button: **{}**. Review channel: {} · Log channel: {}".format(kanal.mention, guild_settings(gid).get("button_label") or ("Apply Now" if english else "Jetzt bewerben"), review_kanal.mention, log_kanal.mention)) if english else ("✅ Bewerbungs-Panel in {} erstellt. Button: **{}**. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, guild_settings(gid).get("button_label") or "Jetzt bewerben", review_kanal.mention, log_kanal.mention)), ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Applications(bot))
