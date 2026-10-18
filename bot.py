@@ -2296,7 +2296,7 @@ async def stats_command(ctx, member: discord.Member = None):
     )
     embed.set_thumbnail(url=target.display_avatar.url)
     embed.add_field(
-        name="💬 Nachrichten",
+        name="💬 Messages",
         value=f"{int(stats.get('messages', 0)):,}".replace(",", "."),
         inline=True,
     )
