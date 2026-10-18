@@ -5590,7 +5590,7 @@ class ApplicationDMNoticeView(discord.ui.View):
         ))
 
 class ApplicationPanelView(discord.ui.View):
-    def __init__(self, cog, guild_id, panel_id="default")
+    def __init__(self, cog, guild_id, panel_id="default"):
         super().__init__(timeout=None)
         self.add_item(ApplicationStartButton(cog, guild_id, panel_id))
 
