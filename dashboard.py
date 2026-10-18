@@ -4001,15 +4001,41 @@ def guild_applications(guild_id):
         cog = _bot.get_cog("Applications") if _bot else None
         if cog is None or not hasattr(cog, "dashboard_create_panel"):
             abort(503, "Das Bewerbungssystem ist gerade nicht verfügbar. Bitte prüfe die Railway-Logs.")
+        panel_channel = guild.get_channel(panel_channel_id)
+        bot_member = guild.me
+        if panel_channel is not None and bot_member is not None:
+            channel_permissions = panel_channel.permissions_for(bot_member)
+            missing_permissions = []
+            if not channel_permissions.send_messages:
+                missing_permissions.append("Nachrichten senden")
+            if not channel_permissions.embed_links:
+                missing_permissions.append("Links einbetten")
+            if missing_permissions:
+                return _render(
+                    "Bewerbungs-Panel nicht veröffentlicht",
+                    '<section class="card"><h1>Discord-Berechtigungen fehlen</h1><p>Gib dem Bot im ausgewählten Panel-Kanal diese Berechtigungen: '
+                    + html.escape(", ".join(missing_permissions))
+                    + '.</p><a class="button secondary" href="/guild/' + gid + '/applications">Zurück</a></section>',
+                    403,
+                )
         try:
             future = asyncio.run_coroutine_threadsafe(
                 cog.dashboard_create_panel(guild.id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id, ping_role_id, panel_name, button_label),
                 _bot.loop,
             )
-            result_message = future.result(timeout=25)
+            result_message = future.result(timeout=60)
         except Exception as exc:
-            print("[DASHBOARD APPLICATIONS] Panel creation failed: {}: {}".format(type(exc).__name__, exc), flush=True)
-            abort(502, "Das Bewerbungs-Panel konnte nicht veröffentlicht werden. Prüfe Bot-Berechtigungen und Railway-Logs.")
+            detail = "{}: {}".format(type(exc).__name__, str(exc)[:500])
+            print("[DASHBOARD APPLICATIONS] Panel creation failed: {}".format(detail), flush=True)
+            return _render(
+                "Bewerbungs-Panel fehlgeschlagen",
+                '<section class="card"><h1>Panel konnte nicht veröffentlicht werden</h1><p>Technischer Fehler: <code>'
+                + html.escape(detail)
+                + '</code></p><p>Prüfe die Railway-Logs nach <code>[DASHBOARD APPLICATIONS] Panel creation failed</code>. '
+                'Wenn der Fehler von Discord kommt, kontrolliere die Berechtigungen in Panel-, Prüf- und Protokollkanal.</p>'
+                '<a class="button secondary" href="/guild/' + gid + '/applications">Zurück zu Bewerbungen</a></section>',
+                502,
+            )
         _audit_dashboard_change(guild.id, "Bewerbungs-Panel", session.get("user_id"), "Panel in Kanal {} mit {} Fragen veröffentlicht".format(panel_channel_id, len(questions)))
         return redirect(url_for("guild_applications", guild_id=gid, saved="1"))
 
