@@ -5589,7 +5589,7 @@ class ApplicationPanelView(discord.ui.View):
 class ApplicationStartButton(discord.ui.Button):
     def __init__(self, cog, guild_id, panel_id="default"):
         custom_id = "ironwolf:application:start:{}".format(guild_id) if panel_id == "default" else "ironwolf:application:start:{}:{}".format(guild_id, panel_id)
-        super().__init__(label="Jetzt bewerben", emoji="📝", style=discord.ButtonStyle.success, custom_id=custom_id)
+        super().__init__(label="Apply Now", emoji="📝", style=discord.ButtonStyle.success, custom_id=custom_id)
         self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
 
     async def callback(self, interaction):
@@ -5598,7 +5598,7 @@ class ApplicationStartButton(discord.ui.Button):
             return
         settings = guild_settings(self.guild_id)
         panel = settings.get("panels", {}).get(self.panel_id, settings if self.panel_id == "default" else {})
-        questions = panel.get("questions") or ["Wie lautet dein Name?", "Wie alt bist du?", "Warum möchtest du dich bewerben?", "Welche Erfahrungen bringst du mit?", "Warum sollten wir dich auswählen?"]
+        questions = panel.get("questions") or ["What is your name?", "How old are you?", "Why do you want to apply?", "What experience do you have?", "Why should we choose you?"]
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("panel_id", "default") == self.panel_id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
             return
@@ -5693,14 +5693,14 @@ class Applications(commands.Cog):
             "panel_channel_id": panel_channel.id, "review_channel_id": review_channel.id,
             "log_channel_id": log_channel.id, "review_role_id": int(review_role_id) if review_role_id else None,
             "ping_role_id": int(ping_role_id) if ping_role_id else None,
-            "panel_title": str(title).strip()[:256] or "🐺 IronWolf – Bewerbungen",
+            "panel_title": str(title).strip()[:256] or "🐺 IronWolf – Applications",
             "panel_description": str(description).strip()[:4000], "questions": questions,
         }
         panels[panel_id] = panel_settings
         settings.update({key: value for key, value in panel_settings.items() if key != "name"})
         save_config()
         embed = discord.Embed(title=panel_settings["panel_title"], description=panel_settings["panel_description"], color=discord.Color.dark_blue())
-        embed.set_footer(text="IronWolf RP • Bewerbungen · " + panel_settings["name"])
+        embed.set_footer(text="IronWolf RP • Applications · " + panel_settings["name"])
         view = ApplicationPanelView(self, guild.id, panel_id)
         self.bot.add_view(view)
         await panel_channel.send(embed=embed, view=view)
@@ -5794,8 +5794,8 @@ class Applications(commands.Cog):
     async def application_panel(
         self, interaction: discord.Interaction, kanal: discord.TextChannel,
         review_kanal: discord.TextChannel, log_kanal: discord.TextChannel,
-        titel: str = "🐺 IronWolf – Bewerbungen",
-        beschreibung: str = "Du möchtest dich bewerben? Klicke auf den Button. Ich stelle dir die Fragen anschließend einzeln per DM.",
+        titel: str = "🐺 IronWolf – Applications",
+        beschreibung: str = "Want to apply? Click the button below. I will send you the questions one by one via DM.",
         frage1: str = None, frage2: str = None, frage3: str = None,
         frage4: str = None, frage5: str = None, review_rolle: discord.Role = None,
         ping_rolle: discord.Role = None
@@ -5805,7 +5805,7 @@ class Applications(commands.Cog):
             return
         questions = [q.strip() for q in (frage1, frage2, frage3, frage4, frage5) if q and q.strip()]
         if not questions:
-            questions = ["Wie lautet dein RP-Name?", "Wie lautet dein Roblox-Name?", "Wie alt bist du (OOC)?", "Welche Erfahrung bringst du mit?", "Warum möchtest du beitreten?"]
+            questions = ["What is your RP name?", "What is your Roblox username?", "How old are you (OOC)?", "What experience do you have?", "Why do you want to join?"]
         if any(len(question) > 45 for question in questions):
             await interaction.response.send_message("Jede Frage darf höchstens 45 Zeichen lang sein. Bitte kürze die Fragen.", ephemeral=True)
             return
@@ -5818,7 +5818,7 @@ class Applications(commands.Cog):
         })
         save_config()
         embed = discord.Embed(title=titel[:256], description=beschreibung[:4000], color=discord.Color.dark_blue())
-        embed.set_footer(text="IronWolf RP • Bewerbungen")
+        embed.set_footer(text="IronWolf RP • Applications")
         self.bot.add_view(ApplicationPanelView(self, gid))
         await kanal.send(embed=embed, view=ApplicationPanelView(self, gid))
         await interaction.response.send_message(
