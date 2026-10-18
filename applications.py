@@ -149,7 +149,7 @@ class ApplicationPanelView(discord.ui.View):
 
 class ApplicationStartButton(discord.ui.Button):
     def __init__(self, cog, guild_id, button_label=None, panel_id=None):
-        default_label = "Apply Now" if guild_id == 1561027077984227371 else "Jetzt bewerben"
+        default_label = "Application start" if guild_id == 1561027077984227371 else "Jetzt bewerben"
         label = str(button_label or default_label).strip()[:80] or default_label
         super().__init__(label=label, emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}:{}".format(guild_id, panel_id or "default"))
         self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
@@ -227,7 +227,8 @@ class Applications(commands.Cog):
         settings = guild_settings(guild_id)
         panels = settings.setdefault("panels", {})
         panel_id = str(int(datetime.now(timezone.utc).timestamp() * 1000))
-        label = str(button_label or "Bewerben").strip()[:80] or "Bewerben"
+        default_button_label = "Application start" if guild_id == 1561027077984227371 else "Bewerben"
+        label = str(button_label or default_button_label).strip()[:80] or default_button_label
         panel = {
             "panel_id": panel_id, "panel_name": str(panel_name)[:80], "title": str(title)[:256],
             "description": str(description)[:4000], "questions": [str(q)[:200] for q in questions[:10]],
