@@ -90,17 +90,22 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
         await interaction.response.send_message("✅ Deine Bewerbung wurde eingereicht. Das Team prüft sie und meldet sich bei dir.", ephemeral=True)
 
 class ApplicationPanelView(discord.ui.View):
-    def __init__(self, cog, guild_id):
+    def __init__(self, cog, guild_id, panel_id=None, button_label=None):
         super().__init__(timeout=None)
-        saved_label = guild_settings(guild_id).get("button_label")
-        self.add_item(ApplicationStartButton(cog, guild_id, saved_label))
+        settings = guild_settings(guild_id)
+        if panel_id and isinstance(settings.get("panels"), dict):
+            panel = settings["panels"].get(str(panel_id), {})
+            saved_label = button_label or panel.get("button_label")
+        else:
+            saved_label = button_label or settings.get("button_label")
+        self.add_item(ApplicationStartButton(cog, guild_id, saved_label, panel_id=panel_id))
 
 class ApplicationStartButton(discord.ui.Button):
-    def __init__(self, cog, guild_id, button_label=None):
+    def __init__(self, cog, guild_id, button_label=None, panel_id=None):
         default_label = "Apply Now" if guild_id == 1561027077984227371 else "Jetzt bewerben"
         label = str(button_label or default_label).strip()[:80] or default_label
         super().__init__(label=label, emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
-        self.cog, self.guild_id = cog, guild_id
+        self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
             await interaction.response.send_message("Please use this panel on the correct server." if self.guild_id == 1561027077984227371 else "Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
@@ -162,10 +167,41 @@ class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None, panel_name="Bewerbung", button_label=None):
+        """Create and persist a dashboard-managed application panel."""
+        settings = guild_settings(guild_id)
+        panels = settings.setdefault("panels", {})
+        panel_id = str(int(datetime.now(timezone.utc).timestamp() * 1000))
+        label = str(button_label or "Bewerben").strip()[:80] or "Bewerben"
+        panel = {
+            "panel_id": panel_id, "panel_name": str(panel_name)[:80], "title": str(title)[:256],
+            "description": str(description)[:4000], "questions": [str(q)[:200] for q in questions[:10]],
+            "panel_channel_id": int(panel_channel_id), "review_channel_id": int(review_channel_id),
+            "log_channel_id": int(log_channel_id), "review_role_id": review_role_id,
+            "ping_role_id": ping_role_id, "button_label": label
+        }
+        panels[panel_id] = panel
+        save_config()
+        guild = self.bot.get_guild(int(guild_id))
+        channel = guild.get_channel(int(panel_channel_id)) if guild else None
+        if not isinstance(channel, discord.TextChannel):
+            panels.pop(panel_id, None)
+            save_config()
+            raise ValueError("Der ausgewählte Panel-Kanal ist nicht verfügbar.")
+        embed = discord.Embed(title=panel["title"], description=panel["description"], color=discord.Color.dark_blue())
+        embed.set_footer(text="IronWolf RP • Bewerbungen")
+        view = ApplicationPanelView(self, guild_id, panel_id=panel_id, button_label=label)
+        message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+        panel["message_id"] = message.id
+        save_config()
+        return "Panel veröffentlicht"
+
     async def cog_load(self):
-        for guild_id in CONFIG.get("guilds", {}):
+        for guild_id, settings in CONFIG.get("guilds", {}).items():
             try:
                 self.bot.add_view(ApplicationPanelView(self, int(guild_id)))
+                for panel_id, panel in settings.get("panels", {}).items():
+                    self.bot.add_view(ApplicationPanelView(self, int(guild_id), panel_id=panel_id, button_label=panel.get("button_label")))
             except (TypeError, ValueError):
                 pass
         for app_id, row in RECORDS.get("applications", {}).items():
