@@ -204,6 +204,19 @@ def admin():
     return app_commands.checks.has_permissions(manage_guild=True)
 
 class Economy(commands.Cog):
+    DISABLED_GUILDS = {1561027077984227371}
+
+    async def cog_check(self, ctx):
+        if ctx.guild and ctx.guild.id in self.DISABLED_GUILDS:
+            await ctx.reply("The economy system is disabled on this server.", mention_author=False)
+            return False
+        return True
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.guild_id in self.DISABLED_GUILDS:
+            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
+            return False
+        return True
     def __init__(self, bot):
         self.bot = bot
 
@@ -391,6 +404,19 @@ def sweets_amount(value):
     return f"{int(value):,}".replace(",", ".") + " 🍬"
 
 class HalloweenEconomy(commands.Cog):
+    DISABLED_GUILDS = {1561027077984227371}
+
+    async def cog_check(self, ctx):
+        if ctx.guild and ctx.guild.id in self.DISABLED_GUILDS:
+            await ctx.reply("The economy system is disabled on this server.", mention_author=False)
+            return False
+        return True
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.guild_id in self.DISABLED_GUILDS:
+            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
+            return False
+        return True
     def __init__(self, bot):
         self.bot = bot
 
