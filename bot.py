@@ -2141,7 +2141,7 @@ async def clan_activity(interaction: discord.Interaction, mitglied: discord.Memb
         timestamp=datetime.now(timezone.utc),
     )
     embed.set_thumbnail(url=target.display_avatar.url)
-    embed.add_field(name="💬 Nachrichten", value=f"{int(stats.get('messages', 0)):,}".replace(",", "."), inline=True)
+    embed.add_field(name="💬 Messages", value=f"{int(stats.get('messages', 0)):,}".replace(",", "."), inline=True)
     embed.add_field(name="🔊 Voice-Zeit", value=format_duration(voice_seconds), inline=True)
     embed.add_field(name="🕒 Letzte Aktivität", value=_activity_age_text(last_activity), inline=False)
     if last_activity:
@@ -2275,7 +2275,7 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
 async def stats_command(ctx, member: discord.Member = None):
     """Show message and voice-channel statistics for yourself or another member."""
     if ctx.guild is None:
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a server.", mention_author=False)
         return
 
     target = member or ctx.author
@@ -2290,7 +2290,7 @@ async def stats_command(ctx, member: discord.Member = None):
         )
 
     embed = create_embed(
-        title=f"📊 Stats von {target.display_name}",
+        title=f"📊 Stats for {target.display_name}",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -2301,11 +2301,11 @@ async def stats_command(ctx, member: discord.Member = None):
         inline=True,
     )
     embed.add_field(
-        name="🔊 Zeit im Sprachkanal",
+        name="🔊 Time in Voice Channels",
         value=format_duration(voice_seconds),
         inline=True,
     )
-    embed.set_footer(text="Die Statistiken werden ab Aktivierung dieses Systems gezählt. • Created by KingSnowy")
+    embed.set_footer(text="Statistics are counted from the time this system was enabled. • Created by KingSnowy")
     await ctx.reply(embed=embed, mention_author=False)
 
 
