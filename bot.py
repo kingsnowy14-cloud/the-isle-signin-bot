@@ -5596,7 +5596,7 @@ class ApplicationStartButton(discord.ui.Button):
         settings = guild_settings(self.guild_id)
         panel = settings.get("panels", {}).get(self.panel_id, settings if self.panel_id == "default" else {})
         questions = panel.get("questions") or ["Wie lautet dein Name?", "Wie alt bist du?", "Warum möchtest du dich bewerben?", "Welche Erfahrungen bringst du mit?", "Warum sollten wir dich auswählen?"]
-        if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
+        if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("panel_id", "default") == self.panel_id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
             return
         try:
@@ -5723,7 +5723,7 @@ class Applications(commands.Cog):
         if session["index"] < len(session["questions"]):
             await message.channel.send("**Frage {}/{}:** {}".format(session["index"] + 1, len(session["questions"]), session["questions"][session["index"]]))
             return
-        if any(row.get("guild_id") == guild_id and row.get("user_id") == user_id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
+        if any(row.get("guild_id") == guild_id and row.get("user_id") == user_id and row.get("panel_id", "default") == session.get("panel_id", "default") and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             ACTIVE_APPLICATIONS.pop(key, None)
             await message.channel.send("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.")
             return
