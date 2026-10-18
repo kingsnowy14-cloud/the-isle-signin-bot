@@ -89,7 +89,7 @@ class ApplicationPanelView(discord.ui.View):
 
 class ApplicationStartButton(discord.ui.Button):
     def __init__(self, cog, guild_id):
-        super().__init__(label="Jetzt bewerben", emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
+        super().__init__(label="Apply Now" if guild_id == 1561027077984227371 else "Jetzt bewerben", emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
         self.cog, self.guild_id = cog, guild_id
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
