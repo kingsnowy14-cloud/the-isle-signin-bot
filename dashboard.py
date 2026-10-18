@@ -6,6 +6,7 @@ automatically by the running bot.
 """
 import base64
 import hmac
+import inspect
 import re
 import asyncio
 import html
@@ -4019,10 +4020,32 @@ def guild_applications(guild_id):
                     403,
                 )
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                cog.dashboard_create_panel(guild.id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id, ping_role_id, panel_name, button_label),
-                _bot.loop,
+            create_panel = cog.dashboard_create_panel
+            # Keep the dashboard compatible with an older Applications cog during
+            # rolling/stale deployments: pass only optional arguments supported by
+            # the method version currently loaded in the bot process.
+            supported_parameters = inspect.signature(create_panel).parameters
+            panel_kwargs = {
+                name: value
+                for name, value in (
+                    ("review_role_id", review_role_id),
+                    ("ping_role_id", ping_role_id),
+                    ("panel_name", panel_name),
+                    ("button_label", button_label),
+                )
+                if name in supported_parameters
+            }
+            panel_coro = create_panel(
+                guild.id,
+                panel_channel_id,
+                review_channel_id,
+                log_channel_id,
+                title,
+                description,
+                questions,
+                **panel_kwargs,
             )
+            future = asyncio.run_coroutine_threadsafe(panel_coro, _bot.loop)
             result_message = future.result(timeout=60)
         except Exception as exc:
             detail = "{}: {}".format(type(exc).__name__, str(exc)[:500])
