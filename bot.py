@@ -5658,6 +5658,35 @@ class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None):
+        guild = self.bot.get_guild(int(guild_id))
+        if guild is None:
+            raise ValueError("Der Discord-Server ist nicht verfügbar.")
+        panel_channel = guild.get_channel(int(panel_channel_id))
+        review_channel = guild.get_channel(int(review_channel_id))
+        log_channel = guild.get_channel(int(log_channel_id))
+        if not isinstance(panel_channel, discord.TextChannel) or not isinstance(review_channel, discord.TextChannel) or not isinstance(log_channel, discord.TextChannel):
+            raise ValueError("Bitte wähle gültige Textkanäle für Panel, Prüfung und Protokoll.")
+        questions = [str(q).strip()[:200] for q in questions if str(q).strip()]
+        if not questions:
+            raise ValueError("Gib mindestens eine Bewerbungsfrage ein.")
+        if len(questions) > 10:
+            raise ValueError("Es sind maximal 10 Fragen erlaubt.")
+        settings = guild_settings(guild.id)
+        settings.update({
+            "panel_channel_id": panel_channel.id, "review_channel_id": review_channel.id,
+            "log_channel_id": log_channel.id, "review_role_id": int(review_role_id) if review_role_id else None,
+            "ping_role_id": int(ping_role_id) if ping_role_id else None,
+            "panel_title": str(title).strip()[:256] or "🐺 IronWolf – Bewerbungen",
+            "panel_description": str(description).strip()[:4000], "questions": questions,
+        })
+        save_config()
+        embed = discord.Embed(title=settings["panel_title"], description=settings["panel_description"], color=discord.Color.dark_blue())
+        embed.set_footer(text="IronWolf RP • Bewerbungen")
+        self.bot.add_view(ApplicationPanelView(self, guild.id))
+        await panel_channel.send(embed=embed, view=ApplicationPanelView(self, guild.id))
+        return "Bewerbungs-Panel wurde in #{} veröffentlicht.".format(panel_channel.name)
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot or message.guild is not None:
