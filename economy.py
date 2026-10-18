@@ -39,6 +39,9 @@ class BankView(discord.ui.View):
 
     @discord.ui.button(label="Mein Konto ansehen", style=discord.ButtonStyle.primary, emoji="🏦", custom_id="ironwolf:bank:account")
     async def show_account(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild_id == 1561027077984227371:
+            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
+            return
         if interaction.guild_id is None:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
             return
@@ -69,6 +72,9 @@ class ShopItemSelect(discord.ui.Select):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
+        if interaction.guild_id == 1561027077984227371:
+            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
+            return
         self.parent_view.selected_name = self.values[0]
         item = self.parent_view.items.get(self.values[0])
         if item:
