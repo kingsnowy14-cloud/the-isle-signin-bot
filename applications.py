@@ -89,6 +89,53 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
             return
         await interaction.response.send_message("✅ Deine Bewerbung wurde eingereicht. Das Team prüft sie und meldet sich bei dir.", ephemeral=True)
 
+class DashboardApplicationModal(discord.ui.Modal):
+    def __init__(self, cog, guild_id, panel_id, panel):
+        super().__init__(title=str(panel.get("title") or "Application")[:45], timeout=300)
+        self.cog, self.guild_id, self.panel_id, self.panel = cog, guild_id, str(panel_id), panel
+        self.fields = []
+        for index, question in enumerate(panel.get("questions", [])[:10]):
+            field = discord.ui.TextInput(label=str(question)[:45], style=discord.TextStyle.paragraph, max_length=1000, required=True)
+            self.fields.append((str(question)[:200], field))
+            self.add_item(field)
+
+    async def on_submit(self, interaction):
+        if not interaction.guild or interaction.guild.id != self.guild_id:
+            await interaction.response.send_message("Bitte nutze dieses Panel auf dem richtigen Server.", ephemeral=True)
+            return
+        if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" and row.get("panel_id") == self.panel_id for row in RECORDS.setdefault("applications", {}).values()):
+            await interaction.response.send_message("Du hast bereits eine offene Bewerbung für dieses Panel.", ephemeral=True)
+            return
+        channel = interaction.guild.get_channel(int(self.panel.get("review_channel_id") or 0))
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message("Der Bewerbungs-Prüfkanal ist nicht eingerichtet.", ephemeral=True)
+            return
+        app_id = "{}-{}-{}".format(self.guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
+        answers = [{"question": question, "answer": str(field.value).strip()} for question, field in self.fields]
+        row = {
+            "id": app_id, "guild_id": self.guild_id, "panel_id": self.panel_id, "panel_name": self.panel.get("panel_name", "Bewerbung"),
+            "user_id": interaction.user.id, "rp_name": "—", "roblox_name": "—", "age": "—",
+            "experience": "—", "motivation": "—", "answers": answers, "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None
+        }
+        RECORDS["applications"][app_id] = row
+        save_records()
+        embed = discord.Embed(title="📨 Neue Bewerbung · " + str(row["panel_name"])[:200], description="Bewerber: <@{}>\nStatus: ⏳ Offen".format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        for question, answer in answers:
+            embed.add_field(name=safe_text(question, 250), value=safe_text(answer, 1000) or "—", inline=False)
+        embed.set_footer(text="Bewerbungs-ID: " + app_id)
+        try:
+            message = await channel.send(embed=embed, view=ApplicationReviewView(self.cog, app_id), allowed_mentions=discord.AllowedMentions.none())
+            row["review_message_id"] = message.id
+            save_records()
+        except (discord.Forbidden, discord.HTTPException):
+            RECORDS["applications"].pop(app_id, None)
+            save_records()
+            await interaction.response.send_message("Die Bewerbung konnte nicht ans Team gesendet werden.", ephemeral=True)
+            return
+        await interaction.response.send_message("✅ Deine Bewerbung wurde eingereicht.", ephemeral=True)
+
+
 class ApplicationPanelView(discord.ui.View):
     def __init__(self, cog, guild_id, panel_id=None, button_label=None):
         super().__init__(timeout=None)
@@ -110,7 +157,11 @@ class ApplicationStartButton(discord.ui.Button):
         if not interaction.guild or interaction.guild.id != self.guild_id:
             await interaction.response.send_message("Please use this panel on the correct server." if self.guild_id == 1561027077984227371 else "Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
             return
-        await interaction.response.send_modal(ApplicationModal(self.cog, self.guild_id))
+        if self.panel_id:
+            panel = guild_settings(self.guild_id).get("panels", {}).get(str(self.panel_id), {})
+            await interaction.response.send_modal(DashboardApplicationModal(self.cog, self.guild_id, self.panel_id, panel))
+        else:
+            await interaction.response.send_modal(ApplicationModal(self.cog, self.guild_id))
 
 class ApplicationReviewView(discord.ui.View):
     def __init__(self, cog, app_id):
