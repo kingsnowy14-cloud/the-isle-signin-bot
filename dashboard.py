@@ -2934,7 +2934,10 @@ def guild_message_builder(guild_id):
             if kind not in {"link", "role"}:
                 abort(400, "Unbekannter Button-Typ.")
             if not label:
-                label = "Rolle erhalten" if kind == "role" else "Link öffnen"
+                if guild.id == 1561027077984227371:
+                    label = "Get Role" if kind == "role" else "Open Link"
+                else:
+                    label = "Rolle erhalten" if kind == "role" else "Link öffnen"
             if kind == "link":
                 from urllib.parse import urlparse
                 parsed = urlparse(url)
