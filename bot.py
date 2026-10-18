@@ -346,7 +346,7 @@ def format_duration(seconds):
 # Defaults are merged recursively into existing per-server settings. Existing values,
 # unknown keys and module-specific configuration are deliberately never overwritten.
 DEFAULT_GUILD_CONFIG = {
-    "bot_language": "de",
+    "bot_language": "en",
     "registration_channel": None,
     "ticket_category": None,
     "ticket_log_channel": None,
@@ -371,7 +371,7 @@ DEFAULT_GUILD_CONFIG = {
     "trusted_security_role": None,
     "welcome_channel": None,
     "goodbye_channel": None,
-    "welcome_message": "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.",
+    "welcome_message": "Welcome {mention} to **{server}**! You are member **#{count}**.",
     "welcome_embed": False,
     "welcome_bots_enabled": False,
     "self_roles": [],
@@ -380,7 +380,7 @@ DEFAULT_GUILD_CONFIG = {
     "birthdays": {},
     "birthday_greeted_year": {},
     "leave_enabled": True,
-    "leave_message": "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!",
+    "leave_message": "👋 **{user}** has left **{server}**. We wish you all the best.",
     "leave_embed": False,
     "invite_tracker_enabled": False,
     "invite_log_channel": None,
@@ -441,7 +441,7 @@ def guild_config(guild_id):
     return cfg
 
 
-SUPPORTED_BOT_LANGUAGES = {"de", "en", "cs", "fr", "es"}
+SUPPORTED_BOT_LANGUAGES = {"en"}
 BOT_TRANSLATIONS = {
     "en": {
         "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "This command has been disabled for this server in the web dashboard.",
@@ -474,11 +474,8 @@ BOT_TRANSLATIONS = {
 }
 
 def server_language(guild_id):
-    """Return the configured language for a server, defaulting safely to German."""
-    if guild_id is None:
-        return "de"
-    language = guild_config(guild_id).get("bot_language", "de")
-    return language if language in SUPPORTED_BOT_LANGUAGES else "de"
+    """IronWolf uses English globally for all server-facing bot responses."""
+    return "en"
 
 def bot_text(guild_id, text):
     """Translate catalogued common bot messages; unknown text remains unchanged."""
@@ -495,6 +492,9 @@ def migrate_all_guild_configs():
             cfg = config[guild_id]
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
+        if cfg.get("bot_language") != "en":
+            cfg["bot_language"] = "en"
+            changed = True
     # Ensure newly joined servers get a complete default config too.
     for guild in getattr(bot, "guilds", []):
         cfg = config.get(str(guild.id))
@@ -503,6 +503,9 @@ def migrate_all_guild_configs():
             cfg = config[str(guild.id)]
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
+        if cfg.get("bot_language") != "en":
+            cfg["bot_language"] = "en"
+            changed = True
     if changed:
         save_json(CONFIG_FILE, config)
         print(f"[CONFIG] Safely merged defaults for existing servers; no saved settings were replaced.", flush=True)
@@ -767,11 +770,9 @@ async def send_public_registration(guild, user, action, dinosaur="", skin="", lo
 class LanguageSelect(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Deutsch", value="de", emoji="🇩🇪"),
             discord.SelectOption(label="English", value="en", emoji="🇬🇧"),
-            discord.SelectOption(label="Čeština", value="cs", emoji="🇨🇿"),
         ]
-        super().__init__(placeholder="Choose your language / Sprache wählen / Vyber jazyk",
+        super().__init__(placeholder="Language: English",
                          min_values=1, max_values=1, options=options,
                          custom_id="registration:language")
 
@@ -1848,7 +1849,7 @@ class VerifyView(discord.ui.View):
 
 # ----------------------------- SLASH COMMANDS -----------------------------
 
-@bot.tree.command(name="sprache", description="Set your private registration form language")
+@bot.tree.command(name="language", description="Set your private registration form language")
 @app_commands.describe(sprache="Choose a language")
 @app_commands.choices(sprache=[
     app_commands.Choice(name="Deutsch", value="de"),
@@ -1991,7 +1992,7 @@ async def ticketbearbeiten(
 
 
 
-@bot.tree.command(name="help", description="Zeigt alle aktuell registrierten Befehle")
+@bot.tree.command(name="help", description="Shows all currently registered commands")
 async def help_command(interaction: discord.Interaction):
     """Zeigt registrierte Slash- und Prefix-Befehle in navigierbaren Seiten."""
     slash_commands = []
@@ -2117,7 +2118,7 @@ def _activity_age_text(last_activity, now=None):
     return f"vor {format_duration(age)}"
 
 
-@bot.tree.command(name="aktivitaet", description="Zeigt Nachrichten, Voice-Zeit und letzte Aktivität eines Mitglieds")
+@bot.tree.command(name="activity", description="Shows a member's messages, voice time, and recent activity")
 @app_commands.guild_only()
 @app_commands.describe(mitglied="Mitglied, dessen Aktivität du ansehen möchtest")
 async def clan_activity(interaction: discord.Interaction, mitglied: discord.Member | None = None):
@@ -2147,7 +2148,7 @@ async def clan_activity(interaction: discord.Interaction, mitglied: discord.Memb
     await interaction.response.send_message(embed=embed, ephemeral=(target.id != interaction.user.id))
 
 
-@bot.tree.command(name="inaktive", description="Listet Mitglieder ohne kürzliche Aktivität auf")
+@bot.tree.command(name="inactive-members", description="Lists members with no recent activity")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(tage="Als inaktiv gelten Mitglieder ohne Aktivität seit mindestens so vielen Tagen (1–365)")
@@ -2186,7 +2187,7 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="aktivitaetskanal", description="Legt den Kanal für Clan-Aktivitätsberichte fest")
+@bot.tree.command(name="activity-channel", description="Sets the channel for clan activity reports")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(kanal="Textkanal, in dem Aktivitätsberichte veröffentlicht werden")
@@ -2199,7 +2200,7 @@ async def set_activity_log_channel(interaction: discord.Interaction, kanal: disc
     )
 
 
-@bot.tree.command(name="aktivitaetsbericht", description="Erstellt und protokolliert einen Clan-Aktivitätsbericht")
+@bot.tree.command(name="activity-report", description="Creates and logs a clan activity report")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(tage="Zeitraum für die Inaktivitätsübersicht (1–365 Tage)")
@@ -2727,7 +2728,7 @@ bot.BirthdayRegisterView = BirthdayRegisterView
 bot.refresh_birthday_calendar = refresh_birthday_calendar
 
 
-@bot.tree.command(name="geburtstag-kanal", description="Lege den Kanal für automatische Geburtstagsgrüße fest")
+@bot.tree.command(name="birthday-channel", description="Sets the channel for automatic birthday greetings")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def birthday_channel_set(interaction: discord.Interaction, kanal: discord.TextChannel | None = None):
@@ -2736,7 +2737,7 @@ async def birthday_channel_set(interaction: discord.Interaction, kanal: discord.
     save_json(CONFIG_FILE, config)
     await interaction.response.send_message("Geburtstagsgrüße " + (f"aktiviert in {kanal.mention}." if kanal else "deaktiviert."), ephemeral=True)
 
-@bot.tree.command(name="geburtstag", description="Speichere deinen Geburtstag für Server-Grüße")
+@bot.tree.command(name="birthday", description="Saves your birthday for server greetings")
 @app_commands.guild_only()
 @app_commands.describe(monat="Geburtsmonat (1–12)", tag="Tag (1–31)")
 async def birthday_register(interaction: discord.Interaction, monat: app_commands.Range[int, 1, 12], tag: app_commands.Range[int, 1, 31]):
@@ -2749,7 +2750,7 @@ async def birthday_register(interaction: discord.Interaction, monat: app_command
     save_json(CONFIG_FILE, config)
     await interaction.response.send_message(f"Dein Geburtstag wurde als {tag:02d}.{monat:02d} gespeichert. Es wird nur Tag und Monat gespeichert.", ephemeral=True)
 
-@bot.tree.command(name="geburtstag-loeschen", description="Lösche deinen gespeicherten Geburtstag")
+@bot.tree.command(name="birthday-delete", description="Deletes your saved birthday")
 @app_commands.guild_only()
 async def birthday_delete(interaction: discord.Interaction):
     cfg = guild_config(interaction.guild_id)
@@ -3344,7 +3345,7 @@ async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.Voi
     await interaction.response.send_message(f"Temp-Voice aktiviert. Wenn jemand {trigger.mention} betritt, wird ein eigener Raum erstellt.", ephemeral=True)
 
 
-@bot.tree.command(name="nachricht", description="Sendet eine Nachricht als Bot in einen Discord-Kanal")
+@bot.tree.command(name="send-message", description="Sends a message as the bot to a Discord channel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
     kanal="Kanal, in den die Bot-Nachricht gesendet werden soll",
@@ -3669,7 +3670,7 @@ class IDCardReviewView(discord.ui.View):
             pass
 
 
-@bot.tree.command(name="ausweis", description="Zeigt das Ausweis-Antrags-Panel")
+@bot.tree.command(name="id-card", description="Shows the ID card application panel")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def ausweis_command(interaction: discord.Interaction):
@@ -5773,7 +5774,7 @@ class Applications(commands.Cog):
             if row.get("status") == "pending":
                 self.bot.add_view(ApplicationReviewView(self, app_id))
 
-    @app_commands.command(name="bewerbung-panel", description="Erstellt ein anpassbares Bewerbungs-Panel")
+    @app_commands.command(name="application-panel", description="Creates a customizable application panel")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(
@@ -5826,7 +5827,7 @@ class Applications(commands.Cog):
         )
 
 
-    @app_commands.command(name="bewerbung-fragen", description="Legt bis zu 20 individuelle Bewerbungsfragen fest")
+    @app_commands.command(name="application-questions", description="Sets up to 20 custom application questions")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(
@@ -5896,7 +5897,7 @@ class Applications(commands.Cog):
 # END INLINE APPLICATIONS SYSTEM
 
 
-@bot.tree.command(name="ironwolf-profil", description="Ändert IronWolfs Profilbild und/oder Banner")
+@bot.tree.command(name="ironwolf-profile", description="Changes IronWolf's profile picture and/or banner")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
@@ -6094,7 +6095,7 @@ def admin():
 class PlayerFiles(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
-    @app_commands.command(name="akte", description="Fügt einen Eintrag zur Spielerakte hinzu")
+    @app_commands.command(name="akte", description="Adds an entry to a player record")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
     async def akte(self, interaction: discord.Interaction, mitglied: discord.Member, grund: str):
@@ -6106,7 +6107,7 @@ class PlayerFiles(commands.Cog):
         write(AKTEN, db)
         await interaction.response.send_message(f"📁 Akteneintrag #{len(records)} für {mitglied.mention} gespeichert.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @app_commands.command(name="akte-ansehen", description="Zeigt die letzten Einträge einer Spielerakte")
+    @app_commands.command(name="view-player-record", description="Shows the latest entries in a player record")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(moderate_members=True)
     async def akte_ansehen(self, interaction: discord.Interaction, mitglied: discord.Member):
@@ -6119,7 +6120,7 @@ class PlayerFiles(commands.Cog):
 class TeamTools(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
-    @app_commands.command(name="team-rolle", description="Vergibt oder entfernt eine Teamrolle")
+    @app_commands.command(name="team-role", description="Assigns or removes a team role")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_roles=True)
     async def team_rolle(self, interaction: discord.Interaction, mitglied: discord.Member, rolle: discord.Role, vergeben: bool):
@@ -6136,7 +6137,7 @@ class TeamTools(commands.Cog):
             msg = "Discord hat die Änderung abgelehnt. Prüfe Bot-Rechte und Rollen-Hierarchie."
         await interaction.response.send_message(msg, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    @app_commands.command(name="team-info", description="Zeigt die Mitgliederzahl einer Teamrolle")
+    @app_commands.command(name="team-info", description="Shows the number of members with a team role")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_roles=True)
     async def team_info(self, interaction: discord.Interaction, rolle: discord.Role):
@@ -6166,7 +6167,7 @@ class SecurityTools(commands.Cog):
         if cfg.get("anti_raid_enabled", False) and len(recent) >= threshold:
             await self.notify(member.guild, f"⚠️ Raid-Warnung: {len(recent)} Beitritte innerhalb von 20 Sekunden. Bitte Server-Aktivität prüfen.")
 
-    @app_commands.command(name="security-konfigurieren", description="Setzt Security-Logkanal und Raid-Warnschwelle")
+    @app_commands.command(name="security-configure", description="Sets the security log channel and raid warning threshold")
     @app_commands.guild_only()
     @admin()
     async def security_config(self, interaction: discord.Interaction, log_kanal: discord.TextChannel, raid_schwelle: app_commands.Range[int, 3, 50] = 8, anti_raid: bool = True):
@@ -6175,7 +6176,7 @@ class SecurityTools(commands.Cog):
         write(SECURITY, db)
         await interaction.response.send_message(f"🛡️ Logs: {log_kanal.mention} · Anti-Raid: {'AN' if anti_raid else 'AUS'} · Schwelle: {raid_schwelle}/20 Sekunden.", ephemeral=True)
 
-    @app_commands.command(name="ironwolf-security-status", description="Zeigt die IronWolf-Security-Konfiguration")
+    @app_commands.command(name="ironwolf-security-status", description="Shows the IronWolf security configuration")
     @app_commands.guild_only()
     @admin()
     async def security_status(self, interaction: discord.Interaction):
@@ -6186,7 +6187,7 @@ class SecurityTools(commands.Cog):
 class EventTools(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
-    @app_commands.command(name="event-erstellen", description="Erstellt und veröffentlicht ein Serverevent")
+    @app_commands.command(name="create-event", description="Creates and publishes a server event")
     @app_commands.guild_only()
     @admin()
     async def event_create(self, interaction: discord.Interaction, titel: str, zeit: str, kanal: discord.TextChannel, beschreibung: str = ""):
@@ -6233,7 +6234,7 @@ class ControlTools(commands.Cog):
         embed.add_field(name="Mitglieder", value=str(interaction.guild.member_count or 0))
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="control-daten", description="Prüft, welche Bot-Datendateien vorhanden sind")
+    @app_commands.command(name="control-data", description="Prüft, welche Bot-Datendateien vorhanden sind")
     @app_commands.guild_only()
     @admin()
     async def control_data(self, interaction: discord.Interaction):
@@ -6294,7 +6295,7 @@ class ServerLogs(commands.Cog):
             return None
         return None
 
-    @app_commands.command(name="serverlogs", description="Legt den Kanal für Server-Aktivitätslogs fest")
+    @app_commands.command(name="serverlogs", description="Sets the channel for server activity logs")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def serverlogs(self, interaction: discord.Interaction, kanal: discord.TextChannel):
@@ -6311,7 +6312,7 @@ class ServerLogs(commands.Cog):
             discord.Color.green(), actor=interaction.user, target=kanal,
         )
 
-    @app_commands.command(name="serverlogs-aus", description="Deaktiviert die Server-Aktivitätslogs")
+    @app_commands.command(name="server-logs-disable", description="Disables server activity logs")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
     async def serverlogs_aus(self, interaction: discord.Interaction):
