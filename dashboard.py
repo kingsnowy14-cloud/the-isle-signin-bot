@@ -3977,7 +3977,7 @@ def guild_applications(guild_id):
         role_ids = {role.id for role in guild.roles if not role.is_default() and not role.managed}
         panel_channel_id = selected_id("panel_channel_id", channel_ids, "Panel-Kanal")
         panel_name = request.form.get("panel_name", "").strip()[:80] or request.form.get("panel_title", "").strip()[:80] or "Bewerbung"
-        button_label = request.form.get("button_label", "").strip()[:80] or "Bewerben"
+        button_label = request.form.get("button_label", "").strip()[:80] or ("Application start" if guild.id == 1561027077984227371 else "Bewerben")
         settings_for_limit = {}
         try:
             saved_config_for_limit = json.loads(data_path("applications_config.json").read_text(encoding="utf-8"))
