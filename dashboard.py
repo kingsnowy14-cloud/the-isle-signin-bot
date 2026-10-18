@@ -2173,7 +2173,7 @@ def guild_page(guild_id):
             try:
                 settings_section = request.form.get("settings_section", "general")
                 if settings_section == "general":
-                    selected_language = request.form.get("bot_language", "de").strip().lower()
+                    selected_language = "en"
                     if selected_language not in {"de", "en", "cs", "fr", "es"}:
                         abort(400, "Bitte eine unterstützte Bot-Sprache auswählen.")
                     cfg["bot_language"] = selected_language
