@@ -1763,6 +1763,8 @@ class DashboardMessageView(discord.ui.View):
         self.guild_id = int(guild_id)
         for index, item in enumerate(buttons[:5]):
             label = str(item.get("label", "Button"))[:80]
+            if self.guild_id == 1561027077984227371:
+                label = {"Rolle erhalten": "Get Role", "Link öffnen": "Open Link", "Jetzt bewerben": "Apply Now", "Verifizieren": "Verify", "Geburtstag eintragen": "Register Birthday", "Meinen Geburtstag löschen": "Delete My Birthday", "Annehmen": "Accept", "Ablehnen": "Reject"}.get(label, label)
             if item.get("type") == "link":
                 self.add_item(discord.ui.Button(
                     label=label,
@@ -1783,28 +1785,28 @@ class DashboardMessageView(discord.ui.View):
 
     async def toggle_role(self, interaction: discord.Interaction, role_id: int):
         if not interaction.guild or interaction.guild.id != self.guild_id or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Dieser Button gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("This button belongs to a different server." if self.guild_id == 1561027077984227371 else "Dieser Button gehört zu einem anderen Server.", ephemeral=True)
             return
         role = interaction.guild.get_role(role_id)
         me = interaction.guild.me
         if role is None or role.is_default() or role.managed or me is None or role >= me.top_role:
-            await interaction.response.send_message("Diese Rolle kann aktuell nicht vergeben werden: Prüfe, ob sie existiert und unter der höchsten IronWolf-Botrolle liegt.", ephemeral=True)
+            await interaction.response.send_message("This role cannot be assigned right now. Check that it exists and is below IronWolf’s highest role." if self.guild_id == 1561027077984227371 else "Diese Rolle kann aktuell nicht vergeben werden: Prüfe, ob sie existiert und unter der höchsten IronWolf-Botrolle liegt.", ephemeral=True)
             return
         if not me.guild_permissions.manage_roles:
-            await interaction.response.send_message("IronWolf benötigt auf diesem Server die Berechtigung „Rollen verwalten“.", ephemeral=True)
+            await interaction.response.send_message("IronWolf needs the Manage Roles permission on this server." if self.guild_id == 1561027077984227371 else "IronWolf benötigt auf diesem Server die Berechtigung „Rollen verwalten“.", ephemeral=True)
             return
         try:
             if role in interaction.user.roles:
                 await interaction.user.remove_roles(role, reason="Dashboard-Rollenbutton")
-                message = f"Die Rolle {role.mention} wurde entfernt."
+                message = f"The {role.mention} role was removed." if self.guild_id == 1561027077984227371 else f"Die Rolle {role.mention} wurde entfernt."
             else:
                 await interaction.user.add_roles(role, reason="Dashboard-Rollenbutton")
-                message = f"Die Rolle {role.mention} wurde dir gegeben."
+                message = f"The {role.mention} role was added to you." if self.guild_id == 1561027077984227371 else f"Die Rolle {role.mention} wurde dir gegeben."
             await interaction.response.send_message(message, ephemeral=True)
         except discord.Forbidden:
-            await interaction.response.send_message("Der Bot darf diese Rolle nicht verwalten. Bitte Rollenposition und Berechtigungen prüfen.", ephemeral=True)
+            await interaction.response.send_message("The bot cannot manage this role. Check its role position and permissions." if self.guild_id == 1561027077984227371 else "Der Bot darf diese Rolle nicht verwalten. Bitte Rollenposition und Berechtigungen prüfen.", ephemeral=True)
         except discord.HTTPException:
-            await interaction.response.send_message("Discord konnte die Rolle gerade nicht ändern. Bitte versuche es erneut.", ephemeral=True)
+            await interaction.response.send_message("Discord could not update the role. Please try again." if self.guild_id == 1561027077984227371 else "Discord konnte die Rolle gerade nicht ändern. Bitte versuche es erneut.", ephemeral=True)
 
 
 def build_dashboard_message_view(guild_id: int, buttons: list[dict]):
