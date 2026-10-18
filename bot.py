@@ -5581,8 +5581,16 @@ def safe_text(value, limit=1000):
 # Bewerbungen laufen als persönliches Frage-Antwort-Gespräch in den DMs.
 ACTIVE_APPLICATIONS = {}
 
+class ApplicationDMNoticeView(discord.ui.View):
+    def __init__(self, dm_channel_id):
+        super().__init__(timeout=300)
+        self.add_item(discord.ui.Button(
+            label="Open DMs", emoji="📩", style=discord.ButtonStyle.link,
+            url="https://discord.com/channels/@me/{}".format(dm_channel_id)
+        ))
+
 class ApplicationPanelView(discord.ui.View):
-    def __init__(self, cog, guild_id, panel_id="default"):
+    def __init__(self, cog, guild_id, panel_id="default")
         super().__init__(timeout=None)
         self.add_item(ApplicationStartButton(cog, guild_id, panel_id))
 
@@ -5594,23 +5602,23 @@ class ApplicationStartButton(discord.ui.Button):
 
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
-            await interaction.response.send_message("Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
+            await interaction.response.send_message("Please use this application panel on the correct server.", ephemeral=True)
             return
         settings = guild_settings(self.guild_id)
         panel = settings.get("panels", {}).get(self.panel_id, settings if self.panel_id == "default" else {})
         questions = panel.get("questions") or ["What is your name?", "How old are you?", "Why do you want to apply?", "What experience do you have?", "Why should we choose you?"]
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("panel_id", "default") == self.panel_id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
-            await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
+            await interaction.response.send_message("You already have an open application. Please wait for the team to respond.", ephemeral=True)
             return
         try:
             dm = interaction.user.dm_channel or await interaction.user.create_dm()
             ACTIVE_APPLICATIONS[(self.guild_id, interaction.user.id)] = {"questions": questions, "answers": [], "index": 0, "panel_id": self.panel_id}
-            await dm.send("👋 **Deine Bewerbung für {}**\nIch stelle dir die Fragen einzeln. Antworte einfach direkt hier in diesem Chat. Schreibe abbrechen, um aufzuhören.\n\n**Frage 1/{}:** {}".format(interaction.guild.name, len(questions), questions[0]))
+            await dm.send("👋 **Your application for {}**\nI will ask you the questions one at a time. Reply directly to each message in this DM. Type `cancel` at any time to stop.\n\n**Question 1/{}:** {}".format(interaction.guild.name, len(questions), questions[0]))
         except (discord.Forbidden, discord.HTTPException):
             ACTIVE_APPLICATIONS.pop((self.guild_id, interaction.user.id), None)
-            await interaction.response.send_message("Ich kann dir keine DM senden. Bitte aktiviere Direktnachrichten vom Server und versuche es erneut.", ephemeral=True)
+            await interaction.response.send_message("I could not send you a DM. Please enable direct messages from this server and try again.", ephemeral=True)
             return
-        await interaction.response.send_message("📩 Ich habe dir eine DM geschickt. Beantworte dort die Fragen nacheinander.", ephemeral=True)
+        await interaction.response.send_message("📩 I have sent you a DM with your application questions. Click the button below to open your DMs and answer there.", view=ApplicationDMNoticeView(dm.id), ephemeral=True)
 
 class ApplicationReviewView(discord.ui.View):
     def __init__(self, cog, app_id):
@@ -5717,16 +5725,16 @@ class Applications(commands.Cog):
         guild_id, user_id = key
         if message.content.strip().lower() in {"abbrechen", "abbruch", "cancel"}:
             ACTIVE_APPLICATIONS.pop(key, None)
-            await message.channel.send("Deine Bewerbung wurde abgebrochen. Du kannst jederzeit erneut auf Jetzt bewerben klicken.")
+            await message.channel.send("Your application has been cancelled. You can apply again at any time by clicking Apply Now.")
             return
         session["answers"].append({"question": session["questions"][session["index"]], "answer": message.content.strip() or "[Keine Textantwort]"})
         session["index"] += 1
         if session["index"] < len(session["questions"]):
-            await message.channel.send("**Frage {}/{}:** {}".format(session["index"] + 1, len(session["questions"]), session["questions"][session["index"]]))
+            await message.channel.send("**Question {}/{}:** {}".format(session["index"] + 1, len(session["questions"]), session["questions"][session["index"]]))
             return
         if any(row.get("guild_id") == guild_id and row.get("user_id") == user_id and row.get("panel_id", "default") == session.get("panel_id", "default") and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
             ACTIVE_APPLICATIONS.pop(key, None)
-            await message.channel.send("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.")
+            await message.channel.send("You already have an open application. Please wait for the team to respond.")
             return
         base_settings = guild_settings(guild_id)
         panel_id = session.get("panel_id", "default")
@@ -5735,7 +5743,7 @@ class Applications(commands.Cog):
         channel = guild.get_channel(settings.get("review_channel_id") or 0) if guild else None
         if not isinstance(channel, discord.TextChannel):
             ACTIVE_APPLICATIONS.pop(key, None)
-            await message.channel.send("Der Bewerbungs-Prüfkanal ist nicht eingerichtet. Bitte informiere das Team.")
+            await message.channel.send("The application review channel is not configured. Please contact the staff team.")
             return
         app_id = "{}-{}-{}".format(guild_id, user_id, int(datetime.now(timezone.utc).timestamp()))
         row = {"id": app_id, "guild_id": guild_id, "user_id": user_id, "panel_id": panel_id, "answers": session["answers"], "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None}
@@ -5754,10 +5762,10 @@ class Applications(commands.Cog):
             RECORDS["applications"].pop(app_id, None)
             save_records()
             ACTIVE_APPLICATIONS.pop(key, None)
-            await message.channel.send("Die Bewerbung konnte nicht ans Team gesendet werden. Bitte informiere einen Administrator.")
+            await message.channel.send("Your application could not be sent to the staff team. Please contact an administrator.")
             return
         ACTIVE_APPLICATIONS.pop(key, None)
-        await message.channel.send("✅ Vielen Dank! Deine Bewerbung wurde eingereicht. Das Team prüft sie und meldet sich bei dir.")
+        await message.channel.send("✅ Thank you! Your application has been submitted. The staff team will review it and get back to you.")
 
     async def cog_load(self):
         for guild_id, settings in CONFIG.get("guilds", {}).items():
