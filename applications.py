@@ -151,7 +151,7 @@ class ApplicationStartButton(discord.ui.Button):
     def __init__(self, cog, guild_id, button_label=None, panel_id=None):
         default_label = "Apply Now" if guild_id == 1561027077984227371 else "Jetzt bewerben"
         label = str(button_label or default_label).strip()[:80] or default_label
-        super().__init__(label=label, emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}".format(guild_id))
+        super().__init__(label=label, emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}:{}".format(guild_id, panel_id or "default"))
         self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
