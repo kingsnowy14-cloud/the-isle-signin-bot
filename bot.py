@@ -5629,7 +5629,7 @@ class ApplicationReviewView(discord.ui.View):
 class ApplicationDecisionButton(discord.ui.Button):
     def __init__(self, cog, app_id, decision):
         self.cog, self.app_id, self.decision = cog, app_id, decision
-        super().__init__(label="Annehmen" if decision == "approve" else "Ablehnen", emoji="✅" if decision == "approve" else "❌", style=discord.ButtonStyle.success if decision == "approve" else discord.ButtonStyle.danger, custom_id="ironwolf:application:{}:{}".format(decision, app_id))
+        super().__init__(label="Accept" if decision == "approve" else "Reject", emoji="✅" if decision == "approve" else "❌", style=discord.ButtonStyle.success if decision == "approve" else discord.ButtonStyle.danger, custom_id="ironwolf:application:{}:{}".format(decision, app_id))
 
     async def callback(self, interaction):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
@@ -5637,7 +5637,7 @@ class ApplicationDecisionButton(discord.ui.Button):
             return
         row = RECORDS.setdefault("applications", {}).get(self.app_id)
         if not row or row.get("guild_id") != interaction.guild.id:
-            await interaction.response.send_message("Bewerbung nicht gefunden.", ephemeral=True)
+            await interaction.response.send_message("Application not found.", ephemeral=True)
             return
         base_settings = guild_settings(interaction.guild.id)
         settings = base_settings.get("panels", {}).get(row.get("panel_id", "default"), base_settings)
@@ -5653,21 +5653,21 @@ class ApplicationDecisionButton(discord.ui.Button):
         row["reviewed_by"] = interaction.user.id
         row["reviewed_at"] = datetime.now(timezone.utc).isoformat()
         save_records()
-        embed = interaction.message.embeds[0] if interaction.message and interaction.message.embeds else discord.Embed(title="Bewerbung")
+        embed = interaction.message.embeds[0] if interaction.message and interaction.message.embeds else discord.Embed(title="Application")
         embed.color = discord.Color.green() if self.decision == "approve" else discord.Color.red()
-        embed.description = "Bewerber: <@{}>\nStatus: {}\nBearbeitet von: {}".format(row["user_id"], "✅ Angenommen" if self.decision == "approve" else "❌ Abgelehnt", interaction.user.mention)
+        embed.description = "Applicant: <@{}>\nStatus: {}\nReviewed by: {}".format(row["user_id"], "✅ Accepted" if self.decision == "approve" else "❌ Rejected", interaction.user.mention)
         await interaction.response.edit_message(embed=embed, view=None)
         applicant = interaction.guild.get_member(row["user_id"])
         if applicant:
             try:
-                await applicant.send("Deine Bewerbung auf {} wurde {}.".format(interaction.guild.name, "angenommen" if self.decision == "approve" else "abgelehnt"))
+                await applicant.send("Your application to {} has been {}.".format(interaction.guild.name, "accepted" if self.decision == "approve" else "rejected"))
             except (discord.Forbidden, discord.HTTPException):
                 pass
         log_channel = interaction.guild.get_channel(settings.get("log_channel_id") or 0)
         if isinstance(log_channel, discord.TextChannel):
-            log = discord.Embed(title="📋 Bewerbung bearbeitet", description="Bewerber: <@{}>\nEntscheidung: {}\nBearbeiter: {}\nID: {}".format(row["user_id"], row["status"], interaction.user.mention, self.app_id), color=discord.Color.green() if self.decision == "approve" else discord.Color.red(), timestamp=datetime.now(timezone.utc))
+            log = discord.Embed(title="📋 Application Reviewed", description="Applicant: <@{}>\nDecision: {}\nReviewed by: {}\nID: {}".format(row["user_id"], row["status"], interaction.user.mention, self.app_id), color=discord.Color.green() if self.decision == "approve" else discord.Color.red(), timestamp=datetime.now(timezone.utc))
             await log_channel.send(embed=log, allowed_mentions=discord.AllowedMentions.none())
-        await interaction.followup.send("Entscheidung gespeichert und protokolliert.", ephemeral=True)
+        await interaction.followup.send("Decision saved and logged.", ephemeral=True)
 
 class Applications(commands.Cog):
     def __init__(self, bot):
@@ -5749,10 +5749,10 @@ class Applications(commands.Cog):
         row = {"id": app_id, "guild_id": guild_id, "user_id": user_id, "panel_id": panel_id, "answers": session["answers"], "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None}
         RECORDS["applications"][app_id] = row
         save_records()
-        embed = discord.Embed(title="📨 Neue Bewerbung", description="**Bewerber:** <@{}>\n**Status:** ⏳ Offen".format(user_id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        embed = discord.Embed(title="📨 New Application", description="**Applicant:** <@{}>\n**Status:** ⏳ Pending".format(user_id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         for answer in row["answers"]:
             embed.add_field(name=safe_text(answer["question"], 256), value=safe_text(answer["answer"], 1000) or "—", inline=False)
-        embed.set_footer(text="Bewerbungs-ID: " + app_id)
+        embed.set_footer(text="Application ID: " + app_id)
         try:
             ping_role_id = settings.get("ping_role_id")
             review_message = await channel.send(content=f"<@&{ping_role_id}>" if ping_role_id else None, embed=embed, view=ApplicationReviewView(self, app_id), allowed_mentions=discord.AllowedMentions(roles=True, users=False, everyone=False))
