@@ -33,6 +33,10 @@ from isle_registration import get_registration as _get_isle_registration, set_re
 TOKEN = os.getenv("DISCORD_TOKEN")
 # Optional: set your Discord server ID in Railway for instant guild slash-command sync.
 GUILD_ID = os.getenv("GUILD_ID")
+# The level system is disabled only on this Discord server.
+LEVEL_DISABLED_GUILD_ID = 1561027077984227371
+LEVEL_PREFIX_COMMANDS_DISABLED = {"level", "lvl", "leaderboard", "lb", "rangliste"}
+LEVEL_SLASH_COMMANDS_DISABLED = {"daily", "rank", "level-role-set"}
 CONFIG_FILE = data_path("config.json")
 DATA_FILE = data_path("data.json")
 
@@ -66,6 +70,9 @@ async def dashboard_module_enabled(guild_id, module_name):
 async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
     command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
+    if guild_id == LEVEL_DISABLED_GUILD_ID and command_name.casefold() in LEVEL_PREFIX_COMMANDS_DISABLED:
+        await ctx.send("Das Level-System und alle Level-Befehle sind auf diesem Server deaktiviert.")
+        return False
     if not await dashboard_command_enabled(guild_id, f"prefix:!{command_name}"):
         await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
@@ -82,6 +89,16 @@ async def dashboard_slash_command_check(interaction):
     command = interaction.command
     if command is None or interaction.guild_id is None:
         return True
+    if (
+        interaction.guild_id == LEVEL_DISABLED_GUILD_ID
+        and command.qualified_name.casefold() in LEVEL_SLASH_COMMANDS_DISABLED
+    ):
+        message = "Das Level-System und alle Level-Befehle sind auf diesem Server deaktiviert."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+        return False
     key = f"slash:/{command.qualified_name}"
     if not await dashboard_command_enabled(interaction.guild_id, key):
         message = bot_text(interaction.guild_id, "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
