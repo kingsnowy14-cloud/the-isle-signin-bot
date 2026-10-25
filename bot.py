@@ -1433,6 +1433,8 @@ def xp_for_level(level: int) -> int:
 
 def add_message_xp(guild_id: int, user_id: int):
     """Award configured XP with a per-server cooldown and return only new level-ups."""
+    if int(guild_id) == 1561027077984227371:
+        return 0, 0
     cfg = guild_config(guild_id)
     if not cfg.get("xp_enabled", True):
         return 0, 0
@@ -1500,6 +1502,11 @@ def total_xp_for_level(level):
 
 async def award_message_xp(message):
     """Award XP with a cooldown and announce level-ups."""
+    if not message.guild or message.author.bot:
+        return
+    if message.guild.id == 1561027077984227371:
+        return
+
     if not message.guild or message.author.bot:
         return
 
