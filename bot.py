@@ -1507,9 +1507,6 @@ async def award_message_xp(message):
     if message.guild.id == 1561027077984227371:
         return
 
-    if not message.guild or message.author.bot:
-        return
-
     content = (message.content or "").strip()
     if not content:
         return
