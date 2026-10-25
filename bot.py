@@ -2303,6 +2303,23 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
 
 # ----------------------------- PREFIX COMMANDS -----------------------------
 
+@bot.command(name="tos", aliases=["terms"])
+async def tos_command(ctx):
+    """Show the terms of service and imprint details."""
+    await ctx.send(
+        "**IronWolf – Nutzungsbedingungen**\n"
+        "IronWolf bietet Discord-Community-Funktionen und optionale Kontoverifizierung. "
+        "Bitte nutze den Dienst rechtmäßig und teile niemals Passwörter oder Tokens. "
+        "Roblox und Discord sind eigenständige Dienste.\n\n"
+        "**Impressum**\n"
+        "Betreiber: **[BITTE BETREIBERNAMEN EINTRAGEN]**\n"
+        "Anschrift: **[BITTE VOLLSTÄNDIGE POSTANSCHRIFT EINTRAGEN]**\n"
+        "E-Mail: **[BITTE KONTAKT-E-MAIL EINTRAGEN]**\n\n"
+        "Die Angaben sind noch Platzhalter und müssen vor einer öffentlichen Nutzung ergänzt werden. "
+        "Datenschutzerklärung und Nutzungsbedingungen: Website-Routen /privacy und /terms."
+    )
+
+
 @bot.command(name="stats")
 async def stats_command(ctx, member: discord.Member = None):
     """Show message and voice-channel statistics for yourself or another member."""
