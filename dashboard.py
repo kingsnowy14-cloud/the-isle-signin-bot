@@ -820,6 +820,9 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium-Server</a>' if logged_in and is_premium_admin else '')
+        + '<a href="/terms">Nutzungsbedingungen</a>'
+        + '<a href="/privacy">Datenschutz</a>'
+        + '<a href="/impressum">Impressum</a>'
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
         + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a>'
@@ -1080,6 +1083,28 @@ def public_terms_of_service():
     </section>
     """
     return make_response(_page("Nutzungsbedingungen – IronWolf", body), 200)
+
+
+@app.route("/impressum")
+def public_imprint():
+    """Public imprint / legal notice."""
+    body = """
+    <section class="card">
+      <h1>Impressum</h1>
+      <p><strong>Bitte vor der öffentlichen Nutzung vervollständigen.</strong> Die folgenden Angaben sind Platzhalter und kein vollständiges rechtliches Impressum.</p>
+      <h2>Angaben zum Betreiber</h2>
+      <p><strong>Name / Unternehmen:</strong> [BITTE BETREIBERNAMEN EINTRAGEN]</p>
+      <p><strong>Vollständige ladungsfähige Anschrift:</strong><br>[STRASSE UND HAUSNUMMER]<br>[PLZ UND ORT]<br>[LAND]</p>
+      <h2>Kontakt</h2>
+      <p><strong>E-Mail:</strong> [BITTE KONTAKT-E-MAIL EINTRAGEN]</p>
+      <p><strong>Weitere gesetzlich erforderliche Angaben:</strong> Je nach Sitz, Rechtsform und Art der Tätigkeit können zusätzliche Angaben erforderlich sein (z. B. Unternehmensregister, Vertretungsberechtigte oder zuständige Aufsichtsbehörde). Bitte vor Veröffentlichung prüfen lassen.</p>
+      <h2>Verantwortlich für den Inhalt</h2>
+      <p>[BITTE VERANTWORTLICHE PERSON UND ANSCHRIFT EINTRAGEN]</p>
+      <h2>Externe Dienste</h2>
+      <p>IronWolf ist ein unabhängiges Projekt und wird nicht von Discord oder Roblox betrieben oder offiziell unterstützt, sofern nicht ausdrücklich anders angegeben.</p>
+    </section>
+    """
+    return make_response(_page("Impressum – IronWolf", body), 200)
 
 
 def _require_login():
