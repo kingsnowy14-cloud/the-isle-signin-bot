@@ -35,6 +35,8 @@ Das Dashboard fordert nur die OAuth2-Bereiche `identify` und `guilds` an. Es fra
 
 ## 3. Funktionen
 
+- **Neue Server starten deaktiviert:** Wenn IronWolf einem neuen Discord-Server hinzugefügt wird, führt er dort keine Serveraktionen, Befehle oder Hintergrundfunktionen aus. Öffne im Control Center den Bereich **Allgemeine Einstellungen** und aktiviere **„IronWolf auf diesem Server aktivieren“**, um den Bot einzuschalten.
+- **Bestehende Server bleiben unverändert:** Bei Servern, die bereits in der Konfiguration stehen, wird der bisherige Zustand beibehalten. Fehlende alte Konfigurationswerte gelten weiterhin wie bisher als aktiv.
 - Server-Einstellungen per Formular ändern (z. B. Willkommensnachricht, ausgewählte Kanäle/Rollen und vorhandene Schutzschalter).
 - Cog-Module pro Server aktivieren/deaktivieren.
 - Prefix- und Slash-Befehle pro Server aktivieren/deaktivieren.
