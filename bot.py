@@ -106,6 +106,13 @@ async def dashboard_module_enabled(guild_id, module_name):
 async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
     command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
+
+    # On this specific server, allow only !stats among all prefix (!) commands.
+    # Other prefix commands (including the built-in !help) are silently ignored;
+    # slash commands are handled separately and remain available.
+    if guild_id == 1561027077984227371 and command_name.casefold() != "stats":
+        return False
+
     if guild_id == LEVEL_DISABLED_GUILD_ID and command_name.casefold() in LEVEL_PREFIX_COMMANDS_DISABLED:
         await ctx.send("Das Level-System und alle Level-Befehle sind auf diesem Server deaktiviert.")
         return False
