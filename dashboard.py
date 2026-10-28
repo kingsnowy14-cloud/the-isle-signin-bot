@@ -2174,6 +2174,8 @@ def guild_page(guild_id):
             try:
                 settings_section = request.form.get("settings_section", "general")
                 if settings_section == "general":
+                    # Missing flag is treated as enabled for legacy servers; new servers explicitly start disabled.
+                    cfg["bot_enabled"] = request.form.get("bot_enabled") == "on"
                     selected_language = "en"
                     if selected_language not in {"de", "en", "cs", "fr", "es"}:
                         abort(400, "Bitte eine unterstützte Bot-Sprache auswählen.")
@@ -2324,6 +2326,8 @@ def guild_page(guild_id):
     if section in ("general", "channels", "roles", "voice", "security"):
         settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
+            bot_enabled_checked = " checked" if cfg.get("bot_enabled", True) else ""
+            settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 IronWolf auf diesem Server aktivieren</label></div><p class="muted">Ist diese Option aus, reagiert der Bot auf diesem Server nicht. Neue Server starten deaktiviert; bestehende Server behalten ihr bisheriges Verhalten.</p>'
             settings_html += '<label for="bot_language">🌐 Bot language</label><small>IronWolf is configured to use English for bot responses.</small><select id="bot_language" name="bot_language"><option value="en" selected>🇬🇧 English</option></select>'
             settings_html += '<h3>👋 Willkommensmodul · Kanäle auswählen</h3><p class="muted">Lege fest, wohin IronWolf neue Mitglieder begrüßt und wo Nachrichten beim Verlassen des Servers erscheinen.</p>'
             settings_html += '<label for="welcome_channel">Willkommenskanal</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
