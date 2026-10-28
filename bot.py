@@ -665,6 +665,8 @@ async def premium_automation_worker():
         now = datetime.now(timezone.utc)
         for guild in list(bot.guilds):
             cfg = guild_config(guild.id)
+            if cfg.get("bot_enabled", True) is False:
+                continue
             try:
                 cleanup_expired_trial_premium(guild.id)
                 cfg = guild_config(guild.id)
@@ -2840,6 +2842,8 @@ async def birthday_worker():
         year_key = str(now.year)
         for guild in list(bot.guilds):
             cfg = guild_config(guild.id)
+            if cfg.get("bot_enabled", True) is False:
+                continue
             birthdays = cfg.setdefault("birthdays", {})
             role_id = cfg.get("birthday_role_id")
             birthday_role = guild.get_role(int(role_id)) if role_id else None
@@ -6956,6 +6960,8 @@ async def server_statistics_worker():
         for guild in list(bot.guilds):
             try:
                 cfg = guild_config(guild.id)
+                if cfg.get("bot_enabled", True) is False:
+                    continue
                 configured = cfg.get("server_statistics_channels")
                 if not isinstance(configured, dict):
                     legacy = cfg.get("server_statistics_channel")
