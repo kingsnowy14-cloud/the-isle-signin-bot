@@ -45,7 +45,43 @@ intents.guilds = True
 intents.members = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents, case_insensitive=True)
+class GuildGateBot(commands.Bot):
+    """Suppress all guild-scoped Discord events until a server enables the bot in the dashboard."""
+
+    def dispatch(self, event, *args, **kwargs):
+        # Keep lifecycle events running so new guilds can be initialized and the bot can reconnect.
+        if event not in {"ready", "connect", "disconnect", "resumed", "error", "guild_join", "guild_remove"}:
+            guild_id = None
+            for item in args:
+                if isinstance(item, discord.Guild):
+                    guild_id = item.id
+                    break
+                candidate = getattr(item, "guild_id", None)
+                if candidate:
+                    try:
+                        guild_id = int(candidate)
+                        break
+                    except (TypeError, ValueError):
+                        pass
+                guild = getattr(item, "guild", None)
+                if guild is not None and getattr(guild, "id", None):
+                    guild_id = guild.id
+                    break
+                message = getattr(item, "message", None)
+                message_guild = getattr(message, "guild", None)
+                if message_guild is not None and getattr(message_guild, "id", None):
+                    guild_id = message_guild.id
+                    break
+            if guild_id is not None:
+                current_config = globals().get("config", {})
+                guild_cfg = current_config.get(str(guild_id), {}) if isinstance(current_config, dict) else {}
+                # Missing flag means legacy server: preserve its previous behavior.
+                if isinstance(guild_cfg, dict) and guild_cfg.get("bot_enabled", True) is False:
+                    return
+        super().dispatch(event, *args, **kwargs)
+
+
+bot = GuildGateBot(command_prefix="!", intents=intents, case_insensitive=True)
 _automation_worker_task = None
 _birthday_worker_task = None
 
@@ -5087,6 +5123,13 @@ async def notify_bot_server_change(guild: discord.Guild, joined: bool):
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
+    # Only brand-new servers receive the safe-off default. Existing guild configs are untouched.
+    gid = str(guild.id)
+    if gid not in config:
+        config[gid] = {"bot_enabled": False}
+        save_json(CONFIG_FILE, config)
+        print(f"[CONFIG] New guild {gid} initialized with all bot activity disabled; enable it in the dashboard.", flush=True)
+        return
     await notify_bot_server_change(guild, joined=True)
 
     # Create and equip Ironbot's own role when joining a server.
