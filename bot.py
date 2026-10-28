@@ -4283,6 +4283,8 @@ async def social_alert_loop():
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
                 for guild in list(bot.guilds):
                     cfg = guild_config(guild.id)
+                    if cfg.get("bot_enabled", True) is False:
+                        continue
                     alerts = _normalize_social_alerts(cfg)
                     for alert_key, alert in list(alerts.items()):
                         if not alert.get("enabled"):
