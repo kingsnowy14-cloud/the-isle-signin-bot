@@ -5136,6 +5136,9 @@ async def on_guild_join(guild: discord.Guild):
         save_json(CONFIG_FILE, config)
         print(f"[CONFIG] New guild {gid} initialized with all bot activity disabled; enable it in the dashboard.", flush=True)
         return
+    if isinstance(config.get(gid), dict) and config[gid].get("bot_enabled", True) is False:
+        print(f"[CONFIG] Guild {gid} is disabled; skipping join actions until enabled in the dashboard.", flush=True)
+        return
     await notify_bot_server_change(guild, joined=True)
 
     # Create and equip Ironbot's own role when joining a server.
