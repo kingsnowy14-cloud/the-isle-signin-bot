@@ -107,10 +107,12 @@ async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
     command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
 
-    # On this specific server, allow only !stats among all prefix (!) commands.
-    # Other prefix commands (including the built-in !help) are silently ignored;
-    # slash commands are handled separately and remain available.
-    if guild_id == 1561027077984227371 and command_name.casefold() != "stats":
+    # Silently ignore !stats on this specific server; do not send a reply.
+    if guild_id == 1561027077984227371 and command_name.casefold() == "stats":
+        return False
+
+    # Preserve the existing restriction on other prefix commands on this server.
+    if guild_id == 1561027077984227371:
         return False
 
     if guild_id == LEVEL_DISABLED_GUILD_ID and command_name.casefold() in LEVEL_PREFIX_COMMANDS_DISABLED:
