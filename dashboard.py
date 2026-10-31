@@ -2308,9 +2308,9 @@ def guild_welcome_settings(guild_id):
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
-        if not any((guild.get_member(int(session.get("user_id", "0"))) or object()).guild_permissions.manage_guild
-                   for _ in [0]):
-            abort(403, "Du brauchst die Berechtigung „Server verwalten“.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         text_channel_ids = {str(channel.id) for channel in guild.text_channels}
         for key, label in (("welcome_channel", "Welcome-Kanal"), ("goodbye_channel", "Goodbye-Kanal")):
             raw = request.form.get(key, "").strip()
