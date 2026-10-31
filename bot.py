@@ -3330,56 +3330,6 @@ async def automod_set(interaction: discord.Interaction, aktiviert: bool):
     await interaction.response.send_message(f"AutoMod ist jetzt **{'aktiviert' if aktiviert else 'deaktiviert'}**. Aktiv: 6 Nachrichten innerhalb von 8 Sekunden lösen Löschen und einen 2-Minuten-Timeout aus.", ephemeral=True)
 
 
-@bot.tree.command(name="security-test", description="Run a safe, simulated security attack test")
-@app_commands.checks.has_permissions(administrator=True)
-@app_commands.choices(scenario=[
-    app_commands.Choice(name="Full security test", value="all"),
-    app_commands.Choice(name="Raid simulation", value="raid"),
-    app_commands.Choice(name="Nuke attempt simulation", value="nuke"),
-    app_commands.Choice(name="Spam burst simulation", value="links"),
-])
-async def security_test(interaction: discord.Interaction, scenario: app_commands.Choice[str]):
-    """Check security settings against simulated hostile events; never changes server content."""
-    if interaction.guild is None:
-        await interaction.response.send_message("This test is only available inside a server.", ephemeral=True)
-        return
-
-    cfg = guild_config(interaction.guild.id)
-    cases = {
-        "raid": ("Raid wave", "25 simulated member joins in 10 seconds.", bool(cfg.get("anti_raid_enabled")), "Anti-Raid"),
-        "nuke": ("Nuke attempt", "12 simulated channel/role deletion events.", bool(cfg.get("anti_nuke_enabled")), "Anti-Nuke"),
-        "links": ("Spam burst", "8 simulated rapid messages containing suspicious links.", bool(cfg.get("automod_enabled")), "AutoMod"),
-    }
-    selected = list(cases.values()) if scenario.value == "all" else [cases[scenario.value]]
-    embed = discord.Embed(
-        title="🧪 IronWolf Security Lab · Simulation Results",
-        description="**SAFE SIMULATION** — test events are generated only in memory. No channels, roles, members or real messages are changed.",
-        color=discord.Color.blurple(),
-        timestamp=datetime.now(timezone.utc),
-    )
-    passed = 0
-    for title, attack, enabled, protection in selected:
-        if enabled:
-            passed += 1
-            status = "✅ PROTECTION ENABLED"
-            response = f"{protection} is enabled. The simulated event is classified as covered by the configured protection."
-        else:
-            status = "⚠️ PROTECTION DISABLED"
-            response = f"{protection} is currently off. Enable it in the Security settings before relying on this protection."
-        embed.add_field(
-            name=f"{status} · {title}",
-            value=f"**Scenario:** {attack}\n**Configuration check:** {'PASS' if enabled else 'NEEDS ATTENTION'}\n**Result:** {response}",
-            inline=False,
-        )
-    embed.add_field(
-        name="Configuration summary",
-        value=f"**Protected scenarios:** {passed}/{len(selected)}\n**Needs attention:** {len(selected) - passed}/{len(selected)}\n\nThis checks whether the related protection switch is enabled. It does not launch a live attack or prove runtime blocking.",
-        inline=False,
-    )
-    embed.set_footer(text="IronWolf Security Lab · Admin-only safe test")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
 @bot.tree.command(name="daily", description="Claim XP once every 24 hours")
 async def daily_command(interaction: discord.Interaction):
     if not interaction.guild_id:
