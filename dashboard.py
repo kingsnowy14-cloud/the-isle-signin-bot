@@ -1110,6 +1110,7 @@ def _module_navigation():
         ("actions", "⚔️ Action Center", "/actions"),
         ("verified-accounts", "🎮 Gaming Verification", "/verified-accounts"),
         ("branding", "🎨 Server Branding", "/branding"),
+        ("custom-bot", "🤖 Custom Bot Profile", "/custom-bot"),
         ("roles", "🎭 Roles & Rewards", "?section=roles#settings-panel"),
         ("channels", "📡 Channels & Logs", "?section=channels#settings-panel"),
         ("server-statistics", "📊 Server Statistics", "/server-statistics"),
@@ -1125,6 +1126,12 @@ def _module_navigation():
         ("module-template", "🛠️ Module Template", "?section=template"),
     )
     links = []
+    try:
+        nav_cfg = _guild_config(int(gid))
+        if not guild_has_feature(nav_cfg, "custom_bot"):
+            modules = tuple(item for item in modules if item[0] != "custom-bot")
+    except Exception:
+        modules = tuple(item for item in modules if item[0] != "custom-bot")
     for key, label, target in modules:
         href = "/guild/" + gid + (target if target.startswith("?") else target)
         current = (active == "starter" and key == "starter") or active == key
@@ -1566,8 +1573,8 @@ def premium_page():
         return login
     user_id = str(session.get("user_id", ""))
     plan = account_plan(user_id)
-    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
-    included_features = set(PREMIUM_FEATURES) if plan in {"premium", "premium_plus"} else set()
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
+    included_features = set(PLAN_FEATURES.get(plan, frozenset()))
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         status = "Enthalten" if feature in included_features else "Nicht enthalten"
@@ -1578,9 +1585,11 @@ def premium_page():
         '<div class="notice">Aktueller Plan: <strong>' + html.escape(labels[plan]) + '</strong></div>'
         '<p>Die Zahlungsintegration ist noch nicht aktiviert. Bis ein Zahlungsanbieter festgelegt und sicher angebunden ist, werden Pläne ausschließlich manuell über Railway-Variablen freigeschaltet.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
-        '<section class="card"><h2>Premium-Pläne</h2><p><strong>Premium: 5 € pro Jahr.</strong> Ticket-System Pro und Custom Branding.</p>'
-        '<p><strong>Premium: 5 € pro Jahr.</strong> Enthält alle Module: Ticket-System Pro, Custom Branding, Security Pro, Automation Pro und Invite Tracker.</p>'
-        '<p class="muted">Öffne die Premium-Verwaltung eines Servers, um deinen Plan mit ihm zu verknüpfen. Dort führen direkte Schaltflächen zu den jeweiligen Einstellungen.</p>'
+        '<section class="card"><h2>Premium Plans</h2><div class="grid">'
+        '<div class="card"><h3>Premium</h3><p><strong>All core Premium features</strong></p><ul><li>Ticket System Pro</li><li>Custom Branding</li><li>Custom Bot Profile (server-specific banner, avatar and description)</li><li>Invite Tracker Pro</li></ul></div>'
+        '<div class="card"><h3>Premium+</h3><p><strong>Everything in Premium, plus</strong></p><ul><li>Security Pro</li><li>Automation Pro</li><li>Advanced protection tools</li></ul></div></div>'
+        '<p class="muted">No online checkout is connected yet. Plans are granted manually by an administrator. A feature is enabled only while the linked server entitlement or its trial is active.</p>'
+        '<p class="muted">Open a server Premium management page to link your eligible account to that server.</p>'
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
     return _render("Premium · IronWolf", body)
@@ -1631,7 +1640,7 @@ def guild_premium(guild_id):
     owner_matches = owner_id == user_id and bool(owner_id)
     trial_active = guild_trial_active(cfg)
     trial_used = bool(cfg.get("premium_trial_used"))
-    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         if feature == "branding":
@@ -1645,6 +1654,7 @@ def guild_premium(guild_id):
         feature_links = {
             "ticket": ("/guild/" + gid + "/tickets", "Ticket-System verwalten"),
             "branding": ("/guild/" + gid + "/tickets", "Ticket-Branding einstellen"),
+            "custom_bot": ("/guild/" + gid + "/custom-bot", "Customize server bot profile"),
             "security": ("/guild/" + gid + "/commands", "Security-Befehle verwalten"),
             "automation": ("/guild/" + gid + "/automation", "Automation einstellen"),
             "invite_tracker": ("/guild/" + gid + "?section=general", "Invite Tracker einstellen"),
@@ -3257,6 +3267,72 @@ def guild_ping_protection(guild_id):
         '</script><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     )
     return _render(guild.name + " · Ping-Schutz", body)
+
+@app.route("/guild/<guild_id>/custom-bot", methods=["GET", "POST"])
+def guild_custom_bot(guild_id):
+    """Configure a Premium-only, per-guild bot presentation (not the global Discord bot account)."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    if not guild_has_feature(cfg, "custom_bot"):
+        abort(403, "Custom Bot Profile is a Premium feature. Link an active Premium plan to this server.")
+    actor = guild.get_member(int(session.get("user_id", "0")))
+    if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+        abort(403, "Administrator or Manage Server permission required.")
+    profile = cfg.setdefault("custom_bot_profile", {})
+    if not isinstance(profile, dict):
+        profile = {}
+        cfg["custom_bot_profile"] = profile
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Please reload the page.")
+        avatar_url = request.form.get("avatar_url", "").strip()
+        banner_url = request.form.get("banner_url", "").strip()
+        description = request.form.get("description", "").strip()
+        for field, value in (("avatar", avatar_url), ("banner", banner_url)):
+            if value:
+                parsed = urlparse(value)
+                if parsed.scheme != "https" or not parsed.hostname or len(value) > 500:
+                    abort(400, field.title() + " URL must be a valid HTTPS URL (maximum 500 characters).")
+        if len(description) > 500:
+            abort(400, "Description must be 500 characters or fewer.")
+        cfg["custom_bot_profile"] = {
+            "avatar_url": avatar_url,
+            "banner_url": banner_url,
+            "description": description,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Custom Bot Profile", session.get("user_id"), "Updated server-specific bot presentation")
+        return redirect(url_for("guild_custom_bot", guild_id=gid, saved="1"))
+    avatar_url = str(profile.get("avatar_url", ""))
+    banner_url = str(profile.get("banner_url", ""))
+    description = str(profile.get("description", ""))
+    success = '<div class="notice">Server-specific profile saved.</div>' if request.args.get("saved") == "1" else ""
+    body = (
+        '<section class="card"><span class="pill">PREMIUM FEATURE</span><h1>🤖 Custom Bot Profile</h1>'
+        '<p>Set a separate presentation for IronWolf inside this server: avatar, banner and description. These settings are saved only for '
+        + html.escape(guild.name) + '.</p>'
+        '<div class="notice">Discord does not allow one bot account to have a different real account avatar, banner or About Me description in each server. '
+        'This module stores a server-specific profile for use in dashboard previews and server-scoped bot presentation; it does not change the bot account globally.</div>'
+        + success +
+        '<form method="post">' + _csrf_field() +
+        '<label>Avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
+        '<label>Banner image URL (HTTPS)</label><input type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
+        '<label>Bot description</label><textarea name="description" maxlength="500" rows="4" placeholder="Describe this server’s IronWolf setup...">' + html.escape(description) + '</textarea>'
+        '<p class="muted">Images must be hosted at public HTTPS URLs. Maximum description length: 500 characters.</p>'
+        '<button type="submit">Save Custom Bot Profile</button></form></section>'
+        '<section class="card"><h2>Profile preview</h2>'
+        + ('<img src="' + html.escape(banner_url, quote=True) + '" alt="Custom banner" style="display:block;width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin-bottom:12px">' if banner_url else '')
+        + '<div style="display:flex;gap:14px;align-items:center">'
+        + ('<img src="' + html.escape(avatar_url, quote=True) + '" alt="Custom bot avatar" style="width:64px;height:64px;border-radius:50%;object-fit:cover">' if avatar_url else '<div style="width:64px;height:64px;border-radius:50%;background:#5865F2"></div>')
+        + '<div><strong>' + html.escape(guild.me.display_name if guild.me else "IronWolf") + '</strong><p>' + html.escape(description or "No custom description set yet.") + '</p></div></div></section>'
+        '<p><a class="button secondary" href="/guild/' + gid + '">← Back to server dashboard</a></p>'
+    )
+    return _render(guild.name + " · Custom Bot Profile", body)
+
 
 @app.route("/guild/<guild_id>/branding", methods=["GET", "POST"])
 def guild_branding(guild_id):
