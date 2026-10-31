@@ -33,10 +33,6 @@ from isle_registration import get_registration as _get_isle_registration, set_re
 TOKEN = os.getenv("DISCORD_TOKEN")
 # Optional: set your Discord server ID in Railway for instant guild slash-command sync.
 GUILD_ID = os.getenv("GUILD_ID")
-# The level system is disabled only on this Discord server.
-LEVEL_DISABLED_GUILD_ID = 1561027077984227371
-LEVEL_PREFIX_COMMANDS_DISABLED = {"level", "lvl", "leaderboard", "lb", "rangliste"}
-LEVEL_SLASH_COMMANDS_DISABLED = {"daily", "rank", "level-role-set"}
 CONFIG_FILE = data_path("config.json")
 DATA_FILE = data_path("data.json")
 
