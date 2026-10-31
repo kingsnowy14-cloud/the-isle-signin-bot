@@ -108,6 +108,7 @@ def mark_expiry_dm_sent(user_id):
 PREMIUM_FEATURES = {
     "ticket": "Ticket-System Pro",
     "branding": "Custom Branding",
+    "custom_bot": "Custom Bot Profile (server-specific)",
     "security": "Security Pro",
     "automation": "Automation Pro",
     "invite_tracker": "Invite Tracker",
