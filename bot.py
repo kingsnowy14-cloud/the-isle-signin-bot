@@ -2159,7 +2159,7 @@ def _activity_age_text(last_activity, now=None):
 
 @bot.tree.command(name="activity", description="Shows a member's messages, voice time, and recent activity")
 @app_commands.guild_only()
-@app_commands.describe(mitglied="Mitglied, dessen Aktivität du ansehen möchtest")
+@app_commands.describe(mitglied="Member whose activity you want to view")
 async def clan_activity(interaction: discord.Interaction, mitglied: discord.Member | None = None):
     guild = interaction.guild
     if guild is None:
@@ -2190,7 +2190,7 @@ async def clan_activity(interaction: discord.Interaction, mitglied: discord.Memb
 @bot.tree.command(name="inactive-members", description="Lists members with no recent activity")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(tage="Als inaktiv gelten Mitglieder ohne Aktivität seit mindestens so vielen Tagen (1–365)")
+@app_commands.describe(tage="Members are considered inactive after this many days without activity (1–365)")
 async def inactive_members(interaction: discord.Interaction, tage: app_commands.Range[int, 1, 365] = 14):
     guild = interaction.guild
     if guild is None:
@@ -2229,7 +2229,7 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
 @bot.tree.command(name="activity-channel", description="Sets the channel for clan activity reports")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(kanal="Textkanal, in dem Aktivitätsberichte veröffentlicht werden")
+@app_commands.describe(kanal="Text channel where activity reports are posted")
 async def set_activity_log_channel(interaction: discord.Interaction, kanal: discord.TextChannel):
     cfg = guild_config(interaction.guild_id)
     cfg["activity_log_channel"] = kanal.id
@@ -2242,7 +2242,7 @@ async def set_activity_log_channel(interaction: discord.Interaction, kanal: disc
 @bot.tree.command(name="activity-report", description="Creates and logs a clan activity report")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(tage="Zeitraum für die Inaktivitätsübersicht (1–365 Tage)")
+@app_commands.describe(tage="Time period for the inactivity report (1–365 days)")
 async def activity_report(interaction: discord.Interaction, tage: app_commands.Range[int, 1, 365] = 14):
     guild = interaction.guild
     if guild is None:
@@ -2412,7 +2412,7 @@ def _can_moderate(interaction: discord.Interaction, member: discord.Member):
     return True, ""
 
 
-@bot.tree.command(name="warn", description="Warne ein Mitglied und speichere den Grund")
+@bot.tree.command(name="warn", description="Warn a member and save the reason")
 @app_commands.checks.has_permissions(moderate_members=True)
 @app_commands.describe(mitglied="Mitglied, das verwarnt werden soll", grund="Grund der Verwarnung")
 async def moderation_warn(interaction: discord.Interaction, mitglied: discord.Member, grund: str):
@@ -2431,7 +2431,7 @@ async def moderation_warn(interaction: discord.Interaction, mitglied: discord.Me
     await security_log(interaction.guild, "⚠️ Mitglied verwarnt", f"Mitglied: {mitglied.mention} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.orange())
 
 
-@bot.tree.command(name="warnings", description="Zeige gespeicherte Verwarnungen eines Mitglieds")
+@bot.tree.command(name="warnings", description="Show saved warnings for a member")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def moderation_warnings(interaction: discord.Interaction, mitglied: discord.Member):
     records = _moderation_log(interaction.guild_id).get(str(mitglied.id), [])
@@ -2441,7 +2441,7 @@ async def moderation_warnings(interaction: discord.Interaction, mitglied: discor
     await interaction.response.send_message(embed=create_embed(title=f"Verwarnungen: {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.orange()), ephemeral=True)
 
 
-@bot.tree.command(name="clear-warnings", description="Lösche alle gespeicherten Verwarnungen eines Mitglieds")
+@bot.tree.command(name="clear-warnings", description="Delete all saved warnings for a member")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def moderation_clear_warnings(interaction: discord.Interaction, mitglied: discord.Member):
     _moderation_log(interaction.guild_id).pop(str(mitglied.id), None)
@@ -2449,9 +2449,9 @@ async def moderation_clear_warnings(interaction: discord.Interaction, mitglied: 
     await interaction.response.send_message(f"Verwarnungen für {mitglied.mention} wurden gelöscht.", ephemeral=True)
 
 
-@bot.tree.command(name="timeout", description="Schalte ein Mitglied vorübergehend stumm")
+@bot.tree.command(name="timeout", description="Temporarily timeout a member")
 @app_commands.checks.has_permissions(moderate_members=True)
-@app_commands.describe(mitglied="Zielmitglied", minuten="Dauer in Minuten (1–10080)", grund="Grund")
+@app_commands.describe(mitglied="Target member", minuten="Duration in minutes (1–10080)", grund="Reason")
 async def moderation_timeout(interaction: discord.Interaction, mitglied: discord.Member, minuten: app_commands.Range[int, 1, 10080], grund: str = "Kein Grund angegeben"):
     ok, error = _can_moderate(interaction, mitglied)
     if not ok:
@@ -2465,7 +2465,7 @@ async def moderation_timeout(interaction: discord.Interaction, mitglied: discord
     await security_log(interaction.guild, "🔇 Timeout", f"Mitglied: {mitglied.mention}\nModerator: {interaction.user.mention}\nDauer: {minuten} Minuten\nGrund: {grund[:800]}", discord.Color.orange())
 
 
-@bot.tree.command(name="untimeout", description="Entferne den Timeout eines Mitglieds")
+@bot.tree.command(name="untimeout", description="Remove a member’s timeout")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def moderation_untimeout(interaction: discord.Interaction, mitglied: discord.Member, grund: str = "Kein Grund angegeben"):
     ok, error = _can_moderate(interaction, mitglied)
@@ -2479,7 +2479,7 @@ async def moderation_untimeout(interaction: discord.Interaction, mitglied: disco
     await interaction.response.send_message(f"🔊 Timeout von {mitglied.mention} wurde entfernt. Fall `#{case_id}`.")
 
 
-@bot.tree.command(name="kick", description="Entferne ein Mitglied vom Server")
+@bot.tree.command(name="kick", description="Remove a member from the server")
 @app_commands.checks.has_permissions(kick_members=True)
 async def moderation_kick(interaction: discord.Interaction, mitglied: discord.Member, grund: str = "Kein Grund angegeben"):
     ok, error = _can_moderate(interaction, mitglied)
@@ -2494,9 +2494,9 @@ async def moderation_kick(interaction: discord.Interaction, mitglied: discord.Me
     await security_log(interaction.guild, "👢 Mitglied gekickt", f"Mitglied: {mitglied} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.orange())
 
 
-@bot.tree.command(name="ban", description="Sperre ein Mitglied vom Server")
+@bot.tree.command(name="ban", description="Ban a member from the server")
 @app_commands.checks.has_permissions(ban_members=True)
-@app_commands.describe(mitglied="Zielmitglied", grund="Grund", nachrichten_tage="Nachrichten der letzten 0–7 Tage löschen")
+@app_commands.describe(mitglied="Target member", grund="Reason", nachrichten_tage="Delete messages from the last 0–7 days")
 async def moderation_ban(interaction: discord.Interaction, mitglied: discord.Member, grund: str = "Kein Grund angegeben", nachrichten_tage: app_commands.Range[int, 0, 7] = 0):
     ok, error = _can_moderate(interaction, mitglied)
     if not ok:
@@ -2510,9 +2510,9 @@ async def moderation_ban(interaction: discord.Interaction, mitglied: discord.Mem
     await security_log(interaction.guild, "🔨 Mitglied gebannt", f"Mitglied: {mitglied} (`{mitglied.id}`)\nModerator: {interaction.user.mention}\nGrund: {grund[:800]}", discord.Color.red())
 
 
-@bot.tree.command(name="purge", description="Lösche bis zu 100 Nachrichten im aktuellen Kanal")
+@bot.tree.command(name="purge", description="Delete up to 100 messages in the current channel")
 @app_commands.checks.has_permissions(manage_messages=True)
-@app_commands.describe(anzahl="Anzahl der Nachrichten (1–100)")
+@app_commands.describe(anzahl="Number of messages (1–100)")
 async def moderation_purge(interaction: discord.Interaction, anzahl: app_commands.Range[int, 1, 100]):
     if not isinstance(interaction.channel, discord.TextChannel):
         await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True); return
@@ -2530,7 +2530,7 @@ async def moderation_purge(interaction: discord.Interaction, anzahl: app_command
 @app_commands.describe(
     typ="Welche Nachrichten sollen gelöscht werden?",
     anzahl="Wie viele Nachrichten maximal durchsuchen (1–100)",
-    mitglied="Optional: nur Nachrichten dieses Mitglieds löschen",
+    mitglied="Optional: delete only messages from this member",
 )
 @app_commands.choices(typ=[
     app_commands.Choice(name="Alle Nachrichten", value="all"),
@@ -2596,9 +2596,9 @@ async def moderation_clean(
         )
 
 
-@bot.tree.command(name="slowmode", description="Setze den Nachrichten-Abstand für den aktuellen Kanal")
+@bot.tree.command(name="slowmode", description="Set the message interval for the current channel")
 @app_commands.checks.has_permissions(manage_channels=True)
-@app_commands.describe(sekunden="0 deaktiviert Slowmode; maximal 21600 Sekunden")
+@app_commands.describe(sekunden="0 disables slowmode; maximum 21,600 seconds")
 async def moderation_slowmode(interaction: discord.Interaction, sekunden: app_commands.Range[int, 0, 21600]):
     if not isinstance(interaction.channel, discord.TextChannel):
         await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True); return
@@ -3193,10 +3193,10 @@ async def giveaway_start(
 
 # ----------------------------- SOCIAL LINKS -----------------------------
 
-@bot.tree.command(name="social-set", description="Speichere einen Social-Media-Link für diesen Server")
+@bot.tree.command(name="social-set", description="Save a social media link for this server")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch"), app_commands.Choice(name="TikTok", value="tiktok"), app_commands.Choice(name="Instagram", value="instagram"), app_commands.Choice(name="Website", value="website")])
-@app_commands.describe(plattform="Plattform", link="Vollständiger Link mit https://")
+@app_commands.describe(plattform="Platform", link="Full URL starting with https://")
 async def social_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], link: str):
     if not (link.startswith("https://") or link.startswith("http://")) or len(link) > 500:
         await interaction.response.send_message("Bitte gib einen vollständigen Link mit `https://` ein.", ephemeral=True); return
@@ -3205,7 +3205,7 @@ async def social_set(interaction: discord.Interaction, plattform: app_commands.C
     await interaction.response.send_message(f"{plattform.name}-Link gespeichert.", ephemeral=True)
 
 
-@bot.tree.command(name="social", description="Zeige die gespeicherten Social-Media-Links des Servers")
+@bot.tree.command(name="social", description="Show the server’s saved social media links")
 async def social_show(interaction: discord.Interaction):
     links = guild_config(interaction.guild_id).get("social_links", {})
     if not links:
@@ -3232,7 +3232,7 @@ def _new_mod_case(guild_id: int, user_id: int, moderator_id: int, action: str, r
     return case_id
 
 
-@bot.tree.command(name="modlogs", description="Zeige Moderationsfälle eines Mitglieds")
+@bot.tree.command(name="modlogs", description="Show moderation cases for a member")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def modlogs_command(interaction: discord.Interaction, mitglied: discord.Member):
     cases = [c for c in data.setdefault("mod_cases", {}).get(str(interaction.guild_id), []) if int(c.get("user_id", 0)) == mitglied.id]
@@ -3245,7 +3245,7 @@ async def modlogs_command(interaction: discord.Interaction, mitglied: discord.Me
     await interaction.response.send_message(embed=create_embed(title=f"Moderationsakte: {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.orange()), ephemeral=True)
 
 
-@bot.tree.command(name="case", description="Zeige einen Moderationsfall anhand seiner Nummer")
+@bot.tree.command(name="case", description="Show a moderation case by its case number")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def case_command(interaction: discord.Interaction, nummer: app_commands.Range[int, 1, 1000000]):
     cases = data.setdefault("mod_cases", {}).get(str(interaction.guild_id), [])
@@ -3257,7 +3257,7 @@ async def case_command(interaction: discord.Interaction, nummer: app_commands.Ra
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="unban", description="Entbanne ein Mitglied anhand seiner Discord-ID")
+@bot.tree.command(name="unban", description="Unban a member using their Discord ID")
 @app_commands.checks.has_permissions(ban_members=True)
 async def unban_command(interaction: discord.Interaction, user_id: str, grund: str = "Kein Grund angegeben"):
     if not user_id.isdigit():
@@ -3276,7 +3276,7 @@ async def unban_command(interaction: discord.Interaction, user_id: str, grund: s
     await interaction.response.send_message(f"🔓 {user} wurde entbannt. Fall `#{case_id}`.", ephemeral=True)
 
 
-@bot.tree.command(name="lockdown", description="Sperre den aktuellen Textkanal für normale Mitglieder")
+@bot.tree.command(name="lockdown", description="Lock the current text channel for regular members")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def lockdown_command(interaction: discord.Interaction):
     channel = interaction.channel
