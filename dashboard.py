@@ -82,19 +82,19 @@ CHANNEL_SETTINGS = {
     "birthday_channel": "Geburtstagskanal",
     "levelup_channel": "Level-Up-Kanal",
     "invite_log_channel": "Invite-Tracker-Logkanal",
-    "security_log_channel": "Sicherheits-Logkanal",
+    "security_log_channel": "Security log channel",
     "verify_channel": "Verifizierungskanal",
     "registration_channel": "Anmeldekanal",
     "ticket_log_channel": "Ticket-Logkanal",
-    "activity_log_channel": "Aktivitäts-Logkanal",
+    "activity_log_channel": "Enableditäts-Logkanal",
     "suggestion_channel": "Vorschlagskanal",
     "ticket_category": "Ticket-Kategorie",
     "log_channel_id": "Moderations-Logkanal",
 }
 ROLE_SETTINGS = {
     "support_role": "Support-Rolle",
-    "verified_role": "Verifizierte Rolle",
-    "unverified_role": "Unverifizierte Rolle",
+    "verified_role": "Verified role",
+    "unverified_role": "Unverified role",
     "trusted_security_role": "Vertrauenswürdige Sicherheitsrolle",
 }
 
@@ -815,6 +815,7 @@ def _page(title, body):
     nav = (
         '<a class="skip-link" href="#main-content">Skip to content</a><nav aria-label="Main navigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
         + ('<a class="nav-server" href="/">🎮 Switch server</a>' if logged_in else '')
+        + ('<a class="nav-server" href="/guild/' + match.group(1) + '?section=general">⚙️ Server Configuration</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
@@ -1056,7 +1057,7 @@ def _module_command_footer():
     ]
     rows = []
     for item in matched:
-        status = "🟢 Aktiv" if item.get("enabled") else "🔴 Deaktiviert"
+        status = "🟢 Enabled" if item.get("enabled") else "🔴 Deaktiviert"
         rows.append(
             '<div class="row"><div><strong><code>' + html.escape(item["name"]) +
             '</code></strong><br><small>' + html.escape(item.get("kind", "Befehl")) +
@@ -1064,10 +1065,10 @@ def _module_command_footer():
             '</small></div><small>' + status + '</small></div>'
         )
     if not rows:
-        content = '<p class="muted">Für dieses Modul wurden keine direkt zuordenbaren Discord-Befehle erkannt. Die vollständige Liste findest du unter <a href="/guild/' + html.escape(guild_id) + '/commands">Befehle &amp; Slash-Commands</a>.</p>'
+        content = '<p class="muted">No Discord commands could be matched to this module. View the full list under <a href="/guild/' + html.escape(guild_id) + '/commands">Commands &amp; Slash Commands</a>.</p>'
     else:
-        content = '<p class="muted">Die Befehle dieses Moduls im Discord-Chat. Deaktivierte Befehle sind markiert; verwalte sie in der Befehlsübersicht.</p>' + ''.join(rows)
-    return '<section class="card module-command-footer"><h2>⌘ Zugehörige Discord-Befehle</h2>' + content + '<p><a class="button secondary" href="/guild/' + html.escape(guild_id) + '/commands">Alle Befehle verwalten →</a></p></section>'
+        content = '<p class="muted">Discord commands related to this module. Disabled commands are marked; manage them in the command overview.</p>' + ''.join(rows)
+    return '<section class="card module-command-footer"><h2>⌘ Related Discord Commands</h2>' + content + '<p><a class="button secondary" href="/guild/' + html.escape(guild_id) + '/commands">Manage all commands →</a></p></section>'
 
 
 def _render(title, body, status=200):
@@ -1352,7 +1353,7 @@ def index():
         cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
     body = '<section class="card hero"><span class="pill">WILLKOMMEN BEI IRONWOLF</span><h1 style="margin-top:14px">Dein Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord-Server bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
     body += _public_status_panel()
-    body += '<p><a class="button" href="/premium">✨ Premium verwalten →</a></p>'
+    body += '<p><a class="button" href="/premium">✨ Manage Premium →</a></p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
 
@@ -1532,9 +1533,9 @@ def guild_premium(guild_id):
         manual_server_premium = server_override in PLAN_FEATURES and server_override != "free"
         entitled = trial_active or (feature in PLAN_FEATURES.get(plan, frozenset()) and (owner_matches or manual_server_premium))
         if trial_active:
-            status = "Aktiv · 15-Tage-Testphase"
+            status = "Enabled · 15-Tage-Testphase"
         else:
-            status = "Aktiv für diesen Server" if entitled else ("Konto berechtigt, Server noch nicht verknüpft" if feature in PLAN_FEATURES.get(plan, frozenset()) and not owner_matches else "Nicht im Kontoplan enthalten")
+            status = "Enabled für diesen Server" if entitled else ("Konto berechtigt, Server noch nicht verknüpft" if feature in PLAN_FEATURES.get(plan, frozenset()) and not owner_matches else "Nicht im Kontoplan enthalten")
         feature_links = {
             "ticket": ("/guild/" + gid + "/tickets", "Ticket-System verwalten"),
             "branding": ("/guild/" + gid + "/tickets", "Ticket-Branding einstellen"),
@@ -1643,7 +1644,7 @@ def guild_automation(guild_id):
         _audit_dashboard_change(guild.id, "Nachrichtenplaner", session.get("user_id"), "Änderung gespeichert")
         return redirect(url_for("guild_automation", guild_id=gid))
     if not guild_has_feature(cfg, "automation"):
-        body = '<section class="card"><h1>⚙️ Automation Pro</h1><p>Geplante Nachrichten sind eine Premium-Funktion. Verknüpfe zuerst dein berechtigtes Konto auf der Premium-Seite.</p><a class="button" href="/guild/' + gid + '/premium">Premium verwalten →</a></section>'
+        body = '<section class="card"><h1>⚙️ Automation Pro</h1><p>Geplante Nachrichten sind eine Premium-Funktion. Verknüpfe zuerst dein berechtigtes Konto auf der Premium-Seite.</p><a class="button" href="/guild/' + gid + '/premium">Manage Premium →</a></section>'
     else:
         channel_options = '<option value="">— Textkanal auswählen —</option>'
         for channel in guild.text_channels:
@@ -1720,7 +1721,7 @@ def guild_ausweis(guild_id):
         description = request.form.get("description", "").strip()
         color = request.form.get("color", "5865F2").strip().lstrip("#")
         if not title or len(title) > 256 or len(description) > 3500:
-            abort(400, "Titel oder Beschreibung sind zu lang oder leer.")
+            abort(400, "Titel oder Description sind zu lang oder leer.")
         if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
             abort(400, "Bitte eine gültige Ausweisfarbe auswählen.")
         questions = [line.strip() for line in request.form.get("questions", "").splitlines() if line.strip()]
@@ -1779,7 +1780,7 @@ def guild_ausweis(guild_id):
         '<form method="post">' + _csrf_field() +
         '<div class="check"><input type="checkbox" id="id_card_enabled" name="id_card_enabled"' + checked("id_card_enabled") + '><label for="id_card_enabled">Ausweissystem aktivieren</label></div>'
         '<label for="title">Ausweis-Titel</label><input id="title" name="title" maxlength="256" required value="' + html.escape(str(cfg.get("id_card_title", defaults["id_card_title"])), quote=True) + '">'
-        '<label for="description">Panel-Beschreibung</label><textarea id="description" name="description" maxlength="3500">' + html.escape(str(cfg.get("id_card_description", defaults["id_card_description"]))) + '</textarea>'
+        '<label for="description">Panel-Description</label><textarea id="description" name="description" maxlength="3500">' + html.escape(str(cfg.get("id_card_description", defaults["id_card_description"]))) + '</textarea>'
         '<label for="color">Ausweisfarbe</label><input id="color" name="color" type="color" value="#' + html.escape(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), quote=True) + '">'
         '<h3>Ausstellung</h3><div class="check"><input type="checkbox" id="id_card_auto_approve" name="id_card_auto_approve"' + checked("id_card_auto_approve") + '><label for="id_card_auto_approve">Anträge automatisch genehmigen und Ausweis direkt erstellen</label></div>'
         '<label for="id_card_review_role_id">Teamrolle für manuelle Prüfung</label><select id="id_card_review_role_id" name="id_card_review_role_id">' + review_role_options + '</select>'
@@ -2113,7 +2114,7 @@ def guild_verified_accounts(guild_id):
             if not channel_raw:
                 abort(400, "Wähle zuerst einen Kanal für das Verifizierungs-Panel.")
             if not selected:
-                abort(400, "Aktiviere mindestens einen Anbieter-Button.")
+                abort(400, "Enablediere mindestens einen Anbieter-Button.")
             if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
                 abort(503, "Der Discord-Bot ist gerade nicht verbunden. Bitte versuche es später erneut.")
             channel = guild.get_channel(int(channel_raw))
@@ -2218,7 +2219,7 @@ def guild_page(guild_id):
                     disabled.add(name)
             cfg["disabled_modules"] = sorted(disabled)
             _save_json(data_path("config.json"), _config)
-            _audit_dashboard_change(guild.id, "Modul-Manager", session.get("user_id"), "Aktive Module: " + ", ".join(sorted(valid_modules - disabled)))
+            _audit_dashboard_change(guild.id, "Modul-Manager", session.get("user_id"), "Enablede Module: " + ", ".join(sorted(valid_modules - disabled)))
             return redirect(url_for("guild_page", guild_id=gid, section="modules"))
         if action == "settings":
             # Keep the in-memory configuration unchanged if persistence fails.
@@ -2231,20 +2232,20 @@ def guild_page(guild_id):
                     cfg["bot_enabled"] = request.form.get("bot_enabled") == "on"
                     selected_language = "en"
                     if selected_language not in {"de", "en", "cs", "fr", "es"}:
-                        abort(400, "Bitte eine unterstützte Bot-Sprache auswählen.")
+                        abort(400, "Please select a supported bot language.")
                     cfg["bot_language"] = selected_language
                     # Welcome and goodbye destinations are configured in the Welcome module.
                     text_channel_ids = {str(item.id) for item in guild.text_channels}
-                    for key, label in (("welcome_channel", "Willkommenskanal"), ("goodbye_channel", "Auf-Wiedersehen-Kanal")):
+                    for key, label in (("welcome_channel", "Welcome channel"), ("goodbye_channel", "Goodbye channel")):
                         raw_channel_id = request.form.get(key, "").strip()
                         if raw_channel_id and raw_channel_id not in text_channel_ids:
-                            abort(400, f"{label}: Bitte einen gültigen Textkanal auswählen.")
+                            abort(400, f"{label}: Please select a valid text channel.")
                         cfg[key] = int(raw_channel_id) if raw_channel_id else None
                     for key, meta in TEXT_SETTINGS.items():
                         if key in request.form:
                             value = request.form.get(key, "").strip()
                             if len(value) > meta["max_length"]:
-                                abort(400, f"{meta['label']} ist zu lang.")
+                                abort(400, f"{meta['label']} is too long.")
                             cfg[key] = value
                     for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                         cfg[key] = request.form.get(key) == "on"
@@ -2362,7 +2363,7 @@ def guild_page(guild_id):
                 import traceback
                 print(f"[DASHBOARD] Failed to save settings for guild {gid}: {type(exc).__name__}: {exc}", flush=True)
                 traceback.print_exc()
-                return _render("Speichern fehlgeschlagen", '<div class="card"><h1>Änderungen konnten nicht gespeichert werden</h1><p>Die Einstellungen wurden zurückgesetzt. Prüfe die Railway-Logs nach <code>[DASHBOARD] Failed to save settings</code>, um den genauen technischen Fehler zu sehen.</p><a class="button secondary" href="/guild/' + gid + '">Zurück zu den Einstellungen</a></div>', 500)
+                return _render("Speichern fehlgeschlagen", '<div class="card"><h1>Änderungen konnten nicht gespeichert werden</h1><p>Die Einstellungen wurden zurückgesetzt. Prüfe die Railway-Logs nach <code>[DASHBOARD] Failed to save settings</code>, um den genauen technischen Fehler zu sehen.</p><a class="button secondary" href="/guild/' + gid + '">Back to settings</a></div>', 500)
         else:
             abort(400, "Unbekannte Aktion.")
         return redirect(url_for("guild_page", guild_id=gid, section=settings_section if action == "settings" else "overview", saved="1"))
@@ -2380,28 +2381,28 @@ def guild_page(guild_id):
         settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"General settings","channels":"Channels & logs","roles":"Roles","voice":"Temporary voice channels","security":"Protection & moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
             bot_enabled_checked = " checked" if cfg.get("bot_enabled", True) else ""
-            settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 IronWolf auf diesem Server aktivieren</label></div><p class="muted">Ist diese Option aus, reagiert der Bot auf diesem Server nicht. Neue Server starten deaktiviert; bestehende Server behalten ihr bisheriges Verhalten.</p>'
+            settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 Enable IronWolf on this server</label></div><p class="muted">When disabled, the bot will not respond on this server. New servers start disabled; existing servers keep their current behavior.</p>'
             settings_html += '<label for="bot_language">🌐 Bot language</label><small>IronWolf is configured to use English for bot responses.</small><select id="bot_language" name="bot_language"><option value="en" selected>🇬🇧 English</option></select>'
             settings_html += '<h3>👋 Welcome module · Channels</h3><p class="muted">Choose where IronWolf welcomes new members and where goodbye messages are posted.</p>'
             settings_html += '<label for="welcome_channel">Public welcome channel</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
             settings_html += '<label for="goodbye_channel">Goodbye channel</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
-            settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
+            settings_html += '<p class="muted">👑 The Invite Tracker is a premium feature. Enable it only if this server has an active premium subscription.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
             for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                 label = {"welcome_embed": "Send welcome message as an embed", "leave_enabled": "Enable goodbye messages", "leave_embed": "Send goodbye message as an embed"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
-            settings_html += "<h3>AutoMod & XP konfigurieren</h3>"
-            for key, label, minimum, maximum, default in [("automod_threshold", "Nachrichten bis Spam-Erkennung", 3, 20, 6), ("automod_window_seconds", "Spam-Zeitfenster in Sekunden", 3, 30, 8), ("automod_timeout_minutes", "Timeout in Minuten", 1, 60, 2), ("xp_cooldown_seconds", "XP-Cooldown in Sekunden", 10, 600, 60), ("xp_min", "Minimale XP pro Nachricht", 1, 100, 5), ("xp_max", "Maximale XP pro Nachricht", 1, 100, 15)]:
+            settings_html += "<h3>Configure AutoMod & XP</h3>"
+            for key, label, minimum, maximum, default in [("automod_threshold", "Messages before spam detection", 3, 20, 6), ("automod_window_seconds", "Spam detection window (seconds)", 3, 30, 8), ("automod_timeout_minutes", "Timeout duration (minutes)", 1, 60, 2), ("xp_cooldown_seconds", "XP-Cooldown in Sekunden", 10, 600, 60), ("xp_min", "Minimum XP per message", 1, 100, 5), ("xp_max", "Maximum XP per message", 1, 100, 15)]:
                 value = max(minimum, min(maximum, int(cfg.get(key, default) or default)))
                 settings_html += f'<label for="{key}">{label}</label><input id="{key}" name="{key}" type="number" min="{minimum}" max="{maximum}" value="{value}" required>'
             if guild_has_feature(cfg, "invite_tracker"):
                 checked = " checked" if cfg.get("invite_tracker_enabled", False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="invite_tracker_enabled" name="invite_tracker_enabled"{checked}><label for="invite_tracker_enabled">{html.escape(BOOL_SETTINGS["invite_tracker_enabled"])}</label></div>'
-                settings_html += '<label for="invite_log_channel">Invite-Tracker: Logkanal auswählen</label><small>Hier werden erkannte Einladungen und Einladungsnutzungen protokolliert.</small><select id="invite_log_channel" name="invite_log_channel">' + options(channels, cfg.get("invite_log_channel")) + '</select>'
+                settings_html += '<label for="invite_log_channel">Invite Tracker: Select log channel</label><small>Detected invites and invite uses will be logged here.</small><select id="invite_log_channel" name="invite_log_channel">' + options(channels, cfg.get("invite_log_channel")) + '</select>'
             else:
-                settings_html += '<div class="check"><input type="checkbox" id="invite_tracker_locked" disabled><label for="invite_tracker_locked">🔒 Invite-Tracker aktivieren (Premium erforderlich)</label></div><p class="muted">Der Invite-Tracker bleibt gesperrt, bis dieser Server aktives Premium hat. <a href="/guild/' + gid + '/premium">Premium verwalten →</a></p>'
+                settings_html += '<div class="check"><input type="checkbox" id="invite_tracker_locked" disabled><label for="invite_tracker_locked">🔒 Invite-Tracker aktivieren (Premium erforderlich)</label></div><p class="muted">The Invite Tracker remains locked until this server has an active premium subscription. <a href="/guild/' + gid + '/premium">Manage Premium →</a></p>'
         if section == "channels":
             for key, label in CHANNEL_SETTINGS.items():
                 if key in {"ticket_category", "welcome_channel", "goodbye_channel"}:
@@ -2434,44 +2435,44 @@ def guild_page(guild_id):
                 settings_html += f'<label for="{key}">{html.escape(meta["label"])}</label><small>{html.escape(meta["help"])}</small><input id="{key}" name="{key}" type="number" min="{meta["min"]}" max="{meta["max"]}" step="1" value="{value}" required>'
             from security_suite import guild_state as security_guild_state
             secure_cfg = security_guild_state(guild.id)
-            settings_html += '<h3>🔐 Erweiterte Sicherheitsfunktionen</h3><p class="muted">Diese Optionen werden serverbezogen gespeichert. Der Link-/Scam-Filter greift nur, wenn er aktiviert ist.</p>'
-            for key, label in [("secure_alt_alerts_enabled", "Warnung bei sehr neuen Accounts aktivieren"), ("secure_scam_enabled", "Link-/Scam-Filter aktivieren")]:
+            settings_html += '<h3>🔐 Advanced security features</h3><p class="muted">These options are saved per server. The link and scam filter only works when enabled.</p>'
+            for key, label in [("secure_alt_alerts_enabled", "Enable alerts for very new accounts"), ("secure_scam_enabled", "Enable link and scam filter")]:
                 source_key = "alt_alerts_enabled" if key == "secure_alt_alerts_enabled" else "scam_enabled"
                 checked = " checked" if secure_cfg.get(source_key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{label}</label></div>'
             alt_days = max(1, min(365, int(secure_cfg.get("alt_min_days", 7) or 7)))
-            settings_html += f'<label for="secure_alt_min_days">Account-Mindestalter für Warnungen (Tage)</label><input id="secure_alt_min_days" name="secure_alt_min_days" type="number" min="1" max="365" value="{alt_days}" required>'
+            settings_html += f'<label for="secure_alt_min_days">Minimum account age for alerts (days)</label><input id="secure_alt_min_days" name="secure_alt_min_days" type="number" min="1" max="365" value="{alt_days}" required>'
             secure_channels = options(channels, secure_cfg.get("log_channel_id"))
-            settings_html += '<label for="secure_log_channel">Sicherheits-Logkanal</label><select id="secure_log_channel" name="secure_log_channel">' + secure_channels + '</select>'
-            settings_html += '<label for="secure_verify_channel">Verifizierungskanal (für Secure-Verify)</label><select id="secure_verify_channel" name="secure_verify_channel">' + options(channels, secure_cfg.get("verify_channel_id")) + '</select>'
-            settings_html += '<label for="secure_verified_role">Verifizierte Rolle</label><select id="secure_verified_role" name="secure_verified_role">' + options(roles, secure_cfg.get("verified_role_id")) + '</select>'
-            settings_html += '<label for="secure_unverified_role">Unverifizierte Rolle</label><select id="secure_unverified_role" name="secure_unverified_role">' + options(roles, secure_cfg.get("unverified_role_id")) + '</select>'
+            settings_html += '<label for="secure_log_channel">Security log channel</label><select id="secure_log_channel" name="secure_log_channel">' + secure_channels + '</select>'
+            settings_html += '<label for="secure_verify_channel">Verification channel (Secure Verify)</label><select id="secure_verify_channel" name="secure_verify_channel">' + options(channels, secure_cfg.get("verify_channel_id")) + '</select>'
+            settings_html += '<label for="secure_verified_role">Verified role</label><select id="secure_verified_role" name="secure_verified_role">' + options(roles, secure_cfg.get("verified_role_id")) + '</select>'
+            settings_html += '<label for="secure_unverified_role">Unverified role</label><select id="secure_unverified_role" name="secure_unverified_role">' + options(roles, secure_cfg.get("unverified_role_id")) + '</select>'
             blocked_domains = secure_cfg.get("blocked_domains", [])
-            settings_html += '<label for="secure_blocked_domains">Gesperrte Domains (eine pro Zeile)</label><small>Nur Hostnamen, z. B. beispiel.invalid. Maximal 100 Einträge.</small><textarea id="secure_blocked_domains" name="secure_blocked_domains" maxlength="10000">' + html.escape("\n".join(blocked_domains)) + '</textarea>'
+            settings_html += '<label for="secure_blocked_domains">Blocked domains (one per line)</label><small>Hostnames only, e.g. example.invalid. Maximum 100 entries.</small><textarea id="secure_blocked_domains" name="secure_blocked_domains" maxlength="10000">' + html.escape("\n".join(blocked_domains)) + '</textarea>'
         if section == "channels":
             settings_html += f'<label for="ticket_category">{CHANNEL_SETTINGS["ticket_category"]}</label><select id="ticket_category" name="ticket_category">{options([(category.id, category.name) for category in guild.categories], cfg.get("ticket_category"))}</select>'
         if request.args.get("saved") == "1":
-            settings_html += '<div class="notice">✅ Änderungen wurden gespeichert.</div>'
-        settings_html += '<div style="display:flex;justify-content:flex-end;margin-top:18px"><button type="submit">💾 Änderungen speichern</button></div>'
+            settings_html += '<div class="notice">✅ Changes saved successfully.</div>'
+        settings_html += '<div style="display:flex;justify-content:flex-end;margin-top:18px"><button type="submit">💾 Save changes</button></div>'
         settings_html += '</form></section>'
         if section == "roles":
-            settings_html += '<section class="card"><h3>＋ Discord-Rolle erstellen</h3><p class="muted">Erstellt eine echte Discord-Rolle auf deinem Server. Danach kannst du sie im Nachrichten-Editor als Rollen-Button auswählen.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Rollenname</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Rollenfarbe</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Discord-Rolle erstellen</button></form></section>'
+            settings_html += '<section class="card"><h3>＋ Create Discord role</h3><p class="muted">Creates a Discord role on your server. You can then select it as a role button in the Message Builder.</p><form method="post" action="/guild/' + gid + '/roles/create">' + _csrf_field() + '<label for="role_name">Role name</label><input id="role_name" name="role_name" maxlength="100" required placeholder="z. B. Gaming, Ankündigungen oder Verifiziert"><label for="role_color">Role color</label><input id="role_color" name="role_color" type="color" value="#5865F2" style="height:48px;padding:5px"><button type="submit">🎭 Create Discord role</button></form></section>'
     module_records = _module_records(guild.id)
-    modules_html = '<section class="card" id="modules"><h2>🧩 Module aktivieren/deaktivieren</h2><p class="muted">Gilt nur für diesen Server. Ein deaktiviertes Modul blockiert seine Cog-Befehle; andere Server bleiben unverändert.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
+    modules_html = '<section class="card" id="modules"><h2>🧩 Enable/disable modules</h2><p class="muted">Applies only to this server. A disabled module blocks its commands; other servers remain unchanged.</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="modules">'
     for item in module_records:
         checked = " checked" if item["enabled"] else ""
-        modules_html += f'<div class="row"><strong>{html.escape(item["name"])}</strong><div class="check"><input type="checkbox" id="module-{html.escape(item["name"])}" name="module:{html.escape(item["name"])}"{checked}><label for="module-{html.escape(item["name"])}">Aktiv</label></div></div>'
+        modules_html += f'<div class="row"><strong>{html.escape(item["name"])}</strong><div class="check"><input type="checkbox" id="module-{html.escape(item["name"])}" name="module:{html.escape(item["name"])}"{checked}><label for="module-{html.escape(item["name"])}">Enabled</label></div></div>'
     if not module_records:
-        modules_html += '<p class="muted">Aktuell sind keine Cog-Module registriert.</p>'
-    modules_html += '<button type="submit">Module speichern</button></form></section>'
-    module_form = '<section class="card" id="module-template"><h2>🛠️ Modul-Vorlage erstellen</h2><p class="muted">Erstellt eine herunterladbare, sichere discord.py-Cog-Vorlage. Die Datei wird nicht automatisch geladen.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Modulname</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Beschreibung</label><input id="description" name="description" type="text" maxlength="120" placeholder="Was macht das Modul?"><label for="command_name">Beispiel-Befehl</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Vorlage erstellen</button></form></section>'
+        modules_html += '<p class="muted">No modules are currently registered.</p>'
+    modules_html += '<button type="submit">Save modules</button></form></section>'
+    module_form = '<section class="card" id="module-template"><h2>🛠️ Create module template</h2><p class="muted">Creates a downloadable, safe discord.py cog template. The file is not loaded automatically.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Module name</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Description</label><input id="description" name="description" type="text" maxlength="120" placeholder="What does this module do?"><label for="command_name">Example command</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Create template</button></form></section>'
     section_links = [
-        ("general", "⚙️ Willkommen, XP & Allgemeines", "XP aktivieren, Cooldown und XP-Belohnung einstellen"),
-        ("channels", "📡 Kanäle & Logs", "Log-, Level-Up-, Ticket-, Vorschlags- und Verifizierungskanäle"),
-        ("roles", "🎭 Rollen & Level-Belohnungen", "Support-, Sicherheits- und Level-Rollen konfigurieren"),
-        ("voice", "🔊 Temporäre Voice-Kanäle", "Trigger und Zielkategorie für temporäre Räume"),
+        ("general", "⚙️ Welcome, XP & General", "XP aktivieren, Cooldown und XP-Belohnung einstellen"),
+        ("channels", "📡 Channels & Logs", "Log-, Level-Up-, Ticket-, Vorschlags- und Verifizierungskanäle"),
+        ("roles", "🎭 Roles & Level Rewards", "Support-, Sicherheits- und Level-Rollen konfigurieren"),
+        ("voice", "🔊 Temporary Voice Channels", "Trigger und Zielkategorie für temporäre Räume"),
     ]
-    settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Einstellungen öffnen →</span></a>' for key, title, desc in section_links)
+    settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Open settings →</span></a>' for key, title, desc in section_links)
     if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
     popular = [
@@ -2655,7 +2656,7 @@ def guild_reaction_roles(guild_id):
         valid_channels = {str(item.id): item for item in guild.text_channels}
         valid_roles = {str(item.id): item for item in guild.roles}
         if channel_raw not in valid_channels:
-            abort(400, "Bitte einen gültigen Textkanal auswählen.")
+            abort(400, "Please select a valid text channel.")
         if role_raw not in valid_roles or not role_raw:
             abort(400, "Bitte eine gültige Rolle auswählen.")
         if not message_text or len(message_text) > 2000:
@@ -2763,7 +2764,7 @@ def guild_feedback(guild_id):
         _audit_dashboard_change(guild.id, "Feedback-Modul", session.get("user_id"), f"Feedback {'aktiviert' if enabled else 'deaktiviert'}; Zielkanal #{channel.name}")
         if action == "publish":
             if not enabled:
-                abort(400, "Aktiviere das Modul, bevor du das Feedback-Panel veröffentlichst.")
+                abort(400, "Enablediere das Modul, bevor du das Feedback-Panel veröffentlichst.")
             embed = discord.Embed(
                 title=title,
                 description=description or "Klicke auf den Button, um anonym dein Feedback abzugeben.",
@@ -2794,14 +2795,14 @@ def guild_feedback(guild_id):
     description_value = html.escape(str(cfg.get("feedback_description") or "Deine Meinung ist uns wichtig. Klicke auf den Button, um anonym Feedback abzugeben."), quote=True)
     checked = " checked" if cfg.get("feedback_enabled", False) else ""
     body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">💬 Anonymes Feedback</h1>'
-    body += '<p class="muted">Titel, Beschreibung und Zielkanal konfigurieren. Mitglieder öffnen über den Button ein Formular; die Einsendung wird ohne Discord-Namen oder Nutzer-ID im gewählten Kanal veröffentlicht.</p>'
+    body += '<p class="muted">Titel, Description und Zielkanal konfigurieren. Mitglieder öffnen über den Button ein Formular; die Einsendung wird ohne Discord-Namen oder Nutzer-ID im gewählten Kanal veröffentlicht.</p>'
     if request.args.get("saved") == "saved":
         body += '<div class="notice">✅ Feedback-Einstellungen gespeichert.</div>'
     elif request.args.get("saved") == "published":
         body += '<div class="notice">✅ Feedback-Panel wurde im ausgewählten Kanal veröffentlicht.</div>'
     body += '<section class="card"><h2>⚙️ Feedback-Modul einstellen</h2><form method="post">' + _csrf_field()
     body += '<input type="hidden" name="action" value="save"><label for="title">Titel der Nachricht</label><input id="title" name="title" maxlength="45" required value="' + title_value + '">'
-    body += '<label for="description">Beschreibung</label><textarea id="description" name="description" maxlength="4000" rows="5">' + description_value + '</textarea>'
+    body += '<label for="description">Description</label><textarea id="description" name="description" maxlength="4000" rows="5">' + description_value + '</textarea>'
     body += '<label for="channel_id">Kanal für abgesendete Feedback-Nachrichten</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
     body += '<label for="panel_channel_id">Kanal, in dem das Feedback-Panel veröffentlicht wird</label><select id="panel_channel_id" name="panel_channel_id" required>' + panel_channel_options + '</select>'
     body += '<div class="check"><input id="enabled" type="checkbox" name="enabled"' + checked + '><label for="enabled">Feedback-Modul aktivieren</label></div>'
@@ -2834,7 +2835,7 @@ def guild_create_role(guild_id):
         abort(400, "Bitte gib einen Namen für die neue Rolle ein.")
     color_raw = request.form.get("role_color", "#5865F2").strip().lstrip("#")
     if not re.fullmatch(r"[0-9a-fA-F]{6}", color_raw):
-        abort(400, "Bitte wähle eine gültige Rollenfarbe.")
+        abort(400, "Bitte wähle eine gültige Role color.")
     async def _create():
         return await guild.create_role(name=name, colour=discord.Colour(int(color_raw, 16)), reason=f"Dashboard-Rolle erstellt von {actor}")
     try:
@@ -3072,7 +3073,7 @@ def guild_message_builder(guild_id):
                 if bot_member is None or role >= bot_member.top_role:
                     abort(400, "Diese Rolle liegt über der höchsten Bot-Rolle. Verschiebe die Bot-Rolle in den Servereinstellungen höher.")
                 if not bot_member.guild_permissions.manage_roles:
-                    abort(400, "Der Bot benötigt die Berechtigung „Rollen verwalten“, damit Rollen-Buttons funktionieren.")
+                    abort(400, "The bot needs the “Manage Roles” permission, damit Rollen-Buttons funktionieren.")
                 button_records.append({"type": "role", "label": label, "role_id": role.id})
         embed = None
         if title or description:
@@ -3162,7 +3163,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 });
 </script>"""
     success = '<div class="notice">✅ Nachricht wurde vom Bot gesendet.</div>' if request.args.get("sent") == "1" else ''
-    body = '<section class="card scnx-message-builder"><span class="pill">MESSAGE BUILDER</span><h1>✉️ Nachricht erstellen</h1><p class="muted">Erstelle eine Discord-Nachricht wie in einem visuellen Editor: Inhalt links bearbeiten, Vorschau rechts ansehen und am Ende direkt senden.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<div class="scnx-builder"><div><section class="scnx-panel"><h2>1. Wo soll die Nachricht hin?</h2><label for="channel_id">Discord-Kanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><small class="scnx-field-help">Wähle den Kanal, in dem der Bot die Nachricht veröffentlichen soll.</small></section><section class="scnx-panel"><h2>2. Nachricht gestalten</h2><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" rows="4" placeholder="Schreibe hier deine Nachricht …"></textarea><small class="scnx-field-help">Normale Discord-Nachricht, maximal 2000 Zeichen.</small><h3>Embed (optional)</h3><label for="embed_title">Überschrift</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="z. B. Willkommen auf dem Server!"><label for="embed_description">Beschreibung</label><textarea id="embed_description" name="embed_description" maxlength="4000" rows="5" placeholder="Erkläre hier, was Mitglieder tun sollen …"></textarea><small class="scnx-field-help">Du kannst nur normalen Text, nur einen Embed oder beides zusammen senden.</small></section><section class="scnx-panel"><h2>3. Buttons hinzufügen</h2><p class="muted">Füge nur die Buttons hinzu, die du brauchst. Wähle einen Button-Typ; unnötige Felder werden automatisch ausgeblendet.</p>' + button_fields + '</section><button class="scnx-send" type="submit">🚀 Nachricht jetzt senden</button></div><aside class="scnx-panel scnx-preview"><div class="scnx-preview-label">Live-Vorschau · Discord</div><div class="scnx-discord-preview"><div class="scnx-preview-message" id="scnx-preview-message">Deine Nachricht erscheint hier …</div><div class="scnx-preview-embed" id="scnx-preview-embed" hidden><div class="scnx-preview-title" id="scnx-preview-title"></div><div class="scnx-preview-desc" id="scnx-preview-desc"></div></div><div class="scnx-preview-buttons" id="scnx-preview-buttons"></div></div><p class="muted" style="font-size:.85rem;margin-top:12px">Die Vorschau ist eine ungefähre Darstellung. Das tatsächliche Aussehen richtet sich nach Discord.</p></aside></div></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
+    body = '<section class="card scnx-message-builder"><span class="pill">MESSAGE BUILDER</span><h1>✉️ Nachricht erstellen</h1><p class="muted">Erstelle eine Discord-Nachricht wie in einem visuellen Editor: Inhalt links bearbeiten, Vorschau rechts ansehen und am Ende direkt senden.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<div class="scnx-builder"><div><section class="scnx-panel"><h2>1. Wo soll die Nachricht hin?</h2><label for="channel_id">Discord-Kanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><small class="scnx-field-help">Wähle den Kanal, in dem der Bot die Nachricht veröffentlichen soll.</small></section><section class="scnx-panel"><h2>2. Nachricht gestalten</h2><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" rows="4" placeholder="Schreibe hier deine Nachricht …"></textarea><small class="scnx-field-help">Normale Discord-Nachricht, maximal 2000 Zeichen.</small><h3>Embed (optional)</h3><label for="embed_title">Überschrift</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="z. B. Willkommen auf dem Server!"><label for="embed_description">Description</label><textarea id="embed_description" name="embed_description" maxlength="4000" rows="5" placeholder="Erkläre hier, was Mitglieder tun sollen …"></textarea><small class="scnx-field-help">Du kannst nur normalen Text, nur einen Embed oder beides zusammen senden.</small></section><section class="scnx-panel"><h2>3. Buttons hinzufügen</h2><p class="muted">Füge nur die Buttons hinzu, die du brauchst. Wähle einen Button-Typ; unnötige Felder werden automatisch ausgeblendet.</p>' + button_fields + '</section><button class="scnx-send" type="submit">🚀 Nachricht jetzt senden</button></div><aside class="scnx-panel scnx-preview"><div class="scnx-preview-label">Live-Vorschau · Discord</div><div class="scnx-discord-preview"><div class="scnx-preview-message" id="scnx-preview-message">Deine Nachricht erscheint hier …</div><div class="scnx-preview-embed" id="scnx-preview-embed" hidden><div class="scnx-preview-title" id="scnx-preview-title"></div><div class="scnx-preview-desc" id="scnx-preview-desc"></div></div><div class="scnx-preview-buttons" id="scnx-preview-buttons"></div></div><p class="muted" style="font-size:.85rem;margin-top:12px">Die Vorschau ist eine ungefähre Darstellung. Das tatsächliche Aussehen richtet sich nach Discord.</p></aside></div></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     return _render(guild.name + " · Bot-Nachricht", body)
 
 
@@ -3216,7 +3217,7 @@ def guild_command_log(guild_id):
         '<form method="post">' + _csrf_field() +
         '<div class="row"><strong>Command Log aktivieren</strong><div class="check">'
         '<input type="checkbox" id="command-log-enabled" name="enabled"' + enabled + '>'
-        '<label for="command-log-enabled">Aktiv</label></div></div>'
+        '<label for="command-log-enabled">Enabled</label></div></div>'
         '<label for="command-log-output">Log-Kanal</label>'
         '<select id="command-log-output" name="output_channel_id"><option value="">— Log-Kanal auswählen —</option>'
         + channel_options + '</select>'
@@ -3474,12 +3475,12 @@ def guild_live_stats(guild_id):
         '<div class="grid"><div class="notice"><small>Mitglieder (Discord-Cache)</small><h2>' + str(guild.member_count or len(guild.members)) + '</h2></div>'
         '<div class="notice"><small>Textkanäle</small><h2>' + str(len(guild.text_channels)) + '</h2></div>'
         '<div class="notice"><small>Rollen</small><h2>' + str(len(guild.roles)) + '</h2></div>'
-        '<div class="notice"><small>Aktive Befehle</small><h2>' + str(sum(1 for item in commands if item["enabled"])) + '</h2></div>'
+        '<div class="notice"><small>Enablede Befehle</small><h2>' + str(sum(1 for item in commands if item["enabled"])) + '</h2></div>'
         '<div class="notice"><small>Erkannte Module</small><h2>' + str(len(modules)) + '</h2></div>'
         '<div class="notice"><small>Erfasste Nachrichten</small><h2>' + str(message_total) + '</h2></div>'
-        '<div class="notice"><small>Mitglieder mit Aktivitätsdaten</small><h2>' + str(active_users) + '</h2></div>'
+        '<div class="notice"><small>Mitglieder mit Enableditätsdaten</small><h2>' + str(active_users) + '</h2></div>'
         '<div class="notice"><small>Erfasste Voice-Zeit</small><h2>' + str(voice_seconds // 3600) + ' Std.</h2></div></div>'
-        '<p class="muted">Aktivitätswerte stammen aus gespeicherten Bot-Statistiken und sind keine Echtzeit-Zeitreihe.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
+        '<p class="muted">Enableditätswerte stammen aus gespeicherten Bot-Statistiken und sind keine Echtzeit-Zeitreihe.</p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Serverübersicht</a></section>'
     )
     return _render(guild.name + " · Live-Statistiken", body)
 
@@ -3730,7 +3731,7 @@ def guild_verification(guild_id):
         + '<label>Rolle nach Verifizierung entfernen (optional)</label><select name="unverified_role_id">' + options(roles, cfg.get("unverified_role")) + '</select>'
         + '<label>Verifizierungsmethode</label><select name="mode"><option value="click"' + (' selected' if mode == "click" else '') + '>Button klicken</option><option value="code"' + (' selected' if mode == "code" else '') + '>Bild-Captcha</option></select>'
         + '<label>Embed-Titel</label><input name="title" maxlength="256" value="' + html.escape(str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")), quote=True) + '">'
-        + '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
+        + '<label>Description</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
         + '<label>Button-Text</label><input name="button_label" maxlength="80" value="' + html.escape(str(cfg.get("verify_button_label", "Verifizieren")), quote=True) + '">'
         + '<label>Button-Emoji</label><input name="emoji" maxlength="100" value="' + html.escape(str(cfg.get("verify_button_emoji", "✅")), quote=True) + '">'
         + '<button type="submit">Verifizierung speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Verifizierungsnachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="action" value="delete_verification"><button type="submit" class="secondary">🗑️ Verifizierungsnachricht löschen</button></form></section>'
@@ -3789,7 +3790,7 @@ def guild_server_boost(guild_id):
         '<span class="pill">SERVER-BOOST</span><h1 style="margin-top:12px">Server-Booster</h1>'
         '<p class="muted">Konfiguriere die Nachricht bei einem neuen Boost und optional eine Booster-Rolle.</p>'
         + saved + '<section class="card"><form method="post">' + _csrf_field()
-        + '<div class="row"><strong>Boost-System aktivieren</strong><label class="check"><input type="checkbox" name="enabled"' + enabled + '> Aktiv</label></div>'
+        + '<div class="row"><strong>Boost-System aktivieren</strong><label class="check"><input type="checkbox" name="enabled"' + enabled + '> Enabled</label></div>'
         + '<label for="channel_id">Ankündigungskanal</label><select id="channel_id" name="channel_id">' + channel_options + '</select>'
         + '<label for="role_id">Booster-Rolle (optional)</label><select id="role_id" name="role_id">' + role_options + '</select>'
         + '<label for="message">Boost-Nachricht</label><textarea id="message" name="message" maxlength="1800" required>' + message + '</textarea>'
@@ -4034,11 +4035,11 @@ def guild_tickets(guild_id):
     )
     body = ticket_metrics_html + (
         f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
-        '<p class="muted">Bearbeite Titel, Beschreibung, Anfragearten, Ticket-Kategorie und Support-Rolle. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
+        '<p class="muted">Bearbeite Titel, Description, Anfragearten, Ticket-Kategorie und Support-Rolle. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
         '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support-Rolle, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
-    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Beschreibung</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">' + "".join(f'<label>Button {i} (optional)</label><input name="button{i}" maxlength="80">' for i in range(2, 11)) + "".join(f'<div class="ticket-option-description" hidden><label>Dropdown-Beschreibung für Anfrage {i} (optional)</label><input name="button_description{i}" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) + '<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select><p class="muted">Im Free-Plan ist eine Anfrageart als Button verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p><script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>' + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#5865F2" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="5865F2" oninput="this.form.brand_color_picker.value=\'#\'+this.value"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500"></div>' if guild_has_feature(cfg, "branding") else '') + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
+    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">' + "".join(f'<label>Button {i} (optional)</label><input name="button{i}" maxlength="80">' for i in range(2, 11)) + "".join(f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input name="button_description{i}" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) + '<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select><p class="muted">Im Free-Plan ist eine Anfrageart als Button verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p><script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>' + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#5865F2" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="5865F2" oninput="this.form.brand_color_picker.value=\'#\'+this.value"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500"></div>' if guild_has_feature(cfg, "branding") else '') + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     if not panels:
         body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Nutze das Formular „Neues Ticket-Panel erstellen“ oben, um eines direkt hier anzulegen.</div>'
     for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
@@ -4051,12 +4052,12 @@ def guild_tickets(guild_id):
             value = labels[i-1] if len(labels) >= i else ""
             option_description = option_descriptions[i-1] if len(option_descriptions) >= i else ""
             button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
-            button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Beschreibung für Anfrage {i} (optional)</label><input type="text" name="button_description{i}" maxlength="100" value="{html.escape(str(option_description), quote=True)}" placeholder="Kurze Erklärung für diese Anfrageart"></div>'
+            button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input type="text" name="button_description{i}" maxlength="100" value="{html.escape(str(option_description), quote=True)}" placeholder="Kurze Erklärung für diese Anfrageart"></div>'
         body += (
             '<section class="card"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
             '<form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '">'
             '<label>Titel</label><input type="text" name="title" maxlength="256" required value="' + html.escape(str(panel.get("title", "Support-Ticket")), quote=True) + '">'
-            '<label>Beschreibung</label><textarea name="description" maxlength="4000">' + html.escape(str(panel.get("description", ""))) + '</textarea>'
+            '<label>Description</label><textarea name="description" maxlength="4000">' + html.escape(str(panel.get("description", ""))) + '</textarea>'
             + button_fields
             + '<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons"' + (' selected' if panel.get("display_mode", "buttons") == "buttons" else '') + '>Buttons (bis zu 10)</option><option value="select"' + (' selected' if panel.get("display_mode") == "select" else '') + '>Dropdown-Menü (bis zu 10 Optionen)</option></select>'
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
@@ -4112,7 +4113,7 @@ def guild_applications(guild_id):
         description = request.form.get("panel_description", "").strip()
         questions = [line.strip() for line in request.form.get("questions", "").splitlines() if line.strip()]
         if not title or len(title) > 256 or len(description) > 4000:
-            abort(400, "Bitte gib einen Titel ein (max. 256 Zeichen) und halte die Beschreibung unter 4000 Zeichen.")
+            abort(400, "Bitte gib einen Titel ein (max. 256 Zeichen) und halte die Description unter 4000 Zeichen.")
         if not questions or len(questions) > 10 or any(len(question) > 200 for question in questions):
             abort(400, "Bitte gib 1 bis 10 Fragen ein; jede Frage darf maximal 200 Zeichen lang sein.")
         cog = _bot.get_cog("Applications") if _bot else None
@@ -4203,11 +4204,11 @@ def guild_applications(guild_id):
     legacy_exists = not panels and any(key in settings for key in ("panel_channel_id", "review_channel_id", "questions"))
     panel_count = len(panels) if panels else (1 if legacy_exists else 0)
     premium_enabled = guild_has_feature(_guild_config(guild.id), "applications")
-    body = '<span class="pill">IRONWOLF · BEWERBUNGEN</span><h1 style="margin-top:12px">📝 Bewerbungen verwalten</h1><p class="muted">Erstelle unbegrenzt viele getrennte Bewerbungs-Panels mit eigenen Fragen und Kanälen.</p><div class="notice">Aktive Panels: {} · {}</div>'.format(panel_count, "Premium" if premium_enabled else "Free")
+    body = '<span class="pill">IRONWOLF · BEWERBUNGEN</span><h1 style="margin-top:12px">📝 Bewerbungen verwalten</h1><p class="muted">Erstelle unbegrenzt viele getrennte Bewerbungs-Panels mit eigenen Fragen und Kanälen.</p><div class="notice">Enablede Panels: {} · {}</div>'.format(panel_count, "Premium" if premium_enabled else "Free")
     body += '<p style="margin:16px 0"><a class="button" href="#application-create-form" style="display:inline-flex;align-items:center;gap:8px;font-size:16px">＋ Weitere Bewerbung hinzufügen</a></p>'
     if request.args.get("saved") == "1":
         body += '<div class="notice">✅ Bewerbungs-Panel wurde veröffentlicht und die Einstellungen gespeichert.</div>'
-    body += '<form id="application-create-form" method="post">' + _csrf_field() + '<div class="grid"><section class="card"><h2>Panel gestalten</h2><label for="panel_name">Interner Panel-Name</label><input id="panel_name" name="panel_name" maxlength="80" required value="Bewerbung"><label for="panel_title">Titel</label><input id="panel_title" name="panel_title" maxlength="256" required value="' + html.escape(str(settings.get("panel_title") or "🐺 IronWolf – Bewerbungen"), quote=True) + '"><label for="button_label">Button-Name</label><input id="button_label" name="button_label" maxlength="80" required value="Bewerben"><label for="panel_description">Beschreibung</label><textarea id="panel_description" name="panel_description" rows="5" maxlength="4000">' + html.escape(str(settings.get("panel_description") or "Du möchtest dich bewerben? Klicke auf den Button. Ich stelle dir die Fragen anschließend einzeln per DM.")) + '</textarea><label for="questions">Bewerbungsfragen (eine pro Zeile, maximal 10)</label><textarea id="questions" name="questions" rows="8" required>' + html.escape("\n".join(str(q) for q in questions)) + '</textarea></section><section class="card"><h2>Discord-Kanäle</h2><label for="panel_channel_id">Öffentlicher Panel-Kanal</label><select id="panel_channel_id" name="panel_channel_id" required>' + channel_options("panel_channel_id") + '</select><label for="review_channel_id">Privater Bewerbungs-Prüfkanal</label><select id="review_channel_id" name="review_channel_id" required>' + channel_options("review_channel_id") + '</select><label for="log_channel_id">Protokoll-Kanal</label><select id="log_channel_id" name="log_channel_id" required>' + channel_options("log_channel_id") + '</select><label for="review_role_id">Rolle, die Bewerbungen bearbeiten darf (optional)</label><select id="review_role_id" name="review_role_id">' + role_options("review_role_id") + '</select><label for="ping_role_id">Rolle bei neuen Bewerbungen anpingen (optional)</label><select id="ping_role_id" name="ping_role_id">' + role_options("ping_role_id") + '</select><p class="muted">Mit Administrator- oder Server-verwalten-Rechten kann man Bewerbungen ebenfalls bearbeiten.</p></section></div><button type="submit">💾 Speichern und Bewerbungs-Panel veröffentlichen</button> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form>'
+    body += '<form id="application-create-form" method="post">' + _csrf_field() + '<div class="grid"><section class="card"><h2>Panel gestalten</h2><label for="panel_name">Interner Panel-Name</label><input id="panel_name" name="panel_name" maxlength="80" required value="Bewerbung"><label for="panel_title">Titel</label><input id="panel_title" name="panel_title" maxlength="256" required value="' + html.escape(str(settings.get("panel_title") or "🐺 IronWolf – Bewerbungen"), quote=True) + '"><label for="button_label">Button-Name</label><input id="button_label" name="button_label" maxlength="80" required value="Bewerben"><label for="panel_description">Description</label><textarea id="panel_description" name="panel_description" rows="5" maxlength="4000">' + html.escape(str(settings.get("panel_description") or "Du möchtest dich bewerben? Klicke auf den Button. Ich stelle dir die Fragen anschließend einzeln per DM.")) + '</textarea><label for="questions">Bewerbungsfragen (eine pro Zeile, maximal 10)</label><textarea id="questions" name="questions" rows="8" required>' + html.escape("\n".join(str(q) for q in questions)) + '</textarea></section><section class="card"><h2>Discord-Kanäle</h2><label for="panel_channel_id">Öffentlicher Panel-Kanal</label><select id="panel_channel_id" name="panel_channel_id" required>' + channel_options("panel_channel_id") + '</select><label for="review_channel_id">Privater Bewerbungs-Prüfkanal</label><select id="review_channel_id" name="review_channel_id" required>' + channel_options("review_channel_id") + '</select><label for="log_channel_id">Protokoll-Kanal</label><select id="log_channel_id" name="log_channel_id" required>' + channel_options("log_channel_id") + '</select><label for="review_role_id">Rolle, die Bewerbungen bearbeiten darf (optional)</label><select id="review_role_id" name="review_role_id">' + role_options("review_role_id") + '</select><label for="ping_role_id">Rolle bei neuen Bewerbungen anpingen (optional)</label><select id="ping_role_id" name="ping_role_id">' + role_options("ping_role_id") + '</select><p class="muted">Mit Administrator- oder Server-verwalten-Rechten kann man Bewerbungen ebenfalls bearbeiten.</p></section></div><button type="submit">💾 Speichern und Bewerbungs-Panel veröffentlichen</button> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form>'
     return _render(guild.name + " · Bewerbungen", body)
 
 
@@ -4255,7 +4256,7 @@ def guild_commands(guild_id):
                 premium_marker = ' <span class="pill">PREMIUM</span>'
             command_html += f'<div class="row command-entry" data-command-search="{html.escape((command_name + " " + item["kind"] + " " + item["cog"]).casefold(), quote=True)}"><div><strong>{html.escape(command_name)}</strong>{premium_marker}<br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
         command_html += '</section>'
-    command_html += '</div><button type="submit">Änderungen speichern</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
+    command_html += '</div><button type="submit">Save changes</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
     command_html += """<script>
 (function(){
   const input=document.getElementById('command-search');
@@ -4445,7 +4446,7 @@ def create_module():
     command = request.form.get("command_name", "").strip()
     import re
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,39}", name):
-        abort(400, "Der Modulname darf nur Buchstaben, Zahlen und Unterstriche enthalten und muss mit einem Buchstaben beginnen.")
+        abort(400, "Der Module name darf nur Buchstaben, Zahlen und Unterstriche enthalten und muss mit einem Buchstaben beginnen.")
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", command):
         abort(400, "Der Befehlsname muss klein geschrieben sein und darf Buchstaben, Zahlen und Bindestriche enthalten.")
     description = description[:120].replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
@@ -4528,10 +4529,10 @@ def guild_wolfpulse(guild_id):
     cfg = _guild_config(guild.id)
     me = guild.me
     checks = [
-        ("Willkommenskanal", cfg.get("welcome_channel"), "welcome_channel"),
+        ("Welcome channel", cfg.get("welcome_channel"), "welcome_channel"),
         ("Verifizierungskanal", cfg.get("verify_channel"), "verify_channel"),
         ("Moderations-Logkanal", cfg.get("log_channel_id"), "log_channel_id"),
-        ("Sicherheits-Logkanal", cfg.get("security_log_channel"), "security_log_channel"),
+        ("Security log channel", cfg.get("security_log_channel"), "security_log_channel"),
     ]
     rows = []
     ready = 0
