@@ -31,7 +31,7 @@ def sync_manual_grants():
     """Track Railway allowlist grants with a persistent 365-day term."""
     now = _now()
     active = {}
-    for plan, variable in (("premium", "PREMIUM_USER_IDS"), ("premium", "PREMIUM_PLUS_USER_IDS")):
+    for plan, variable in (("premium", "PREMIUM_USER_IDS"), ("premium_plus", "PREMIUM_PLUS_USER_IDS")):
         for raw_id in (os.getenv(variable) or "").split(","):
             uid = raw_id.strip()
             if uid.isdigit():
@@ -147,7 +147,7 @@ def account_plan(user_id):
         return "free"
     if expiry <= _now():
         return "free"
-    return "premium" if grant.get("plan") in {"premium", "premium_plus"} else "free"
+    return grant.get("plan") if grant.get("plan") in {"premium", "premium_plus"} else "free"
 
 
 def has_feature(user_id, feature):
