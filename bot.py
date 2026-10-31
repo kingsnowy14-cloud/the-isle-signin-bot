@@ -1585,8 +1585,15 @@ async def award_message_xp(message):
             ),
             color=discord.Color.gold(),
         )
-        await message.channel.send(embed=embed)
         cfg = guild_config(message.guild.id)
+        levelup_channel_id = cfg.get("levelup_channel")
+        levelup_channel = message.guild.get_channel(int(levelup_channel_id)) if levelup_channel_id else None
+        if not isinstance(levelup_channel, discord.TextChannel):
+            levelup_channel = message.channel
+        try:
+            await levelup_channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[LEVELING] Could not send level-up announcement in guild {message.guild.id}: {type(exc).__name__}: {exc}", flush=True)
         role_id = cfg.get("level_roles", {}).get(str(new_level))
         role = message.guild.get_role(int(role_id)) if role_id else None
         if role and isinstance(message.author, discord.Member):
