@@ -118,7 +118,7 @@ PREMIUM_FEATURES = {
 
 PLAN_FEATURES = {
     "free": frozenset(),
-    "premium": frozenset(PREMIUM_FEATURES),
+    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications"}),
     "premium_plus": frozenset(PREMIUM_FEATURES),
 }
 
