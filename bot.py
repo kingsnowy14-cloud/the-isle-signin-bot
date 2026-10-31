@@ -477,8 +477,16 @@ def guild_config(guild_id):
     return cfg
 
 
-SUPPORTED_BOT_LANGUAGES = {"en"}
+SUPPORTED_BOT_LANGUAGES = {"en", "de"}
 BOT_TRANSLATIONS = {
+    "de": {
+        "This command has been disabled for this server in the web dashboard.": "Dieser Befehl wurde für diesen Server im Dashboard deaktiviert.",
+        "This Pro module requires an active Premium+ account linked to this server.": "Dieses Pro-Modul benötigt ein aktives Premium+-Konto, das mit diesem Server verknüpft ist.",
+        "This module has been disabled for this server in the web dashboard.": "Dieses Modul wurde für diesen Server im Dashboard deaktiviert.",
+        "Welcome {mention} to **{server}**! You are member **#{count}**.": "Willkommen {mention} auf **{server}**! Du bist Mitglied **Nr. {count}**.",
+        "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute.",
+        "IronWolf has not been enabled for this server yet. A server administrator can enable it in the dashboard.": "IronWolf wurde für diesen Server noch nicht aktiviert. Ein Serveradministrator kann den Bot im Dashboard aktivieren.",
+    },
     "en": {
         "This command has been disabled for this server in the web dashboard.": "This command has been disabled for this server in the web dashboard.",
         "This Pro module requires an active Premium+ account linked to this server.": "This Pro module requires an active Premium+ account linked to this server.",
@@ -510,8 +518,11 @@ BOT_TRANSLATIONS = {
 }
 
 def server_language(guild_id):
-    """IronWolf uses English globally for all server-facing bot responses."""
-    return "en"
+    """Return the language selected for this Discord server; English is the default."""
+    if guild_id is None:
+        return "en"
+    language = guild_config(guild_id).get("bot_language", "en")
+    return language if language in SUPPORTED_BOT_LANGUAGES else "en"
 
 def bot_text(guild_id, text):
     """Translate catalogued common bot messages; unknown text remains unchanged."""
@@ -528,7 +539,7 @@ def migrate_all_guild_configs():
             cfg = config[guild_id]
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
-        if cfg.get("bot_language") != "en":
+        if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
             cfg["bot_language"] = "en"
             changed = True
     # Ensure newly joined servers get a complete default config too.
@@ -539,7 +550,7 @@ def migrate_all_guild_configs():
             cfg = config[str(guild.id)]
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
-        if cfg.get("bot_language") != "en":
+        if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
             cfg["bot_language"] = "en"
             changed = True
     if changed:
