@@ -1134,6 +1134,19 @@ def public_terms_of_service():
     return make_response(_page("Nutzungsbedingungen – IronWolf", body), 200)
 
 
+@app.errorhandler(401)
+def dashboard_auth_expired(error):
+    """Keep expired Discord sessions actionable instead of showing a broken page."""
+    session.clear()
+    body = (
+        '<section class="card"><h1>Discord-Anmeldung abgelaufen</h1>'
+        '<p>Deine Sitzung ist nicht mehr gültig. Melde dich erneut über Discord an, '
+        'um zum Dashboard zurückzukehren.</p>'
+        '<a class="button" href="/login">Mit Discord erneut anmelden</a></section>'
+    )
+    return make_response(_page("Erneut anmelden", body), 401)
+
+
 def _require_login():
     if not session.get("access_token"):
         return redirect(url_for("login"))
@@ -1179,6 +1192,10 @@ def _user_guilds():
         print(f"[DASHBOARD] Discord API request failed while loading guild list: {type(exc).__name__}", flush=True)
         abort(502, "Discord ist momentan nicht erreichbar. Bitte versuche es später erneut.")
 
+    if guilds is None:
+        # _api_get clears an expired OAuth session on HTTP 401. Return a
+        # deliberate login response instead of treating it as a bad API payload.
+        abort(401, "Deine Discord-Anmeldung ist abgelaufen. Bitte melde dich erneut an.")
     if not isinstance(guilds, list):
         abort(502, "Discord hat eine unerwartete Antwort auf die Serverliste geliefert.")
     with _guild_cache_lock:
