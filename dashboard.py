@@ -1302,8 +1302,25 @@ def _guild_roles(guild):
     return [(role.id, role.name) for role in guild.roles if not role.is_default() and not role.managed]
 
 
+@app.before_request
+def log_dashboard_navigation():
+    """Log module-page requests to diagnose unexpected dashboard redirects."""
+    if request.path.startswith("/guild/"):
+        print(
+            f"[DASHBOARD NAV] {request.method} {request.path} "
+            f"query={request.query_string.decode('utf-8', errors='replace')[:200]}",
+            flush=True,
+        )
+
+
 @app.after_request
 def security_headers(response):
+    if request.path.startswith("/guild/"):
+        print(
+            f"[DASHBOARD NAV] response={response.status_code} "
+            f"path={request.path} location={response.headers.get('Location', '-')}",
+            flush=True,
+        )
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
