@@ -2517,7 +2517,7 @@ def guild_page(guild_id):
 
 @app.route("/guild/<guild_id>/security-lab", methods=["GET", "POST"])
 def guild_security_lab(guild_id):
-    """Run safe security configuration simulations from the dashboard."""
+    """Run real, non-destructive Discord security checks and publish their report."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
@@ -2532,33 +2532,90 @@ def guild_security_lab(guild_id):
             abort(403, "Administrator or Manage Server permission required.")
         scenario = request.form.get("scenario", "all").strip().lower()
         cases = {
-            "raid": ("Raid wave", "25 simulated member joins in 10 seconds.", bool(cfg.get("anti_raid_enabled")), "Anti-Raid"),
-            "nuke": ("Nuke attempt", "12 simulated channel/role deletion events.", bool(cfg.get("anti_nuke_enabled")), "Anti-Nuke"),
-            "links": ("Spam burst", "8 simulated rapid messages containing suspicious links.", bool(cfg.get("automod_enabled")), "AutoMod"),
+            "raid": ("Anti-Raid", bool(cfg.get("anti_raid_enabled")), "The real Anti-Raid setting is enabled."),
+            "nuke": ("Anti-Nuke", bool(cfg.get("anti_nuke_enabled")), "The real Anti-Nuke setting is enabled."),
+            "links": ("AutoMod", bool(cfg.get("automod_enabled")), "The real AutoMod setting is enabled."),
         }
         if scenario not in {"all", *cases.keys()}:
             abort(400, "Invalid security test scenario.")
-        selected = list(cases.values()) if scenario == "all" else [cases[scenario]]
-        passed = sum(1 for _, _, enabled, _ in selected if enabled)
-        result_html = '<section class="card"><h2>🧪 Simulation results</h2><p class="muted">SAFE SIMULATION — events are evaluated in memory only. No real channels, roles, members or messages are changed.</p>'
-        for title, attack, enabled, protection in selected:
-            status = "✅ PROTECTION ENABLED" if enabled else "⚠️ PROTECTION DISABLED"
-            detail = (protection + " is enabled in this server's configuration.") if enabled else (protection + " is disabled. Enable it in Security Settings.")
-            result_html += '<div class="notice"><strong>' + status + ' · ' + html.escape(title) + '</strong><br>Scenario: ' + html.escape(attack) + '<br>Configuration check: <strong>' + ("PASS" if enabled else "NEEDS ATTENTION") + '</strong><br>' + html.escape(detail) + '</div>'
-        result_html += '<p><strong>Protected scenarios:</strong> ' + str(passed) + '/' + str(len(selected)) + '<br><strong>Needs attention:</strong> ' + str(len(selected)-passed) + '/' + str(len(selected)) + '</p><p class="muted">This checks whether the related protection setting is enabled. It does not launch a live attack or prove runtime blocking.</p></section>'
+        selected = list(cases.items()) if scenario == "all" else [(scenario, cases[scenario])]
+
+        async def _run_live_checks():
+            live_guild = _bot.get_guild(guild.id)
+            if live_guild is None:
+                raise RuntimeError("The bot is not connected to this Discord server.")
+            me = live_guild.me
+            if me is None:
+                raise RuntimeError("The bot's server member could not be loaded.")
+            findings = []
+            for key, (label, enabled, detail) in selected:
+                findings.append((label, enabled, detail))
+            permission_checks = [
+                ("View channels", me.guild_permissions.view_channel),
+                ("View audit log", me.guild_permissions.view_audit_log),
+                ("Manage messages (AutoMod)", me.guild_permissions.manage_messages),
+                ("Moderate members (timeouts)", me.guild_permissions.moderate_members),
+                ("Manage roles (role-based protections)", me.guild_permissions.manage_roles),
+            ]
+            security_channel_id = cfg.get("security_log_channel")
+            log_channel = live_guild.get_channel(int(security_channel_id)) if security_channel_id else None
+            log_ready = isinstance(log_channel, discord.TextChannel)
+            if log_ready:
+                perms = log_channel.permissions_for(me)
+                log_ready = perms.view_channel and perms.send_messages and perms.embed_links
+            return findings, permission_checks, log_channel if log_ready else None
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(_run_live_checks(), _bot.loop)
+            findings, permission_checks, log_channel = future.result(timeout=25)
+        except Exception as exc:
+            abort(400, "Live Discord check failed: " + (str(exc) or type(exc).__name__)[:250])
+
+        passed = sum(1 for _, enabled, _ in findings if enabled)
+        permission_passed = sum(1 for _, ok in permission_checks if ok)
+        status_lines = []
+        for label, enabled, detail in findings:
+            status_lines.append(("PASS" if enabled else "WARN", label, detail if enabled else "This protection is currently disabled in the server settings."))
+        for label, ok in permission_checks:
+            status_lines.append(("PASS" if ok else "WARN", label, "Discord permission is granted." if ok else "The bot is missing this Discord permission."))
+
+        published = False
+        if log_channel is not None:
+            async def _publish_report():
+                embed = discord.Embed(
+                    title="🧪 IronWolf Security Lab · Live Check",
+                    description=f"Real permission/configuration checks run by {actor} ({actor.id}). No members, roles, channels or permissions were changed.",
+                    color=discord.Color.green() if passed == len(findings) and permission_passed == len(permission_checks) else discord.Color.orange(),
+                    timestamp=datetime.now(timezone.utc),
+                )
+                for label, ok, detail in status_lines:
+                    embed.add_field(name=f"{'✅' if ok == 'PASS' else '⚠️'} {label}", value=detail[:900], inline=False)
+                embed.set_footer(text="Live Discord checks · Non-destructive")
+                await log_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            try:
+                asyncio.run_coroutine_threadsafe(_publish_report(), _bot.loop).result(timeout=20)
+                published = True
+            except Exception:
+                published = False
+
+        result_html = '<section class="card"><h2>🧪 Live Discord results</h2><p class="muted">These checks ran against the connected Discord server and its actual bot permissions. No destructive action was performed.</p>'
+        for status, label, detail in status_lines:
+            result_html += '<div class="notice"><strong>' + ('✅ PASS' if status == "PASS" else '⚠️ CHECK') + ' · ' + html.escape(label) + '</strong><br>' + html.escape(detail) + '</div>'
+        result_html += '<p><strong>Enabled protections:</strong> ' + str(passed) + '/' + str(len(findings)) + '<br><strong>Granted bot permissions:</strong> ' + str(permission_passed) + '/' + str(len(permission_checks)) + '<br><strong>Security log report:</strong> ' + ('Posted in #' + html.escape(log_channel.name) if published else 'Not posted — configure a security log channel and grant Send Messages + Embed Links.') + '</p><p class="muted">This validates configuration and current Discord permissions. It does not generate fake raids, delete channels, or test real-time blocking against an attack.</p></section>'
+
     body = (
         '<section class="card"><span class="pill">IRONWOLF · SECURITY LAB</span>'
         '<h1 style="margin-top:12px">🧪 Security Lab</h1>'
-        '<p class="muted">Run safe security configuration checks directly from this dashboard. Simulations do not modify real server content.</p>'
+        '<p class="muted">Run live, non-destructive checks against this Discord server. The bot checks real protection settings and Discord permissions, then posts a report to the configured security log channel.</p>'
         + result_html +
-        '<section class="card"><h2>Run a security test</h2><form method="post">' + _csrf_field() +
-        '<label for="scenario">Test scenario</label><select id="scenario" name="scenario">'
-        '<option value="all">Full security test</option>'
-        '<option value="raid">Raid simulation</option>'
-        '<option value="nuke">Nuke attempt simulation</option>'
-        '<option value="links">Spam burst simulation</option>'
-        '</select><button type="submit">🧪 Run simulation</button></form>'
-        '<p class="muted">Requires Administrator or Manage Server permission. Tests only check whether Anti-Raid, Anti-Nuke and AutoMod settings are enabled; they do not perform live attacks.</p>'
+        '<section class="card"><h2>Run live security checks</h2><form method="post">' + _csrf_field() +
+        '<label for="scenario">Check</label><select id="scenario" name="scenario">'
+        '<option value="all">Full security check</option>'
+        '<option value="raid">Anti-Raid</option>'
+        '<option value="nuke">Anti-Nuke</option>'
+        '<option value="links">AutoMod</option>'
+        '</select><button type="submit">🧪 Run live check</button></form>'
+        '<p class="muted">Requires Administrator or Manage Server permission. The test performs real read-only checks and writes a report to Discord; it does not launch attacks or change server settings.</p>'
         '<p><a class="button" href="/guild/' + gid + '?section=security#settings-panel">🛡️ Open Security Settings</a> '
         '<a class="button secondary" href="/guild/' + gid + '">← Back to server overview</a></p></section>'
     )
