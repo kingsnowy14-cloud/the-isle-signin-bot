@@ -13,6 +13,7 @@ import html
 import json
 import os
 import secrets
+import sqlite3
 import threading
 import sys
 import time
@@ -2606,7 +2607,7 @@ def guild_security_lab(guild_id):
                     timestamp=datetime.now(timezone.utc),
                 )
                 for status, label, detail in status_lines:
-                    embed.add_field(name=f"{'✅' if ok == 'PASS' else '⚠️'} {label}", value=detail[:900], inline=False)
+                    embed.add_field(name=f"{'✅' if status == 'PASS' else '⚠️'} {label}", value=detail[:900], inline=False)
                 embed.set_footer(text="Live Discord checks · Non-destructive")
                 await log_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
             try:
@@ -3677,41 +3678,100 @@ def dashboard_premium_servers_admin():
 
 @app.route("/guild/<guild_id>/economy", methods=["GET", "POST"])
 def guild_economy(guild_id):
-    """Dedicated dashboard category for the server economy."""
+    """Configure the same SQLite settings consumed by the economy commands."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     gid = str(guild.id)
-    cfg = _guild_config(guild.id)
-    economy_cfg = cfg.setdefault("economy_dashboard", {})
+    db_path = data_path("ironwolf_economy.sqlite3")
+    defaults = {
+        "currency_name": "Hamburg-Dollar", "currency_emoji": "💶",
+        "starting_balance": "500", "work_min": "100", "work_max": "300",
+        "work_cooldown": "3600", "crime_min": "150", "crime_max": "600",
+        "crime_cooldown": "1800", "crime_success_percent": "55",
+        "police_catch_percent": "35", "crime_fine_percent": "20",
+    }
+    def load_economy_settings():
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(db_path), timeout=15) as con:
+            con.execute("""CREATE TABLE IF NOT EXISTS settings (
+                guild_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+                PRIMARY KEY (guild_id, key))""")
+            rows = con.execute("SELECT key, value FROM settings WHERE guild_id=?", (guild.id,)).fetchall()
+        values = dict(defaults)
+        values.update({str(key): str(value) for key, value in rows if key in defaults})
+        return values
+    values = load_economy_settings()
+    result_html = ""
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
-        currency_name = request.form.get("currency_name", "Münzen").strip()[:32] or "Münzen"
-        economy_cfg["currency_name"] = currency_name
-        economy_cfg["enabled"] = request.form.get("enabled") == "on"
-        _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Wirtschaft & Shops", session.get("user_id"), "Änderung gespeichert")
+        currency_name = request.form.get("currency_name", "").strip()
+        currency_emoji = request.form.get("currency_emoji", "").strip()
+        if not currency_name or len(currency_name) > 32 or not currency_emoji or len(currency_emoji) > 12:
+            abort(400, "Währungsname (1–32 Zeichen) und Emoji (1–12 Zeichen) sind erforderlich.")
+        numeric_rules = {
+            "starting_balance": (0, 1_000_000_000),
+            "work_min": (1, 1_000_000), "work_max": (1, 1_000_000),
+            "crime_min": (1, 1_000_000), "crime_max": (1, 1_000_000),
+            "work_cooldown": (60, 604800), "crime_cooldown": (60, 604800),
+            "crime_success_percent": (0, 100), "police_catch_percent": (0, 100),
+            "crime_fine_percent": (0, 100),
+        }
+        new_values = {"currency_name": currency_name, "currency_emoji": currency_emoji}
+        for key, (minimum, maximum) in numeric_rules.items():
+            raw = request.form.get(key, "").strip()
+            try:
+                number = int(raw)
+            except (TypeError, ValueError):
+                abort(400, "Ungültiger Zahlenwert für " + key + ".")
+            if not minimum <= number <= maximum:
+                abort(400, "Wert außerhalb des erlaubten Bereichs für " + key + ".")
+            new_values[key] = str(number)
+        if int(new_values["work_min"]) > int(new_values["work_max"]) or int(new_values["crime_min"]) > int(new_values["crime_max"]):
+            abort(400, "Ein Mindestwert darf nicht größer als der zugehörige Höchstwert sein.")
+        with sqlite3.connect(str(db_path), timeout=15) as con:
+            con.execute("""CREATE TABLE IF NOT EXISTS settings (
+                guild_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+                PRIMARY KEY (guild_id, key))""")
+            con.executemany("""INSERT INTO settings(guild_id,key,value) VALUES(?,?,?)
+                ON CONFLICT(guild_id,key) DO UPDATE SET value=excluded.value""",
+                [(guild.id, key, value) for key, value in new_values.items()])
+            con.commit()
+        _audit_dashboard_change(guild.id, "Wirtschaftssystem", session.get("user_id"), "Economy-Einstellungen über das Dashboard gespeichert.")
         return redirect(url_for("guild_economy", guild_id=gid))
-    enabled = economy_cfg.get("enabled", True)
-    checked = " checked" if enabled else ""
-    currency_name = html.escape(str(economy_cfg.get("currency_name", "Münzen")), quote=True)
+    values = load_economy_settings()
+    fields = [
+        ("currency_name", "Währungsname", "text", 32),
+        ("currency_emoji", "Währungs-Emoji", "text", 12),
+        ("starting_balance", "Startguthaben", "number", None),
+        ("work_min", "Arbeit: Mindestverdienst", "number", None),
+        ("work_max", "Arbeit: Höchstverdienst", "number", None),
+        ("work_cooldown", "Arbeit: Cooldown in Sekunden", "number", None),
+        ("crime_min", "Crime: Mindestbeute", "number", None),
+        ("crime_max", "Crime: Höchstbeute", "number", None),
+        ("crime_cooldown", "Crime: Cooldown in Sekunden", "number", None),
+        ("crime_success_percent", "Crime: Erfolgswahrscheinlichkeit (%)", "number", None),
+        ("police_catch_percent", "Crime: Polizei-Erwischungswahrscheinlichkeit (%)", "number", None),
+        ("crime_fine_percent", "Crime: Geldstrafe (%)", "number", None),
+    ]
+    form_fields = ''.join(
+        '<label for="' + key + '">' + html.escape(label) + '</label>'
+        '<input id="' + key + '" name="' + key + '" type="' + kind + '"'
+        + (' maxlength="' + str(limit) + '"' if limit else ' min="0"')
+        + ' value="' + html.escape(str(values[key]), quote=True) + '" required>'
+        for key, label, kind, limit in fields
+    )
     body = (
-        '<section class="card"><h1>💰 Wirtschaftssystem</h1>'
-        '<p>Verwalte hier die Wirtschaft deines Servers und finde die wichtigsten Geld-, Shop- und Saisonfunktionen an einem Ort.</p>'
-        '<form method="post">' + _csrf_field() +
-        '<label for="currency_name">Währungsname</label>'
-        '<input id="currency_name" name="currency_name" maxlength="32" value="' + currency_name + '" required>'
-        '<div class="check"><input type="checkbox" id="enabled" name="enabled"' + checked + '>'
-        '<label for="enabled">Wirtschaftssystem im Dashboard als aktiviert markieren</label></div>'
-        '<button type="submit">Einstellungen speichern</button></form>'
-        '<p class="muted">Hinweis: Diese Anzeige-Einstellungen speichern die Dashboard-Konfiguration. Die vorhandenen Economy-Befehle und ihre Währung werden dadurch nicht automatisch umbenannt oder deaktiviert.</p></section>'
-        '<div class="grid">'
-        '<section class="card"><h2>🪙 Geld & Shop</h2><p>Die normalen Economy-Befehle sind im Bot verfügbar. Prüfe <code>/</code> für Slash-Befehle und nutze die Prefix-Befehle mit deinem Bot-Präfix.</p></section>'
-        '</div><p><a href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
+        '<section class="card"><span class="pill">ECONOMY CONTROL</span><h1>💰 Wirtschaftssystem</h1>'
+        '<p>Diese Werte werden in derselben SQLite-Tabelle gespeichert, die die Economy-Befehle lesen. Änderungen wirken auf die Economy-Funktionen, sobald das Economy-Modul geladen ist.</p>'
+        '<form method="post">' + _csrf_field() + form_fields
+        + '<button type="submit">Wirtschaftseinstellungen speichern</button></form>'
+        '<p class="muted">Cooldowns werden in Sekunden angegeben. Bereits vorhandene Kontostände werden nicht zurückgesetzt; das Startguthaben gilt für neu angelegte Konten.</p>'
+        '</section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
     )
     return _render(guild.name + " · Wirtschaftssystem", body)
 
