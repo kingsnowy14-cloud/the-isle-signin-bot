@@ -947,6 +947,11 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
 .iw-section{{margin:0 0 34px}}.iw-heading{{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin:0 0 14px}}.iw-heading h2{{font-size:21px;margin:5px 0}}.iw-heading p,.iw-category-subtitle{{color:var(--muted);font-size:12px;margin:0}}.iw-heading>a{{font-size:12px;color:#b9c2ff;font-weight:800;white-space:nowrap}}
 .iw-card-grid{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}}.iw-module-card,.iw-popular-card{{display:flex;align-items:center;gap:11px;min-width:0;min-height:88px;padding:13px;border:1px solid var(--border);border-radius:13px;background:rgba(9,14,27,.34);color:var(--text);text-decoration:none;transition:transform .16s,border-color .16s,background .16s}}.iw-popular-card{{border-color:rgba(139,157,255,.22);background:linear-gradient(135deg,rgba(99,102,241,.11),rgba(255,255,255,.025))}}.iw-module-card:hover,.iw-popular-card:hover{{transform:translateY(-2px);border-color:rgba(139,157,255,.5);background:rgba(99,102,241,.09)}}.iw-icon{{display:grid;place-items:center;flex:0 0 38px;height:38px;border-radius:11px;background:rgba(139,157,255,.12);font-size:19px}}.iw-module-card>span:nth-child(2),.iw-popular-card>span:nth-child(2){{flex:1;min-width:0}}.iw-module-card strong,.iw-module-card small,.iw-popular-card strong,.iw-popular-card small{{display:block}}.iw-module-card strong,.iw-popular-card strong{{font-size:12px}}.iw-module-card small,.iw-popular-card small{{margin-top:4px;color:var(--muted);font-size:10px;line-height:1.45}}.iw-arrow{{color:#aeb9ff}}
 .iw-category{{margin:0 0 22px;padding:20px;border:1px solid var(--border);border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.025),rgba(255,255,255,.008))}}.iw-category>h2{{font-size:18px;margin:0 0 4px}}.iw-category-subtitle{{margin-bottom:15px}}
+.module-nav{{display:flex;align-items:center;gap:7px;flex-wrap:nowrap;overflow-x:auto;margin:0 0 18px;padding:10px;border:1px solid var(--border);border-radius:13px;background:rgba(9,14,27,.72);scrollbar-width:thin}}
+.module-nav-title{{flex:0 0 auto;padding:0 7px;color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.12em}}
+.module-nav-link{{flex:0 0 auto;display:inline-flex;align-items:center;min-height:34px;padding:7px 10px;border:1px solid transparent;border-radius:8px;color:var(--muted);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}}
+.module-nav-link:hover{{color:var(--text);background:rgba(139,157,255,.08);border-color:var(--border)}}
+.module-nav-link.is-active{{color:#fff;background:rgba(129,140,248,.18);border-color:rgba(139,157,255,.4)}}
 @media(max-width:1000px){{.iw-card-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:650px){{.iw-hero{{padding:24px 19px}}.iw-metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.iw-card-grid{{grid-template-columns:1fr}}.iw-category{{padding:15px}}.iw-heading{{align-items:flex-start}}}}
 
 {custom_theme_css}
@@ -1072,7 +1077,58 @@ def _module_command_footer():
     return '<section class="card module-command-footer"><h2>⌘ Related Discord Commands</h2>' + content + '<p><a class="button secondary" href="/guild/' + html.escape(guild_id) + '/commands">Manage all commands →</a></p></section>'
 
 
+def _module_navigation():
+    """Provide consistent, direct navigation between every server module page."""
+    if not request.path.startswith("/guild/"):
+        return ""
+    parts = request.path.strip("/").split("/")
+    if len(parts) != 3 or not parts[1].isdigit():
+        return ""
+    gid, active = parts[1], parts[2]
+    modules = (
+        ("", "🏠 Übersicht"),
+        ("tickets", "🎫 Tickets"),
+        ("applications", "📝 Bewerbungen"),
+        ("verification", "✅ Verifizierung"),
+        ("messages", "💬 Nachrichten"),
+        ("reaction-roles", "🎭 Reaktionsrollen"),
+        ("automation", "⚙️ Automatisierung"),
+        ("birthdays", "🎂 Geburtstage"),
+        ("teamlist", "👥 Teamliste"),
+        ("verified-accounts", "🔐 Konten"),
+        ("security-lab", "🛡️ Security Lab"),
+        ("honeypot", "🍯 Honeypot"),
+        ("ping-protection", "📡 Ping-Schutz"),
+        ("actions", "🔨 Aktionen"),
+        ("feedback", "💡 Feedback"),
+        ("economy", "💰 Wirtschaft"),
+        ("branding", "🎨 Branding"),
+        ("server-statistics", "📊 Statistiken"),
+        ("commands", "⌘ Befehle"),
+        ("audit-log", "📋 Audit-Log"),
+        ("health", "❤️ Status"),
+        ("backup", "💾 Backup"),
+        ("premium", "👑 Premium"),
+    )
+    links = []
+    for slug, label in modules:
+        href = "/guild/" + gid + (("/" + slug) if slug else "?section=general")
+        current = active == (slug or "")
+        links.append(
+            '<a class="module-nav-link' + (' is-active' if current else '') +
+            '" href="' + href + '"' +
+            (' aria-current="page"' if current else '') + '>' +
+            html.escape(label) + '</a>'
+        )
+    return (
+        '<nav class="module-nav" aria-label="Servermodule">'
+        '<span class="module-nav-title">SERVERMODULE</span>' +
+        ''.join(links) + '</nav>'
+    )
+
+
 def _render(title, body, status=200):
+    body = _module_navigation() + body
     body += _module_command_footer()
     return make_response(_page(title, body), status)
 
@@ -1308,7 +1364,8 @@ def log_dashboard_navigation():
     if request.path.startswith("/guild/"):
         print(
             f"[DASHBOARD NAV] {request.method} {request.path} "
-            f"query={request.query_string.decode('utf-8', errors='replace')[:200]}",
+            f"query={request.query_string.decode('utf-8', errors='replace')[:200]} "
+            f"referer={request.referrer or '-'}",
             flush=True,
         )
 
