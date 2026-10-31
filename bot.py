@@ -46,48 +46,13 @@ intents.members = True
 intents.message_content = True
 
 class GuildGateBot(commands.Bot):
-    """Suppress all guild-scoped Discord events until a server enables the bot in the dashboard."""
+    """Dispatch guild events consistently on every server where IronWolf is installed."""
 
     def dispatch(self, event, *args, **kwargs):
-        # Keep lifecycle events running so new guilds can be initialized and the bot can reconnect.
-        if event not in {"ready", "connect", "disconnect", "resumed", "error", "guild_join", "guild_remove"}:
-            guild_id = None
-            for item in args:
-                if isinstance(item, discord.Guild):
-                    guild_id = item.id
-                    break
-                candidate = getattr(item, "guild_id", None)
-                if candidate:
-                    try:
-                        guild_id = int(candidate)
-                        break
-                    except (TypeError, ValueError):
-                        pass
-                guild = getattr(item, "guild", None)
-                if guild is not None and getattr(guild, "id", None):
-                    guild_id = guild.id
-                    break
-                message = getattr(item, "message", None)
-                message_guild = getattr(message, "guild", None)
-                if message_guild is not None and getattr(message_guild, "id", None):
-                    guild_id = message_guild.id
-                    break
-            if guild_id is not None:
-                current_config = globals().get("config", {})
-                guild_cfg = current_config.get(str(guild_id), {}) if isinstance(current_config, dict) else {}
-                # Missing flag means legacy server: preserve its previous behavior.
-                # The owner's designated server must continue receiving message events
-                # so prefix commands (including legacy ! commands) remain usable there.
-                if (
-                    guild_id != 1566103924019167293
-                    and isinstance(guild_cfg, dict)
-                    and guild_cfg.get("bot_enabled", True) is False
-                ):
-                    return
         super().dispatch(event, *args, **kwargs)
 
 
-bot = GuildGateBot(command_prefix="!", intents=intents, case_insensitive=True)
+bot = GuildGateBot(command_prefix=".", intents=intents, case_insensitive=True)
 _automation_worker_task = None
 _birthday_worker_task = None
 
@@ -113,9 +78,7 @@ async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
     command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
 
-    # Only this member may run server-building prefix commands.
-    # Check both the registered command name and the text the member invoked,
-    # because discord.py may normalize command names (e.g. serverRPbau).
+    # Keep server-building commands restricted to their authorized owner.
     server_build_prefix_names = {
         "serverbau", "serverRPbau", "server_rp_bau",
         "developerbuild", "serverbuild", "server-rp-bau",
@@ -128,46 +91,20 @@ async def dashboard_prefix_command_check(ctx):
     if is_server_build_prefix and ctx.author.id != 1493110334280564807:
         return False
 
-    # Silently ignore !stats on this specific server; do not send a reply.
-    if guild_id == 1561027077984227371 and command_name.casefold() == "stats":
-        return False
-
-    # Preserve the existing restriction on other prefix commands on this server,
-    # but let the authorized member use the explicitly permitted server-build commands.
-    if guild_id == 1561027077984227371 and not (
-        is_server_build_prefix and ctx.author.id == 1493110334280564807
-    ):
-        return False
-
-    if guild_id == LEVEL_DISABLED_GUILD_ID and command_name.casefold() in LEVEL_PREFIX_COMMANDS_DISABLED:
-        await ctx.send("Das Level-System und alle Level-Befehle sind auf diesem Server deaktiviert.")
-        return False
-    if not await dashboard_command_enabled(guild_id, f"prefix:!{command_name}"):
+    if not await dashboard_command_enabled(guild_id, f"prefix:.{command_name}"):
         await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
     cog = getattr(ctx, "cog", None)
     module_name = cog.__class__.__name__ if cog is not None else None
-    # Seasonal prefix commands are available without a premium feature flag.
     if not await dashboard_module_enabled(guild_id, module_name):
         await ctx.send("Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
     return True
 
-
 async def dashboard_slash_command_check(interaction):
     command = interaction.command
     if command is None or interaction.guild_id is None:
         return True
-    if (
-        interaction.guild_id == LEVEL_DISABLED_GUILD_ID
-        and command.qualified_name.casefold() in LEVEL_SLASH_COMMANDS_DISABLED
-    ):
-        message = "Das Level-System und alle Level-Befehle sind auf diesem Server deaktiviert."
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
-        return False
     key = f"slash:/{command.qualified_name}"
     if not await dashboard_command_enabled(interaction.guild_id, key):
         message = bot_text(interaction.guild_id, "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
@@ -2637,7 +2574,7 @@ async def moderation_clean(
             return bool(message.attachments)
         if typ.value == "commands":
             content = (message.content or "").lstrip()
-            return content.startswith("!") or content.startswith("/") or content.startswith(bot.command_prefix if isinstance(bot.command_prefix, str) else "!")
+            return content.startswith(".") or content.startswith("/")
         return False
 
     try:
@@ -5293,14 +5230,13 @@ async def on_guild_join(guild: discord.Guild):
 
     # Only brand-new servers receive the safe-off default. Existing guild configs are untouched.
     gid = str(guild.id)
-    if gid not in config:
-        config[gid] = {"bot_enabled": False}
+    # Enable normal bot operation by default on every server where IronWolf is added.
+    if gid not in config or not isinstance(config.get(gid), dict):
+        config[gid] = {}
+    if config[gid].get("bot_enabled") is not True:
+        config[gid]["bot_enabled"] = True
         save_json(CONFIG_FILE, config)
-        print(f"[CONFIG] New guild {gid} initialized with all bot activity disabled; enable it in the dashboard.", flush=True)
-        return
-    if isinstance(config.get(gid), dict) and config[gid].get("bot_enabled", True) is False:
-        print(f"[CONFIG] Guild {gid} is disabled; skipping join actions until enabled in the dashboard.", flush=True)
-        return
+    print(f"[CONFIG] Guild {gid} initialized/enabled for normal bot operation.", flush=True)
     # Create and equip Ironbot's own role when joining a server.
     try:
         bot_member = guild.me
@@ -6874,14 +6810,7 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
         await status.edit(content=f"⚠️ Discord konnte die Einrichtung nicht vollständig abschließen: {exc}. Bereits erstellte Elemente bleiben bestehen; du kannst den Befehl nach Behebung erneut ausführen.")
 
 
-async def _run_developerbuild(ctx, allow_any_server=False):
-    if not allow_any_server and ctx.guild.id != 1566103924019167293:
-        await ctx.reply(
-            "❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.",
-            mention_author=False,
-        )
-        return
-
+async def _run_developerbuild(ctx, allow_any_server=True):
     # Keep the role list intentionally simple: one dedicated admin role.
     roles = [
         ("👑 Administrator", discord.Colour.from_rgb(220, 65, 65), discord.Permissions(administrator=True)),
@@ -7090,12 +7019,6 @@ class _DeveloperBuildInteractionContext:
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(administrator=True)
 async def developerbuild_slash(interaction: discord.Interaction):
-    if interaction.guild_id != 1566103924019167293:
-        await interaction.response.send_message(
-            "❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.",
-            ephemeral=True,
-        )
-        return
     await _run_developerbuild(_DeveloperBuildInteractionContext(interaction))
 
 
@@ -7110,7 +7033,7 @@ async def deleteserver(ctx, bestaetigung: str = ""):
         await ctx.reply(
             "⚠️ **Achtung: Dieser Befehl löscht alle Kanäle und Kategorien dieses Servers.** "
             "Rollen und Mitglieder bleiben bestehen. Wenn du sicher bist, tippe "
-            "`!deleteserver BESTÄTIGEN`. Der Vorgang kann nicht rückgängig gemacht werden.",
+            "`.deleteserver BESTÄTIGEN`. Der Vorgang kann nicht rückgängig gemacht werden.",
             mention_author=False,
         )
         return
