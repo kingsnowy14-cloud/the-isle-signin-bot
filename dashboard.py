@@ -3089,7 +3089,7 @@ function updateScnxPreview(){
 document.addEventListener("DOMContentLoaded",()=>{
  document.querySelectorAll(".manual-button-row").forEach(row=>updateButtonType(row.querySelector(".scnx-button-type")));
  document.querySelectorAll("#message,#embed_title,#embed_description,.manual-button-row input,.manual-button-row select").forEach(el=>el.addEventListener("input",updateScnxPreview));
- document.querySelector("form").addEventListener("submit",()=>document.querySelectorAll(".manual-button-row[hidden]").forEach(row=>row.querySelectorAll("input,select").forEach(el=>el.disabled=true)));
+ document.querySelector(".scnx-message-builder form")?.addEventListener("submit",()=>document.querySelectorAll(".manual-button-row[hidden]").forEach(row=>row.querySelectorAll("input,select").forEach(el=>el.disabled=true)));
  updateScnxPreview();
 });
 </script>"""
