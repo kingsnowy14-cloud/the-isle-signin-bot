@@ -49,21 +49,21 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
     async def on_submit(self, interaction: discord.Interaction):
         if interaction.user.id != self.member_id:
             await interaction.response.send_message(
-                "Dieses Formular ist für ein anderes Mitglied bestimmt.", ephemeral=True
+                "This form is intended for a different member.", ephemeral=True
             )
             return
 
         guild = self.bot.get_guild(self.guild_id)
         if guild is None:
             await interaction.response.send_message(
-                "Der ursprüngliche Server ist nicht verfügbar.", ephemeral=True
+                "The original server is unavailable.", ephemeral=True
             )
             return
 
         member = guild.get_member(self.member_id)
         if member is None:
             await interaction.response.send_message(
-                "Du bist nicht mehr Mitglied des ursprünglichen Servers.", ephemeral=True
+                "You are no longer a member of the original server.", ephemeral=True
             )
             return
 
@@ -76,7 +76,7 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
 
         if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message(
-                "Der konfigurierte Ausweis-Kanal wurde nicht gefunden oder ist kein Textkanal.",
+                "The configured ID card channel could not be found or is not a text channel.",
                 ephemeral=True,
             )
             return
@@ -90,21 +90,21 @@ class AusweisModal(discord.ui.Modal, title="Personal-Ausweis beantragen"):
         embed.add_field(name="Name", value=str(self.rp_name.value).strip(), inline=True)
         embed.add_field(name="Geburtsdatum", value=str(self.birth_date.value).strip(), inline=True)
         embed.add_field(name="Dienstgrad / Beruf", value=str(self.role.value).strip(), inline=False)
-        embed.add_field(name="Discord-Mitglied", value=member.mention, inline=False)
+        embed.add_field(name="Discord Member", value=member.mention, inline=False)
         embed.set_footer(text=f"IronWolf RP • Ausweisinhaber-ID: {member.id}")
 
         try:
             await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         except (discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message(
-                "Ich konnte den Ausweis nicht veröffentlichen. Bitte prüfe die Bot-Rechte "
-                "im Ausweis-Kanal (Nachrichten senden und Links einbetten).",
+                "I could not publish the ID card. Please check the bot permissions "
+                "in the ID card channel (Send Messages and Embed Links).",
                 ephemeral=True,
             )
             return
 
         await interaction.response.send_message(
-            f"✅ Dein Ausweis wurde erstellt und in {channel.mention} veröffentlicht.",
+            f"✅ Your ID card has been created and published in {channel.mention}.",
             ephemeral=True,
         )
 
