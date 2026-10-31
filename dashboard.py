@@ -3268,6 +3268,26 @@ def guild_ping_protection(guild_id):
     )
     return _render(guild.name + " · Ping-Schutz", body)
 
+@app.route("/guild/<guild_id>/custom-bot/assets/<asset>")
+def guild_custom_bot_asset(guild_id, asset):
+    """Serve only this guild's uploaded Custom Bot images."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    if not guild_has_feature(cfg, "custom_bot") or asset not in {"avatar", "banner"}:
+        abort(404)
+    profile = cfg.get("custom_bot_profile", {})
+    stored = profile.get(asset + "_file") if isinstance(profile, dict) else None
+    if not stored:
+        abort(404)
+    path = Path(stored).resolve()
+    root = Path(data_path("custom_bot_assets")).resolve()
+    if root not in path.parents or not path.is_file():
+        abort(404)
+    return send_file(path, mimetype=profile.get(asset + "_mime", "application/octet-stream"), conditional=True, max_age=300)
+
+
 @app.route("/guild/<guild_id>/custom-bot", methods=["GET", "POST"])
 def guild_custom_bot(guild_id):
     """Configure a Premium-only, per-guild bot presentation (not the global Discord bot account)."""
@@ -3298,17 +3318,52 @@ def guild_custom_bot(guild_id):
                     abort(400, field.title() + " URL must be a valid HTTPS URL (maximum 500 characters).")
         if len(description) > 500:
             abort(400, "Description must be 500 characters or fewer.")
-        cfg["custom_bot_profile"] = {
-            "avatar_url": avatar_url,
-            "banner_url": banner_url,
-            "description": description,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+        profile_data = dict(profile)
+        profile_data.update({"avatar_url": avatar_url, "banner_url": banner_url, "description": description})
+        asset_dir = Path(data_path("custom_bot_assets")) / str(guild.id)
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        allowed_images = {
+            ".png": ("image/png", lambda raw: raw.startswith(bytes.fromhex("89504e470d0a1a0a"))),
+            ".jpg": ("image/jpeg", lambda raw: raw.startswith(bytes.fromhex("ffd8ff"))),
+            ".jpeg": ("image/jpeg", lambda raw: raw.startswith(bytes.fromhex("ffd8ff"))),
+            ".gif": ("image/gif", lambda raw: raw.startswith((b"GIF87a", b"GIF89a"))),
+            ".webp": ("image/webp", lambda raw: len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"),
         }
+        for asset in ("avatar", "banner"):
+            uploaded = request.files.get(asset + "_file")
+            if uploaded is not None and uploaded.filename:
+                extension = Path(uploaded.filename).suffix.lower()
+                if extension not in allowed_images:
+                    abort(400, "Upload a PNG, JPG, GIF or WEBP image.")
+                raw = uploaded.stream.read(5 * 1024 * 1024 + 1)
+                mime, signature_ok = allowed_images[extension]
+                if not raw or len(raw) > 5 * 1024 * 1024 or not signature_ok(raw):
+                    abort(400, asset.title() + " image is invalid or exceeds the 5 MB limit.")
+                destination = asset_dir / (asset + extension)
+                for previous in asset_dir.glob(asset + ".*"):
+                    if previous != destination:
+                        previous.unlink(missing_ok=True)
+                destination.write_bytes(raw)
+                profile_data[asset + "_file"] = str(destination.resolve())
+                profile_data[asset + "_mime"] = mime
+                profile_data[asset + "_url"] = ""
+            if request.form.get("remove_" + asset) == "on":
+                for previous in asset_dir.glob(asset + ".*"):
+                    previous.unlink(missing_ok=True)
+                profile_data.pop(asset + "_file", None)
+                profile_data.pop(asset + "_mime", None)
+                profile_data[asset + "_url"] = ""
+        profile_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        cfg["custom_bot_profile"] = profile_data
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Custom Bot Profile", session.get("user_id"), "Updated server-specific bot presentation")
         return redirect(url_for("guild_custom_bot", guild_id=gid, saved="1"))
     avatar_url = str(profile.get("avatar_url", ""))
     banner_url = str(profile.get("banner_url", ""))
+    avatar_file = profile.get("avatar_file") and Path(profile["avatar_file"]).is_file()
+    banner_file = profile.get("banner_file") and Path(profile["banner_file"]).is_file()
+    avatar_src = url_for("guild_custom_bot_asset", guild_id=gid, asset="avatar") if avatar_file else avatar_url
+    banner_src = url_for("guild_custom_bot_asset", guild_id=gid, asset="banner") if banner_file else banner_url
     description = str(profile.get("description", ""))
     success = '<div class="notice">Server-specific profile saved.</div>' if request.args.get("saved") == "1" else ""
     body = (
@@ -3316,18 +3371,22 @@ def guild_custom_bot(guild_id):
         '<p>Set a separate presentation for IronWolf inside this server: avatar, banner and description. These settings are saved only for '
         + html.escape(guild.name) + '.</p>'
         + '<div class="notice">Discord does not allow one bot account to have a different real account avatar, banner or About Me description in each server. '
-        'This module stores a server-specific profile for use in dashboard previews and server-scoped bot presentation; it does not change the bot account globally.</div>'
+        'This module stores a server-specific profile for dashboard previews and server-scoped presentation; it does not change the bot account globally.</div>'
         + success +
-        '<form method="post">' + _csrf_field() +
-        '<label>Avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
-        + '<label>Banner image URL (HTTPS)</label><input type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
+        '<form method="post" enctype="multipart/form-data">' + _csrf_field() +
+        '<label>Upload avatar from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp">'
+        + '<label>Or use an avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
+        + ('<label><input type="checkbox" name="remove_avatar"> Remove uploaded avatar</label>' if avatar_file else '')
+        + '<label>Upload banner from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="banner_file" accept="image/png,image/jpeg,image/gif,image/webp">'
+        + '<label>Or use a banner image URL (HTTPS)</label><input type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
+        + ('<label><input type="checkbox" name="remove_banner"> Remove uploaded banner</label>' if banner_file else '')
         + '<label>Bot description</label><textarea name="description" maxlength="500" rows="4" placeholder="Describe this server’s IronWolf setup...">' + html.escape(description) + '</textarea>'
-        + '<p class="muted">Images must be hosted at public HTTPS URLs. Maximum description length: 500 characters.</p>'
+        + '<p class="muted">Uploaded images are private to this server dashboard. Maximum file size: 5 MB per image. Description limit: 500 characters.</p>'
         + '<button type="submit">Save Custom Bot Profile</button></form></section>'
         + '<section class="card"><h2>Profile preview</h2>'
-        + ('<img src="' + html.escape(banner_url, quote=True) + '" alt="Custom banner" style="display:block;width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin-bottom:12px">' if banner_url else '')
+        + ('<img src="' + html.escape(banner_src, quote=True) + '" alt="Custom banner" style="display:block;width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin-bottom:12px">' if banner_src else '')
         + '<div style="display:flex;gap:14px;align-items:center">'
-        + ('<img src="' + html.escape(avatar_url, quote=True) + '" alt="Custom bot avatar" style="width:64px;height:64px;border-radius:50%;object-fit:cover">' if avatar_url else '<div style="width:64px;height:64px;border-radius:50%;background:#5865F2"></div>')
+        + ('<img src="' + html.escape(avatar_src, quote=True) + '" alt="Custom bot avatar" style="width:64px;height:64px;border-radius:50%;object-fit:cover">' if avatar_src else '<div style="width:64px;height:64px;border-radius:50%;background:#5865F2"></div>')
         + '<div><strong>' + html.escape(guild.me.display_name if guild.me else "IronWolf") + '</strong><p>' + html.escape(description or "No custom description set yet.") + '</p></div></div></section>'
         + '<p><a class="button secondary" href="/guild/' + gid + '">← Back to server dashboard</a></p>'
     )
