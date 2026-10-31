@@ -33,10 +33,10 @@ def safe_text(value, limit=1000):
 
 class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
     rp_name = discord.ui.TextInput(label="RP-Name", placeholder="Vorname Nachname", max_length=80)
-    roblox_name = discord.ui.TextInput(label="Roblox-Name", placeholder="Dein Roblox-Benutzername", max_length=80)
+    roblox_name = discord.ui.TextInput(label="Roblox Username", placeholder="Your Roblox username", max_length=80)
     age = discord.ui.TextInput(label="Alter (OOC)", placeholder="z. B. 16", max_length=3)
-    experience = discord.ui.TextInput(label="RP-/Fraktionserfahrung", placeholder="Welche Erfahrungen bringst du mit?", style=discord.TextStyle.paragraph, max_length=700)
-    motivation = discord.ui.TextInput(label="Warum möchtest du beitreten?", placeholder="Motivation und Stärken", style=discord.TextStyle.paragraph, max_length=1000)
+    experience = discord.ui.TextInput(label="RP / faction experience", placeholder="What experience can you bring?", style=discord.TextStyle.paragraph, max_length=700)
+    motivation = discord.ui.TextInput(label="Why would you like to join?", placeholder="Your motivation and strengths", style=discord.TextStyle.paragraph, max_length=1000)
 
     def __init__(self, cog, guild_id):
         super().__init__(title="IronWolf – Application" if guild_id == 1561027077984227371 else "IronWolf – Fraktionsbewerbung", timeout=300)
@@ -50,15 +50,15 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
 
     async def on_submit(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
-            await interaction.response.send_message("Dieses Formular gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("This form belongs to a different server.", ephemeral=True)
             return
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" for row in RECORDS.setdefault("applications", {}).values()):
-            await interaction.response.send_message("Du hast bereits eine offene Bewerbung. Warte bitte auf die Rückmeldung des Teams.", ephemeral=True)
+            await interaction.response.send_message("You already have an open application. Please wait for the team to review it.", ephemeral=True)
             return
         settings = guild_settings(self.guild_id)
         channel = interaction.guild.get_channel(settings.get("review_channel_id") or 0)
         if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message("Das Bewerbungs-Log ist nicht eingerichtet. Bitte informiere das Team.", ephemeral=True)
+            await interaction.response.send_message("The application log is not configured. Please notify the team.", ephemeral=True)
             return
         app_id = "{}-{}-{}".format(self.guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
         row = {
@@ -73,7 +73,7 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
         english = self.guild_id == 1561027077984227371
         embed = discord.Embed(title="📨 New Application" if english else "📨 Neue Fraktionsbewerbung", description=("Applicant: <@{}>\nStatus: ⏳ Pending" if english else "Bewerber: <@{}>\nStatus: ⏳ Offen").format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         embed.add_field(name="RP Name" if english else "RP-Name", value=safe_text(row["rp_name"], 200), inline=True)
-        embed.add_field(name="Roblox Username" if english else "Roblox-Name", value=safe_text(row["roblox_name"], 200), inline=True)
+        embed.add_field(name="Roblox Username" if english else "Roblox Username", value=safe_text(row["roblox_name"], 200), inline=True)
         embed.add_field(name="Age (OOC)" if english else "Alter (OOC)", value=safe_text(row["age"], 30), inline=True)
         embed.add_field(name="Experience" if english else "Erfahrung", value=safe_text(row["experience"]), inline=False)
         embed.add_field(name="Motivation", value=safe_text(row["motivation"]), inline=False)
@@ -85,9 +85,9 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
         except (discord.Forbidden, discord.HTTPException):
             RECORDS["applications"].pop(app_id, None)
             save_records()
-            await interaction.response.send_message("Die Bewerbung konnte nicht ans Team gesendet werden. Bitte informiere einen Administrator.", ephemeral=True)
+            await interaction.response.send_message("Your application could not be sent to the team. Please contact an administrator.", ephemeral=True)
             return
-        await interaction.response.send_message("✅ Deine Bewerbung wurde eingereicht. Das Team prüft sie und meldet sich bei dir.", ephemeral=True)
+        await interaction.response.send_message("✅ Your application has been submitted. The team will review it and get back to you.", ephemeral=True)
 
 class DashboardApplicationModal(discord.ui.Modal):
     def __init__(self, cog, guild_id, panel_id, panel):
