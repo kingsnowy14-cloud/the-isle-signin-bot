@@ -3402,38 +3402,47 @@ async def automod_set(interaction: discord.Interaction, aktiviert: bool):
     app_commands.Choice(name="Full security test", value="all"),
     app_commands.Choice(name="Raid simulation", value="raid"),
     app_commands.Choice(name="Nuke attempt simulation", value="nuke"),
-    app_commands.Choice(name="Malicious link spam", value="links"),
+    app_commands.Choice(name="Spam burst simulation", value="links"),
 ])
 async def security_test(interaction: discord.Interaction, scenario: app_commands.Choice[str]):
-    """Simulate hostile events without changing server content or sending spam."""
+    """Check security settings against simulated hostile events; never changes server content."""
     if interaction.guild is None:
         await interaction.response.send_message("This test is only available inside a server.", ephemeral=True)
         return
 
+    cfg = guild_config(interaction.guild.id)
     cases = {
-        "raid": ("Raid wave", "A burst of 25 simulated new-member joins in 10 seconds.", "Join-rate anomaly detected; simulated raid wave contained."),
-        "nuke": ("Nuke attempt", "A simulated actor attempts 12 channel/role deletion actions.", "Destructive action pattern detected; simulated actions blocked."),
-        "links": ("Malicious link spam", "A simulated member posts 8 suspicious links in rapid succession.", "Link-spam pattern detected; simulated messages quarantined."),
+        "raid": ("Raid wave", "25 simulated member joins in 10 seconds.", bool(cfg.get("anti_raid_enabled")), "Anti-Raid"),
+        "nuke": ("Nuke attempt", "12 simulated channel/role deletion events.", bool(cfg.get("anti_nuke_enabled")), "Anti-Nuke"),
+        "links": ("Spam burst", "8 simulated rapid messages containing suspicious links.", bool(cfg.get("automod_enabled")), "AutoMod"),
     }
     selected = list(cases.values()) if scenario.value == "all" else [cases[scenario.value]]
     embed = discord.Embed(
         title="🧪 IronWolf Security Lab · Simulation Results",
-        description="**SIMULATION ONLY** — no channels, roles, members or real messages were changed.",
-        color=discord.Color.green(),
+        description="**SAFE SIMULATION** — test events are generated only in memory. No channels, roles, members or real messages are changed.",
+        color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
-    for title, attack, result in selected:
+    passed = 0
+    for title, attack, enabled, protection in selected:
+        if enabled:
+            passed += 1
+            status = "✅ PROTECTION ENABLED"
+            response = f"{protection} is enabled. The simulated event is classified as covered by the configured protection."
+        else:
+            status = "⚠️ PROTECTION DISABLED"
+            response = f"{protection} is currently off. Enable it in the Security settings before relying on this protection."
         embed.add_field(
-            name=f"✅ {title} · BLOCKED",
-            value=f"**Scenario:** {attack}\n**Detection:** Passed\n**Response:** {result}",
+            name=f"{status} · {title}",
+            value=f"**Scenario:** {attack}\n**Configuration check:** {'PASS' if enabled else 'NEEDS ATTENTION'}\n**Result:** {response}",
             inline=False,
         )
     embed.add_field(
-        name="Test summary",
-        value=f"**Scenarios:** {len(selected)}\n**Detected:** {len(selected)}/{len(selected)}\n**Simulated attacks stopped:** {len(selected)}/{len(selected)}",
+        name="Configuration summary",
+        value=f"**Protected scenarios:** {passed}/{len(selected)}\n**Needs attention:** {len(selected) - passed}/{len(selected)}\n\nThis checks whether the related protection switch is enabled. It does not launch a live attack or prove runtime blocking.",
         inline=False,
     )
-    embed.set_footer(text="IronWolf Security Lab · Safe offline simulation")
+    embed.set_footer(text="IronWolf Security Lab · Admin-only safe test")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
