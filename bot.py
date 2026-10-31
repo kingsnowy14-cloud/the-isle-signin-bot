@@ -1900,7 +1900,7 @@ async def sprache(interaction: discord.Interaction, sprache: app_commands.Choice
     await interaction.response.send_message(TEXTS[sprache.value]["language_saved"], ephemeral=True)
 
 
-@bot.tree.command(name="kanal-set", description="Set the public channel for sign-in/sign-out announcements")
+@bot.tree.command(name="announcement-channel-set", description="Set the public channel for sign-in/sign-out announcements")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(kanal="Channel where public sign-in and sign-out messages are posted")
 async def kanal_set(interaction: discord.Interaction, kanal: discord.TextChannel):
@@ -1936,7 +1936,7 @@ async def ticket_category_set(interaction: discord.Interaction, kategorie: disco
     await interaction.response.send_message(f"Default ticket category set to **{kategorie.name}**.", ephemeral=True)
 
 
-@bot.tree.command(name="ticketcreat", description="Create a ticket panel with up to five buttons")
+@bot.tree.command(name="ticket-create", description="Create a ticket panel with up to five buttons")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
     kanal="Channel where the panel should be posted",
@@ -1984,7 +1984,7 @@ async def ticketcreat(
     await interaction.response.send_message(f"Ticket panel posted in {kanal.mention}.", ephemeral=True)
 
 
-@bot.tree.command(name="ticketbearbeiten", description="Edit the title, description and button labels of a ticket panel")
+@bot.tree.command(name="ticket-edit", description="Edit the title, description and button labels of a ticket panel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
     panel_id="Panel ID shown by the bot when created (timestamp key)",
@@ -2524,7 +2524,7 @@ async def moderation_purge(interaction: discord.Interaction, anzahl: app_command
         await interaction.followup.send(f"Löschen fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
 
 
-@bot.tree.command(name="clean", description="Bereinige gezielt Nachrichten im aktuellen Textkanal")
+@bot.tree.command(name="clean", description="Bulk-delete selected messages in the current text channel")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_messages=True)
 @app_commands.describe(
@@ -2871,7 +2871,7 @@ async def birthday_worker():
 
 # ----------------------------- BACKUP -----------------------------
 
-@bot.tree.command(name="backup", description="Erstelle ein ZIP-Backup der Bot-Konfigurations- und Datendateien")
+@bot.tree.command(name="backup", description="Create a ZIP backup of the bot configuration and data files")
 @app_commands.checks.has_permissions(administrator=True)
 async def backup_command(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True, thinking=True)
@@ -3151,7 +3151,7 @@ async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winn
         print(f"Giveaway task error: {type(exc).__name__}: {exc}")
 
 
-@bot.tree.command(name="giveaway-start", description="Starte ein Giveaway mit Laufzeit in Tagen")
+@bot.tree.command(name="giveaway-start", description="Start a giveaway with a duration in days")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
     preis="Zu gewinnender Preis",
@@ -3297,7 +3297,7 @@ async def lockdown_command(interaction: discord.Interaction):
     await interaction.response.send_message(f"🔒 {channel.mention} wurde gesperrt. Mit `/unlockdown` kannst du es wieder öffnen.")
 
 
-@bot.tree.command(name="unlockdown", description="Hebt den Lockdown im aktuellen Textkanal auf")
+@bot.tree.command(name="unlockdown", description="Unlock the current text channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def unlockdown_command(interaction: discord.Interaction):
     channel = interaction.channel
@@ -3321,7 +3321,7 @@ async def unlockdown_command(interaction: discord.Interaction):
     await interaction.response.send_message(f"🔓 {channel.mention} wurde wieder freigegeben.")
 
 
-@bot.tree.command(name="automod-set", description="Schalte einfachen Anti-Spam-Schutz ein oder aus")
+@bot.tree.command(name="automod-set", description="Enable or disable basic anti-spam protection")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def automod_set(interaction: discord.Interaction, aktiviert: bool):
     guild_config(interaction.guild_id)["automod_enabled"] = aktiviert
@@ -3379,7 +3379,7 @@ async def security_test(interaction: discord.Interaction, scenario: app_commands
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="security-status", description="Zeige den Sicherheitsstatus des Servers")
+@bot.tree.command(name="security-status", description="Show the server security status")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def security_status(interaction: discord.Interaction):
     cfg = guild_config(interaction.guild_id)
@@ -3391,7 +3391,7 @@ async def security_status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="daily", description="Hole dir einmal alle 24 Stunden XP")
+@bot.tree.command(name="daily", description="Claim XP once every 24 hours")
 async def daily_command(interaction: discord.Interaction):
     if not interaction.guild_id:
         await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
@@ -3413,7 +3413,7 @@ async def daily_command(interaction: discord.Interaction):
     await interaction.response.send_message(f"🎁 Du hast **{reward} XP** erhalten! Gesamt: **{stats['xp']} XP**.")
 
 
-@bot.tree.command(name="rank", description="Zeige XP, Level und Fortschritt eines Mitglieds")
+@bot.tree.command(name="rank", description="Show a member’s XP, level and progress")
 async def rank_command(interaction: discord.Interaction, mitglied: discord.Member = None):
     target = mitglied or interaction.user
     stats = get_level_xp(interaction.guild_id, target.id)
@@ -3428,7 +3428,7 @@ async def rank_command(interaction: discord.Interaction, mitglied: discord.Membe
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="level-role-set", description="Vergib eine Rolle automatisch ab einem Level")
+@bot.tree.command(name="level-role-set", description="Automatically assign a role when a member reaches a level")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def level_role_set(interaction: discord.Interaction, level: app_commands.Range[int, 1, 1000], rolle: discord.Role):
     if rolle.is_default() or rolle >= interaction.guild.me.top_role:
@@ -3439,7 +3439,7 @@ async def level_role_set(interaction: discord.Interaction, level: app_commands.R
     await interaction.response.send_message(f"Ab Level **{level}** wird {rolle.mention} vergeben, sobald das Mitglied dieses Level erreicht.", ephemeral=True)
 
 
-@bot.tree.command(name="tempvoice-setup", description="Richte den Beitrittskanal für temporäre Voice-Räume ein")
+@bot.tree.command(name="tempvoice-setup", description="Set up the join channel for temporary voice rooms")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.VoiceChannel, kategorie: discord.CategoryChannel = None):
     cfg = guild_config(interaction.guild_id)
@@ -3794,7 +3794,7 @@ async def ausweis_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=IDCardApplyView(interaction.guild.id))
 
 
-@bot.tree.command(name="verify", description="Richtet das Verifizierungs-Panel vollständig ein")
+@bot.tree.command(name="verify", description="Set up the complete verification panel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
     kanal="Kanal, in dem das Verifizierungs-Panel erscheinen soll",
@@ -3886,7 +3886,7 @@ async def verify_command(
     )
 
 
-@bot.tree.command(name="verify-setup", description="Richtet die Verifizierung, Methode und Button ein")
+@bot.tree.command(name="verify-setup", description="Configure verification, its method and button")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
     kanal="Kanal, in dem das Verifizierungs-Panel erscheint",
@@ -3944,7 +3944,7 @@ async def verify_setup(
     await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
 
 
-@bot.tree.command(name="poll", description="Erstelle eine Abstimmung mit zwei bis vier Optionen")
+@bot.tree.command(name="poll", description="Create a poll with two to four options")
 @app_commands.checks.has_permissions(manage_messages=True)
 @app_commands.describe(frage="Frage der Abstimmung", option1="Erste Option", option2="Zweite Option", option3="Option 3 (optional)", option4="Option 4 (optional)")
 async def poll_command(interaction: discord.Interaction, frage: str, option1: str, option2: str, option3: str = None, option4: str = None):
@@ -3976,7 +3976,7 @@ async def poll_command(interaction: discord.Interaction, frage: str, option1: st
             pass
 
 
-@bot.tree.command(name="suggest", description="Reiche einen Community-Vorschlag ein")
+@bot.tree.command(name="suggest", description="Submit a community suggestion")
 @app_commands.describe(vorschlag="Dein Vorschlag für den Server")
 async def suggest_command(interaction: discord.Interaction, vorschlag: str):
     if not interaction.guild_id:
@@ -3996,7 +3996,7 @@ async def suggest_command(interaction: discord.Interaction, vorschlag: str):
         await interaction.response.send_message("Vorschlag gespeichert. Ein Admin kann mit `/suggestion-channel-set` einen öffentlichen Kanal festlegen.", ephemeral=True)
 
 
-@bot.tree.command(name="suggestion-channel-set", description="Lege den Kanal für Community-Vorschläge fest")
+@bot.tree.command(name="suggestion-channel-set", description="Set the channel for community suggestions")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def suggestion_channel_set(interaction: discord.Interaction, kanal: discord.TextChannel):
     guild_config(interaction.guild_id)["suggestion_channel"] = kanal.id
@@ -4004,7 +4004,7 @@ async def suggestion_channel_set(interaction: discord.Interaction, kanal: discor
     await interaction.response.send_message(f"Vorschläge werden in {kanal.mention} veröffentlicht.", ephemeral=True)
 
 
-@bot.tree.command(name="event-create", description="Veröffentliche eine Community-Veranstaltung")
+@bot.tree.command(name="event-create", description="Publish a community event")
 @app_commands.checks.has_permissions(manage_events=True)
 @app_commands.describe(titel="Kurzer Event-Titel", datum="Datum und Uhrzeit mit Zeitzone", beschreibung="Details zur Veranstaltung")
 async def event_create(interaction: discord.Interaction, titel: str, datum: str, beschreibung: str):
@@ -4049,7 +4049,7 @@ async def event_create(interaction: discord.Interaction, titel: str, datum: str,
     await interaction.followup.send(f"Event veröffentlicht: {msg.jump_url}", ephemeral=True)
 
 
-@bot.tree.command(name="ticket-stats", description="Zeige Support-Ticket-Statistiken")
+@bot.tree.command(name="ticket-stats", description="Show support ticket statistics")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def ticket_stats(interaction: discord.Interaction):
     tickets = data.setdefault("tickets", {})
@@ -4138,7 +4138,7 @@ def _social_alert_mentions(role):
     return discord.AllowedMentions(roles=[role], users=False, everyone=False, replied_user=False)
 
 
-@bot.tree.command(name="social-alert-set", description="Fügt einen YouTube- oder Twitch-Creator hinzu")
+@bot.tree.command(name="social-alert-set", description="Add a YouTube or Twitch creator")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube RSS", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
@@ -4179,7 +4179,7 @@ async def social_alert_set(interaction: discord.Interaction, plattform: app_comm
     )
 
 
-@bot.tree.command(name="social-alert-aus", description="Deaktiviert alle Alerts einer Plattform")
+@bot.tree.command(name="social-alert-disable", description="Disable all alerts for a platform")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
@@ -4196,7 +4196,7 @@ async def social_alert_disable(interaction: discord.Interaction, plattform: app_
     await interaction.response.send_message(f"⏸️ {len(matching)} {plattform.name}-Alert(s) deaktiviert. Die Einstellungen bleiben gespeichert.", ephemeral=True)
 
 
-@bot.tree.command(name="social-alert-test", description="Sendet eine Testnachricht für einen Social Alert")
+@bot.tree.command(name="social-alert-test", description="Send a test notification for a social alert")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
@@ -4227,7 +4227,7 @@ async def social_alert_test(interaction: discord.Interaction, plattform: app_com
     await interaction.response.send_message(f"Testnachricht für **{alert.get('source')}** in {channel.mention} gesendet. Die externe API wird dabei nicht geprüft.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
-@bot.tree.command(name="social-alert-status", description="Zeigt Creator, Kanal und Alert-Status")
+@bot.tree.command(name="social-alert-status", description="Show creators, channels and alert status")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def social_alert_status(interaction: discord.Interaction):
@@ -4252,7 +4252,7 @@ async def social_alert_status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
-@bot.tree.command(name="social-alert-diagnose", description="Prüft Alert-Checks, Fehler und Twitch-Zugangsdaten")
+@bot.tree.command(name="social-alert-diagnose", description="Check alert processing, errors and Twitch credentials")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def social_alert_diagnose(interaction: discord.Interaction):
@@ -4280,7 +4280,7 @@ async def social_alert_diagnose(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
-@bot.tree.command(name="social-live", description="Zeigt erkannte Live-Twitch-Creator dieses Servers")
+@bot.tree.command(name="social-live", description="Show Twitch creators detected as live on this server")
 @app_commands.guild_only()
 async def social_live(interaction: discord.Interaction):
     alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
@@ -4801,7 +4801,7 @@ class HoneypotStatsView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-@bot.tree.command(name="honeypot_stats", description="Zeigt die gespeicherte Honeypot-Moderationsstatistik.")
+@bot.tree.command(name="honeypot-stats", description="Show saved honeypot moderation statistics.")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def honeypot_stats(interaction: discord.Interaction):
@@ -4813,7 +4813,7 @@ async def honeypot_stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=HoneypotStatsView(interaction.guild_id))
 
 
-@bot.tree.command(name="honeypot_publish", description="Veröffentlicht die konfigurierte Honeypot-Nachricht im Zielkanal.")
+@bot.tree.command(name="honeypot-publish", description="Publish the configured honeypot message in the target channel.")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def honeypot_publish(interaction: discord.Interaction):
@@ -5567,7 +5567,7 @@ async def on_member_join_bot_security(member: discord.Member):
     return
 
 
-@bot.tree.command(name="security-setup", description="Aktiviert den grundlegenden IronWolf-Sicherheitsschutz")
+@bot.tree.command(name="security-setup", description="Enable basic IronWolf server protection")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(administrator=True)
 @app_commands.describe(
@@ -7199,7 +7199,7 @@ async def server_template_error(ctx, error):
         await ctx.reply(f"❌ Fehler beim Serverbau: {error}", mention_author=False)
 
 
-@bot.tree.command(name="module-manager", description="Öffnet das IronWolf Control Center zur Modulverwaltung")
+@bot.tree.command(name="module-manager", description="Open the IronWolf Control Center module manager")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def module_manager_command(interaction: discord.Interaction):
@@ -7217,7 +7217,7 @@ async def module_manager_command(interaction: discord.Interaction):
     )
 
 
-@bot.tree.command(name="module-status", description="Zeigt den Status der IronWolf-Cog-Module für diesen Server")
+@bot.tree.command(name="module-status", description="Show the status of IronWolf modules on this server")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def module_status_command(interaction: discord.Interaction):
@@ -7786,7 +7786,7 @@ async def filmserver_error(ctx, error):
 
 
 
-@bot.tree.command(name="wolfincident", description="Legt einen Vorfall im gemeinsamen IronWolf Incident-Center an")
+@bot.tree.command(name="wolfincident", description="Create an incident in the shared IronWolf Incident Center")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(incident_type=[
@@ -7848,7 +7848,7 @@ async def wolfincident_command(
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="wolfincidents", description="Zeigt die letzten Vorfälle im gemeinsamen IronWolf Incident-Center")
+@bot.tree.command(name="wolfincidents", description="Show recent incidents in the shared IronWolf Incident Center")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def wolfincidents_command(interaction: discord.Interaction):
@@ -7876,7 +7876,7 @@ async def wolfincidents_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="wolfmirror", description="Simuliert einen Sicherheitsvorfall ohne Moderationsaktionen")
+@bot.tree.command(name="wolfmirror", description="Simulate a security incident without performing moderation actions")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(scenario=[
@@ -7919,7 +7919,7 @@ async def wolfmirror_command(interaction: discord.Interaction, scenario: app_com
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="wolfcheck", description="Prüft wichtige IronWolf-Kanäle und Bot-Berechtigungen")
+@bot.tree.command(name="wolfcheck", description="Check important IronWolf channels and bot permissions")
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 async def wolfcheck_command(interaction: discord.Interaction):
