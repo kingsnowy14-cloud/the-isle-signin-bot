@@ -43,7 +43,7 @@ class BankView(discord.ui.View):
             await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
             return
         if interaction.guild_id is None:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            await interaction.response.send_message("Only available in a server.", ephemeral=True)
             return
         u = user(interaction.guild_id, interaction.user.id)
         await interaction.response.send_message(
@@ -59,7 +59,7 @@ class ShopPurchaseView(discord.ui.View):
         self.items = dict(items)
         self.selected_name = None
         options = [
-            discord.SelectOption(label=name[:100], description=f"{money(item['price'])} · {(item.get('description') or 'Keine Beschreibung')[:70]}", value=name)
+            discord.SelectOption(label=name[:100], description=f"{money(item['price'])} · {(item.get('description') or 'No description')[:70]}", value=name)
             for name, item in list(items.items())[:25]
         ]
         self.add_item(ShopItemSelect(options, self))
@@ -68,7 +68,7 @@ class ShopPurchaseView(discord.ui.View):
 
 class ShopItemSelect(discord.ui.Select):
     def __init__(self, options, parent_view):
-        super().__init__(placeholder="Artikel zum Kaufen auswählen …", min_values=1, max_values=1, options=options)
+        super().__init__(placeholder="Select an item to purchase…", min_values=1, max_values=1, options=options)
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
@@ -79,11 +79,11 @@ class ShopItemSelect(discord.ui.Select):
         item = self.parent_view.items.get(self.values[0])
         if item:
             await interaction.response.send_message(
-                f"Ausgewählt: **{self.values[0]}** für **{money(item['price'])}**. Drücke anschließend auf „Jetzt kaufen“.",
+                f"Selected: **{self.values[0]}** for **{money(item['price'])}**. Then press “Buy Now”.",
                 ephemeral=True
             )
         else:
-            await interaction.response.send_message("Dieser Artikel ist nicht mehr verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This item is no longer available.", ephemeral=True)
 
 
 class ShopBuyButton(discord.ui.Button):
@@ -93,7 +93,7 @@ class ShopBuyButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         if interaction.guild_id != self.parent_view.guild_id:
-            await interaction.response.send_message("Dieser Shop gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("This shop belongs to a different server.", ephemeral=True)
             return
         name = self.parent_view.selected_name
         if not name:
@@ -113,7 +113,7 @@ class ShopBuyButton(discord.ui.Button):
         u["items"].append(name)
         save()
         await interaction.response.send_message(
-            f"🛍️ Du hast **{name}** für **{money(price)}** gekauft. Neuer Kontostand: **{money(u['bank'])}**.",
+            f"🛍️ Du hast **{name}** for **{money(price)}** gekauft. Neuer Kontostand: **{money(u['bank'])}**.",
             ephemeral=True
         )
 
@@ -128,7 +128,7 @@ class CandyShopPurchaseView(discord.ui.View):
         options = [
             discord.SelectOption(
                 label=name[:100],
-                description=f"{sweets_amount(item['price'])} · {(item.get('description') or 'Keine Beschreibung')[:70]}",
+                description=f"{sweets_amount(item['price'])} · {(item.get('description') or 'No description')[:70]}",
                 value=name
             )
             for name, item in list(items.items())[:25]
@@ -147,11 +147,11 @@ class CandyShopSelect(discord.ui.Select):
         item = self.parent_view.items.get(self.values[0])
         if item:
             await interaction.response.send_message(
-                f"Ausgewählt: **{self.values[0]}** für **{sweets_amount(item['price'])}**. Klicke auf „Mit 🍬 kaufen“.",
+                f"Selected: **{self.values[0]}** for **{sweets_amount(item['price'])}**. Klicke auf „Mit 🍬 kaufen“.",
                 ephemeral=True
             )
         else:
-            await interaction.response.send_message("Dieser Artikel ist nicht mehr verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This item is no longer available.", ephemeral=True)
 
 
 class CandyShopBuyButton(discord.ui.Button):
@@ -161,7 +161,7 @@ class CandyShopBuyButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         if interaction.guild_id != self.parent_view.guild_id:
-            await interaction.response.send_message("Dieser Shop gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("This shop belongs to a different server.", ephemeral=True)
             return
         name = self.parent_view.selected_name
         item = self.parent_view.items.get(name) if name else None
@@ -181,7 +181,7 @@ class CandyShopBuyButton(discord.ui.Button):
         u["candyshop_purchases"] = int(u.get("candyshop_purchases", 0)) + 1
         save()
         await interaction.response.send_message(
-            f"🎉 Gekauft: **{name}** für **{sweets_amount(price)}**! Du hast noch **{sweets_amount(u['sweets'])}**.",
+            f"🎉 Gekauft: **{name}** for **{sweets_amount(price)}**! Du hast noch **{sweets_amount(u['sweets'])}**.",
             ephemeral=True
         )
 
@@ -193,7 +193,7 @@ class ShopView(discord.ui.View):
     @discord.ui.button(label="Artikel kaufen", style=discord.ButtonStyle.success, emoji="🛒", custom_id="ironwolf:shop:buy")
     async def open_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild_id is None:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            await interaction.response.send_message("Only available in a server.", ephemeral=True)
             return
         items = dict(guild(interaction.guild_id)["shop"])
         if not items:
@@ -312,7 +312,7 @@ class Economy(commands.Cog):
     @app_commands.command(name="bank", description="Öffentliche Bankübersicht und dein Kontostand")
     async def bank_overview(self, interaction: discord.Interaction):
         if interaction.guild_id is None:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
+            await interaction.response.send_message("Only available in a server.", ephemeral=True); return
         g, u = guild(interaction.guild_id), user(interaction.guild_id, interaction.user.id)
         e = discord.Embed(title="🏦 IronWolf Bank", description="Öffentliche Bankübersicht. Nutze /konto für deinen privaten Kontostand.", color=discord.Color.blurple())
         e.add_field(name="Zinsen", value=f"{g['bank_interest']:.2f} %", inline=True)
@@ -323,7 +323,7 @@ class Economy(commands.Cog):
     @app_commands.command(name="konto", description="Zeigt deinen Kontostand privat")
     async def account(self, interaction: discord.Interaction):
         if interaction.guild_id is None:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
+            await interaction.response.send_message("Only available in a server.", ephemeral=True); return
         u = user(interaction.guild_id, interaction.user.id)
         await interaction.response.send_message(f"🏦 Bankkonto: **{money(u['bank'])}**\n💶 Bargeld: **{money(u['cash'])}**", ephemeral=True)
 
@@ -349,14 +349,14 @@ class Economy(commands.Cog):
     @app_commands.command(name="shop", description="Öffentliche Shopübersicht mit Artikeln und Preisen")
     async def shop_overview(self, interaction: discord.Interaction):
         if interaction.guild_id is None:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
+            await interaction.response.send_message("Only available in a server.", ephemeral=True); return
         items = guild(interaction.guild_id)["shop"]
         e = discord.Embed(title="🛒 IronWolf-Shop", description="Artikel und Preise für alle Mitglieder", color=discord.Color.gold())
         if not items:
             e.description = "Der Shop ist noch leer. Admins können /shop-hinzufuegen verwenden."
         else:
             for name, item in list(items.items())[:25]:
-                e.add_field(name=name[:256], value=f"Preis: **{money(item['price'])}**\n{item.get('description') or 'Keine Beschreibung'}", inline=True)
+                e.add_field(name=name[:256], value=f"Preis: **{money(item['price'])}**\n{item.get('description') or 'No description'}", inline=True)
         e.set_footer(text="Kaufen: /shop-kaufen")
         await interaction.response.send_message(embed=e, view=ShopView(), ephemeral=False)
 
@@ -367,7 +367,7 @@ class Economy(commands.Cog):
         if not name:
             await interaction.response.send_message("Bitte Artikelnamen eingeben.", ephemeral=True); return
         guild(interaction.guild_id)["shop"][name.lower()] = {"price": preis, "description": beschreibung[:150]}; save()
-        await interaction.response.send_message(f"Artikel **{name}** für **{money(preis)}** hinzugefügt.", ephemeral=True)
+        await interaction.response.send_message(f"Artikel **{name}** for **{money(preis)}** hinzugefügt.", ephemeral=True)
 
     @app_commands.command(name="shop-entfernen", description="Shopartikel entfernen (Admin)")
     @admin()
@@ -378,7 +378,7 @@ class Economy(commands.Cog):
     @app_commands.command(name="shop-kaufen", description="Shopartikel kaufen")
     async def shop_buy(self, interaction: discord.Interaction, name: str):
         if interaction.guild_id is None:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
+            await interaction.response.send_message("Only available in a server.", ephemeral=True); return
         g, u = guild(interaction.guild_id), user(interaction.guild_id, interaction.user.id)
         item = g["shop"].get(name.lower())
         if not item:
@@ -386,7 +386,7 @@ class Economy(commands.Cog):
         if u["bank"] < item["price"]:
             await interaction.response.send_message("Du hast nicht genug Geld auf dem Bankkonto.", ephemeral=True); return
         u["bank"] -= item["price"]; u["items"].append(name.lower()); save()
-        await interaction.response.send_message(f"🛍️ **{name}** für **{money(item['price'])}** gekauft.", ephemeral=True)
+        await interaction.response.send_message(f"🛍️ **{name}** for **{money(item['price'])}** gekauft.", ephemeral=True)
 
 
 # Halloween-Spezialwirtschaft: Süßigkeiten als eigene, dauerhaft gespeicherte Währung.
