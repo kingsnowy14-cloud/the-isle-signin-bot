@@ -227,7 +227,7 @@ def record_module_changes():
         if previous != digest:
             logs.append({
                 "module": name,
-                "change": "Ersterfassung" if previous is None else "Modul geändert",
+                "change": "Initial setup" if previous is None else "Module changed",
                 "detected_at": datetime.now(timezone.utc).isoformat(),
                 "sha256": digest,
             })
@@ -263,7 +263,7 @@ async def ironwolf_logs(ctx):
     except (OSError, json.JSONDecodeError):
         logs = []
     if not logs:
-        await ctx.reply("Noch keine Moduländerungen protokolliert. Beim Bot-Start wird der erste Stand erfasst.", mention_author=False)
+        await ctx.reply("No module changes have been recorded yet. The initial state will be captured when the bot starts.", mention_author=False)
         return
     lines = []
     for entry in reversed(logs[-15:]):
@@ -278,7 +278,7 @@ async def ironwolf_logs(ctx):
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text="Letzte 15 Einträge · Änderungen werden beim Bot-Start erkannt")
+    embed.set_footer(text="Latest 15 entries · Changes are detected when the bot starts")
     await ctx.reply(embed=embed, mention_author=False)
 
 
@@ -393,7 +393,7 @@ DEFAULT_GUILD_CONFIG = {
     "honeypot_enabled": False,
     "honeypot_action": "kick",
     "honeypot_timeout_minutes": 60,
-    "honeypot_message": "🍯 **Honeypot aktiv**\nDieser Kanal dient der Sicherheitsüberwachung. Bitte hier nicht schreiben.",
+    "honeypot_message": "🍯 **Honeypot active**\nThis channel is monitored for security purposes. Please do not post here.",
     "anti_nuke_enabled": False,
     "anti_nuke_threshold": 4,
     "anti_raid_enabled": False,
@@ -483,28 +483,28 @@ BOT_TRANSLATIONS = {
         "This command has been disabled for this server in the web dashboard.": "This command has been disabled for this server in the web dashboard.",
         "This Pro module requires an active Premium+ account linked to this server.": "This Pro module requires an active Premium+ account linked to this server.",
         "This module has been disabled for this server in the web dashboard.": "This module has been disabled for this server in the web dashboard.",
-        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Welcome {mention} to **{server}**! You are member **#{count}**.",
+        "Welcome {mention} to **{server}**! You are member **#{count}**.": "Welcome {mention} to **{server}**! You are member **#{count}**.",
         "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** has left **{server}**. We wish you all the best."
     },
     "cs": {
         "This command has been disabled for this server in the web dashboard.": "Tento příkaz byl pro tento server vypnut ve webovém dashboardu.",
         "This Pro module requires an active Premium+ account linked to this server.": "Tento modul Pro vyžaduje aktivní účet Premium+ propojený s tímto serverem.",
         "This module has been disabled for this server in the web dashboard.": "Tento modul byl pro tento server vypnut ve webovém dashboardu.",
-        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Vítej {mention} na serveru **{server}**! Jsi člen číslo **{count}**.",
+        "Welcome {mention} to **{server}**! You are member **#{count}**.": "Vítej {mention} na serveru **{server}**! Jsi člen číslo **{count}**.",
         "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** opustil(a) server **{server}**. Přejeme vše dobré."
     },
     "fr": {
         "This command has been disabled for this server in the web dashboard.": "Cette commande a été désactivée pour ce serveur dans le tableau de bord.",
         "This Pro module requires an active Premium+ account linked to this server.": "Ce module Pro nécessite un compte Premium+ actif lié à ce serveur.",
         "This module has been disabled for this server in the web dashboard.": "Ce module a été désactivé pour ce serveur dans le tableau de bord.",
-        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Bienvenue {mention} sur **{server}** ! Vous êtes le membre **n° {count}**.",
+        "Welcome {mention} to **{server}**! You are member **#{count}**.": "Bienvenue {mention} sur **{server}** ! Vous êtes le membre **n° {count}**.",
         "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** a quitté **{server}**. Bonne continuation."
     },
     "es": {
         "This command has been disabled for this server in the web dashboard.": "Este comando se ha desactivado para este servidor en el panel web.",
         "This Pro module requires an active Premium+ account linked to this server.": "Este módulo Pro requiere una cuenta Premium+ activa vinculada a este servidor.",
         "This module has been disabled for this server in the web dashboard.": "Este módulo se ha desactivado para este servidor en el panel web.",
-        "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "¡Bienvenido {mention} a **{server}**! Eres el miembro número **{count}**.",
+        "Welcome {mention} to **{server}**! You are member **#{count}**.": "¡Bienvenido {mention} a **{server}**! Eres el miembro número **{count}**.",
         "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** ha salido de **{server}**. ¡Te deseamos lo mejor!"
     }
 }
@@ -722,11 +722,11 @@ TEXTS = {
         "dinosaur": "Dinosaurier",
         "skin": "Skin",
         "location": "Standort",
-        "modal_title": "Server-Anmeldung",
-        "signin_success": "Deine Anmeldung wurde übermittelt.",
-        "signout_success": "Deine Abmeldung wurde übermittelt.",
-        "need_signin": "Du bist aktuell nicht angemeldet.",
-        "signin_first": "Du musst dich zuerst anmelden.",
+        "modal_title": "Server Sign-in",
+        "signin_success": "Your sign-in has been submitted.",
+        "signout_success": "Your sign-out has been submitted.",
+        "need_signin": "You are not currently signed in.",
+        "signin_first": "You need to sign in first.",
         "signin_modal": "Anmelden",
         "signout_modal": "Abmelden",
         "submit": "Absenden",
@@ -847,8 +847,8 @@ class GamingAccountVerifyView(discord.ui.View):
                         link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
                         message = (
                             "🔐 **Steam sicher verknüpfen**\nÖffne diesen Link und melde dich direkt bei Steam an. "
-                            "Dein Steam-Passwort wird niemals an IronWolf übermittelt. Der Link ist 10 Minuten gültig "
-                            "und kann nur einmal verwendet werden.\n" + link_url
+                            "Your Steam password is never shared with IronWolf. Der Link ist 10 Minuten gültig "
+                            "and can only be used once.\n" + link_url
                         )
                     else:
                         link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
@@ -863,7 +863,7 @@ class GamingAccountVerifyView(discord.ui.View):
                 except Exception as exc:
                     print(f"[GAMING VERIFY] {provider} link creation failed: {type(exc).__name__}: {exc}", flush=True)
                     await interaction.followup.send(
-                        f"Der {provider.capitalize()}-Link konnte gerade nicht erstellt werden. Bitte prüfe die Railway-Konfiguration und versuche es erneut.",
+                        f"The {provider.capitalize()} link could not be created. Please check the Railway configuration and try again.",
                         ephemeral=True,
                     )
 
@@ -1000,7 +1000,7 @@ class TicketCreateModal(discord.ui.Modal):
         # Limit ticket creation per user across all ticket panels in this server.
         creation_key = (guild.id, interaction.user.id)
         if creation_key in _ticket_creations_in_progress:
-            await interaction.followup.send("Dein Ticket wird bereits erstellt. Bitte warte kurz.", ephemeral=True)
+            await interaction.followup.send("Your ticket is already being created. Please wait a moment.", ephemeral=True)
             return
         _ticket_creations_in_progress.add(creation_key)
 
@@ -1173,7 +1173,7 @@ class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
     async def on_submit(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
         if not meta or not is_support(interaction.user, meta, interaction.guild):
-            await interaction.response.send_message("Nur das Support-Team kann interne Notizen speichern.", ephemeral=True)
+            await interaction.response.send_message("Only the support team can save internal notes.", ephemeral=True)
             return
         notes = meta.setdefault("internal_notes", [])
         notes.append({
@@ -1184,7 +1184,7 @@ class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
         })
         del notes[:-100]
         save_json(DATA_FILE, data)
-        await interaction.response.send_message("🔒 Interne Teamnotiz wurde privat gespeichert.", ephemeral=True)
+        await interaction.response.send_message("🔒 Internal team note saved privately.", ephemeral=True)
 
 
 class TicketControlView(discord.ui.View):
@@ -1420,7 +1420,7 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
         if owner_user is not None:
             try:
                 await owner_user.send(
-                    f"Dein Ticket **{channel.name}** auf **{guild.name}** wurde geschlossen. Hier ist dein Transcript.",
+                    f"Your ticket **{channel.name}** in **{guild.name}** has been closed. Here is your transcript.",
                     file=discord.File(io.BytesIO(archive_bytes), filename=f"{channel.name}-transcript.zip"),
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
@@ -1581,7 +1581,7 @@ async def award_message_xp(message):
             title="🎉 Levelaufstieg!",
             description=(
                 f"Glückwunsch {message.author.mention}!\n\n"
-                f"Du bist jetzt **Level {new_level}**!\n"
+                f"You are now **Level {new_level}**!\n"
                 f"⭐ XP insgesamt: **{stats['xp']}**"
             ),
             color=discord.Color.gold(),
@@ -1608,7 +1608,7 @@ async def award_message_xp(message):
 async def level_command(ctx, member: discord.Member = None):
     """Show a member's level and XP progress."""
     if ctx.guild is None:
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.")
+        await ctx.reply("This command can only be used in a server.")
         return
 
     target = member or ctx.author
@@ -1649,7 +1649,7 @@ async def level_command(ctx, member: discord.Member = None):
 async def leaderboard_command(ctx):
     """Show the ten highest-ranking members of this server."""
     if ctx.guild is None:
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Server.")
+        await ctx.reply("This command can only be used in a server.")
         return
 
     server_stats = data.setdefault("stats", {}).get(str(ctx.guild.id), {})
@@ -1664,7 +1664,7 @@ async def leaderboard_command(ctx):
     members = members[:10]
 
     if not members:
-        await ctx.reply("Noch gibt es keine Leveldaten auf diesem Server.")
+        await ctx.reply("There is no level data for this server yet.")
         return
 
     lines = []
@@ -1754,7 +1754,7 @@ class CaptchaChoiceView(discord.ui.View):
                     )
                     return
                 if not interaction.guild or not isinstance(interaction.user, discord.Member):
-                    await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+                    await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
                     return
                 # Acknowledge before Discord role edits, which may take time.
                 await interaction.response.defer(ephemeral=True, thinking=True)
@@ -1778,7 +1778,7 @@ async def send_captcha_challenge(interaction: discord.Interaction):
 
     image_file = discord.File(_make_captcha_image(answer), filename="verification-captcha.png")
     embed = create_embed(
-        title="🧩 Verifizierung",
+        title="🧩 Verification",
         description="Lies den Code im Bild und drücke unten die passende von drei Antworten. Die Aufgabe läuft nach 2 Minuten ab.",
         color=discord.Color.blurple(),
     )
@@ -1807,13 +1807,13 @@ async def finish_verification(interaction: discord.Interaction, cfg):
         return
     try:
         if unverified_role and unverified_role in interaction.user.roles:
-            await interaction.user.remove_roles(unverified_role, reason="Mitglied hat Verifizierung abgeschlossen")
+            await interaction.user.remove_roles(unverified_role, reason="Member completed verification")
         if verified_role not in interaction.user.roles:
-            await interaction.user.add_roles(verified_role, reason="Mitglied hat Verifizierung abgeschlossen")
+            await interaction.user.add_roles(verified_role, reason="Member completed verification")
     except (discord.Forbidden, discord.HTTPException) as exc:
         await respond(f"Could not update the role: {type(exc).__name__}. Please check the bot role hierarchy.")
         return
-    await respond("✅ Du bist jetzt verifiziert. Willkommen!")
+    await respond("✅ You are now verified. Welcome!")
 
 
 class DashboardMessageView(discord.ui.View):
@@ -1853,20 +1853,20 @@ class DashboardMessageView(discord.ui.View):
             await interaction.response.send_message("This role cannot be assigned right now. Check that it exists and is below IronWolf’s highest role." if self.guild_id == 1561027077984227371 else "Diese Rolle kann aktuell nicht vergeben werden: Prüfe, ob sie existiert und unter der höchsten IronWolf-Botrolle liegt.", ephemeral=True)
             return
         if not me.guild_permissions.manage_roles:
-            await interaction.response.send_message("IronWolf needs the Manage Roles permission on this server." if self.guild_id == 1561027077984227371 else "IronWolf benötigt auf diesem Server die Berechtigung „Rollen verwalten“.", ephemeral=True)
+            await interaction.response.send_message("IronWolf needs the Manage Roles permission on this server." if self.guild_id == 1561027077984227371 else "IronWolf needs the Manage Roles permission on this server.", ephemeral=True)
             return
         try:
             if role in interaction.user.roles:
                 await interaction.user.remove_roles(role, reason="Dashboard-Rollenbutton")
-                message = f"The {role.mention} role was removed." if self.guild_id == 1561027077984227371 else f"Die Rolle {role.mention} wurde entfernt."
+                message = f"The {role.mention} role was removed." if self.guild_id == 1561027077984227371 else f"The {role.mention} role has been removed."
             else:
                 await interaction.user.add_roles(role, reason="Dashboard-Rollenbutton")
-                message = f"The {role.mention} role was added to you." if self.guild_id == 1561027077984227371 else f"Die Rolle {role.mention} wurde dir gegeben."
+                message = f"The {role.mention} role was added to you." if self.guild_id == 1561027077984227371 else f"The {role.mention} role has been assigned to you."
             await interaction.response.send_message(message, ephemeral=True)
         except discord.Forbidden:
-            await interaction.response.send_message("The bot cannot manage this role. Check its role position and permissions." if self.guild_id == 1561027077984227371 else "Der Bot darf diese Rolle nicht verwalten. Bitte Rollenposition und Berechtigungen prüfen.", ephemeral=True)
+            await interaction.response.send_message("The bot cannot manage this role. Check its role position and permissions." if self.guild_id == 1561027077984227371 else "The bot cannot manage this role. Please check its role position and permissions.", ephemeral=True)
         except discord.HTTPException:
-            await interaction.response.send_message("Discord could not update the role. Please try again." if self.guild_id == 1561027077984227371 else "Discord konnte die Rolle gerade nicht ändern. Bitte versuche es erneut.", ephemeral=True)
+            await interaction.response.send_message("Discord could not update the role. Please try again." if self.guild_id == 1561027077984227371 else "Discord could not update the role. Please try again.", ephemeral=True)
 
 
 def build_dashboard_message_view(guild_id: int, buttons: list[dict]):
@@ -1891,7 +1891,7 @@ class VerifyView(discord.ui.View):
 
     async def verify_button(self, interaction: discord.Interaction):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+            await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
             return
         cfg = guild_config(interaction.guild.id)
         verified_id = cfg.get("verified_role")
@@ -2068,7 +2068,7 @@ async def help_command(interaction: discord.Interaction):
             if isinstance(command, app_commands.Group):
                 collect_slash(command.commands, full_name)
             else:
-                description = getattr(command, "description", None) or "Keine Beschreibung vorhanden."
+                description = getattr(command, "description", None) or "No description available."
                 slash_commands.append((f"/{full_name}", description, "Slash"))
 
     collect_slash(bot.tree.get_commands())
@@ -2076,7 +2076,7 @@ async def help_command(interaction: discord.Interaction):
     for command in bot.commands:
         if command.hidden or command.name == "help":
             continue
-        description = (command.help or command.brief or "Keine Beschreibung vorhanden.").strip()
+        description = (command.help or command.brief or "No description available.").strip()
         for command_name in [command.name, *command.aliases]:
             prefix_commands.append((f"!{command_name}", description, "Prefix"))
 
@@ -2186,7 +2186,7 @@ def _activity_age_text(last_activity, now=None):
 async def clan_activity(interaction: discord.Interaction, mitglied: discord.Member | None = None):
     guild = interaction.guild
     if guild is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     target = mitglied or interaction.user
     stats = get_user_stats(guild.id, target.id)
@@ -2217,7 +2217,7 @@ async def clan_activity(interaction: discord.Interaction, mitglied: discord.Memb
 async def inactive_members(interaction: discord.Interaction, tage: app_commands.Range[int, 1, 365] = 14):
     guild = interaction.guild
     if guild is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True, thinking=True)
     now = datetime.now(timezone.utc)
@@ -2269,7 +2269,7 @@ async def set_activity_log_channel(interaction: discord.Interaction, kanal: disc
 async def activity_report(interaction: discord.Interaction, tage: app_commands.Range[int, 1, 365] = 14):
     guild = interaction.guild
     if guild is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True, thinking=True)
     now = datetime.now(timezone.utc)
@@ -2423,7 +2423,7 @@ def _moderation_log(guild_id):
 
 def _can_moderate(interaction: discord.Interaction, member: discord.Member):
     if interaction.guild is None or not isinstance(interaction.user, discord.Member):
-        return False, "Dieser Befehl funktioniert nur auf einem Server."
+        return False, "This command can only be used in a server."
     if member.id == interaction.user.id:
         return False, "Du kannst diese Aktion nicht gegen dich selbst ausführen."
     if member.id == interaction.guild.owner_id:
@@ -2689,7 +2689,7 @@ class BirthdayRegisterModal(discord.ui.Modal, title="Geburtstag eintragen"):
 
     async def on_submit(self, interaction: discord.Interaction):
         if interaction.guild is None:
-            await interaction.response.send_message("Das funktioniert nur auf einem Server.", ephemeral=True)
+            await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
             return
         import calendar
         try:
@@ -3193,7 +3193,7 @@ async def giveaway_start(
     teilnehmer_anzeigen: bool = False,
 ):
     if interaction.guild_id is None or interaction.channel is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     await interaction.response.send_message("Giveaway wird erstellt …", ephemeral=True)
     ends_at = time.time() + tage * 86400
@@ -3784,7 +3784,7 @@ async def verify_command(
     emoji: str = "✅",
 ):
     if not interaction.guild:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     bot_member = interaction.guild.me
     if (
@@ -5403,8 +5403,8 @@ async def on_member_join(member: discord.Member):
                 print(f"[WELCOME] Could not find/access channel {welcome_channel_id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
                 welcome_channel = None
         if isinstance(welcome_channel, discord.TextChannel):
-            template = cfg.get("welcome_message") or "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**."
-            if template == "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.":
+            template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
+            if template == "Welcome {mention} to **{server}**! You are member **#{count}**.":
                 template = bot_text(member.guild.id, template)
             welcome_text = (template.replace("{mention}", member.mention)
                             .replace("{user}", discord.utils.escape_markdown(member.display_name))
@@ -7865,7 +7865,7 @@ async def wolfincident_command(
 ):
     """Create a structured incident that appears in the web dashboard."""
     if interaction.guild is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     if len(titel) > 120 or len(beschreibung) > 500:
         await interaction.response.send_message("❌ Titel maximal 120 Zeichen, Beschreibung maximal 500 Zeichen.", ephemeral=True)
@@ -7907,7 +7907,7 @@ async def wolfincident_command(
 async def wolfincidents_command(interaction: discord.Interaction):
     """List recent shared incidents without collecting message contents."""
     if interaction.guild is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     incidents = list_incidents(guild_config(interaction.guild.id), limit=8)
     if not incidents:
@@ -7942,7 +7942,7 @@ async def wolfmirror_command(interaction: discord.Interaction, scenario: app_com
     """Run a read-only security tabletop simulation for this guild."""
     guild = interaction.guild
     if guild is None or guild.me is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     cfg = guild_config(guild.id)
     permissions = guild.me.guild_permissions
@@ -7979,7 +7979,7 @@ async def wolfcheck_command(interaction: discord.Interaction):
     """Run the same quick readiness checks available in the web dashboard."""
     guild = interaction.guild
     if guild is None:
-        await interaction.response.send_message("Dieser Befehl funktioniert nur auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     cfg = guild_config(guild.id)
     me = guild.me
