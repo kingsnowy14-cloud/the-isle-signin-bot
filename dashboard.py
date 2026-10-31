@@ -1328,7 +1328,8 @@ def _command_records(guild_id):
         seen.add(key)
         cog = command.cog
         module_name = cog.__class__.__name__ if cog is not None else None
-        records.append({"key": key, "name": "!" + qualified_name, "kind": "Prefix", "enabled": key not in disabled and module_name not in disabled_modules, "cog": command.cog_name or "Allgemein"})
+        enabled = key not in disabled and f"prefix:.{qualified_name}" not in disabled and module_name not in disabled_modules
+        records.append({"key": key, "name": "! / ." + qualified_name, "kind": "Prefix", "enabled": enabled, "cog": command.cog_name or "Allgemein"})
     for command in _bot.tree.walk_commands():
         if isinstance(command, app_commands.Group):
             continue
@@ -4573,10 +4574,15 @@ def guild_commands(guild_id):
         disabled = set(cfg.get("disabled_commands", []))
         valid_keys = {item["key"] for item in _command_records(guild.id)}
         for key in valid_keys:
-            if request.form.get("cmd:" + key) == "on":
-                disabled.discard(key)
-            else:
-                disabled.add(key)
+            enabled = request.form.get("cmd:" + key) == "on"
+            aliases = {key}
+            if key.startswith("prefix:!"):
+                aliases.add("prefix:." + key[len("prefix:!"):])
+            for alias_key in aliases:
+                if enabled:
+                    disabled.discard(alias_key)
+                else:
+                    disabled.add(alias_key)
         cfg["disabled_commands"] = sorted(disabled)
         _save_json(data_path("config.json"), _config)
         _audit_dashboard_change(guild.id, "Befehlsrechte", session.get("user_id"), "Deaktivierte Befehle: " + ", ".join(sorted(disabled))[:350])
