@@ -6738,6 +6738,103 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
         await status.edit(content=f"⚠️ Discord konnte die Einrichtung nicht vollständig abschließen: {exc}. Bereits erstellte Elemente bleiben bestehen; du kannst den Befehl nach Behebung erneut ausführen.")
 
 
+@bot.command(name="developerbuild")
+@commands.guild_only()
+@commands.has_guild_permissions(administrator=True)
+async def developerbuild(ctx):
+    """Create a professional English Discord developer community server."""
+    roles = [
+        ("👑 Founder", discord.Colour.from_rgb(220, 175, 55), discord.Permissions(administrator=True)),
+        ("🛡️ Administrator", discord.Colour.from_rgb(220, 65, 65), discord.Permissions.none()),
+        ("🔨 Developer", discord.Colour.from_rgb(90, 145, 235), discord.Permissions.none()),
+        ("🧰 Senior Developer", discord.Colour.from_rgb(125, 95, 220), discord.Permissions.none()),
+        ("🛡️ Moderator", discord.Colour.from_rgb(230, 130, 55), discord.Permissions.none()),
+        ("🎫 Support Team", discord.Colour.from_rgb(55, 175, 185), discord.Permissions.none()),
+        ("🤝 Partner", discord.Colour.from_rgb(225, 115, 175), discord.Permissions.none()),
+        ("💎 Premium Member", discord.Colour.from_rgb(190, 115, 235), discord.Permissions.none()),
+        ("👤 Member", discord.Colour.from_rgb(90, 190, 125), discord.Permissions.none()),
+        ("🌱 New Member", discord.Colour.from_rgb(155, 165, 175), discord.Permissions.none()),
+        ("🤖 Bots", discord.Colour.from_rgb(115, 120, 135), discord.Permissions.none()),
+    ]
+    channels = [
+        ("📌 START HERE", [
+            ("text", "👋・welcome", "Welcome to our developer community!"),
+            ("text", "📜・rules", "Please read and follow the community guidelines."),
+            ("text", "📢・announcements", "Official news, updates and community announcements."),
+            ("text", "🎭・roles", "Information about available community roles."),
+            ("text", "❓・faq", "Frequently asked questions and useful information."),
+        ]),
+        ("💻 DEVELOPMENT", [
+            ("text", "💬・general-chat", "Talk with other developers and community members."),
+            ("text", "💡・ideas-and-feedback", "Share ideas, suggestions and constructive feedback."),
+            ("text", "🧑‍💻・showcase", "Showcase your projects, applications and work."),
+            ("text", "🔍・code-review", "Request constructive code reviews and feedback."),
+            ("text", "🐞・bug-reports", "Report bugs and technical issues."),
+            ("text", "📚・resources", "Share useful documentation, tools and learning resources."),
+            ("text", "🤝・collaboration", "Find developers and collaborators for projects."),
+            ("voice", "💻 Development Lounge", None),
+        ]),
+        ("🧩 SERVICES & SUPPORT", [
+            ("text", "🛠️・development-requests", "Request custom Discord servers, bots or development work."),
+            ("text", "🤖・bot-support", "Get help with Discord bots and integrations."),
+            ("text", "🎫・open-a-ticket", "Open a private support or commission ticket."),
+            ("text", "💼・commissions", "Discuss project scopes, availability and commissions."),
+        ]),
+        ("🌐 COMMUNITY", [
+            ("text", "🎉・introductions", "Introduce yourself and tell us what you build."),
+            ("text", "📸・media", "Share screenshots, videos and project updates."),
+            ("text", "🎮・off-topic", "Relax and chat about topics beyond development."),
+            ("text", "📅・events", "Community events, workshops and coding sessions."),
+            ("voice", "🌐 Community Lounge", None),
+        ]),
+        ("🔒 STAFF AREA", [
+            ("text", "🔐・staff-chat", "Private staff coordination."),
+            ("text", "📋・staff-notes", "Internal notes and team follow-ups."),
+            ("text", "📑・mod-logs", "Moderation and administration logs."),
+            ("voice", "🛡️ Staff Voice", None),
+        ]),
+    ]
+    await _build_server_template(ctx, roles, channels, "Discord Developer Community")
+    welcome = discord.utils.get(ctx.guild.text_channels, name="👋・welcome")
+    rules = discord.utils.get(ctx.guild.text_channels, name="📜・rules")
+    if welcome:
+        embed = discord.Embed(
+            title="👋 Welcome to the Developer Community!",
+            description=(
+                "A place for developers, creators and problem-solvers to connect, "
+                "share projects and learn from one another.\n\n"
+                "💻 **Build** — showcase your work and exchange ideas.\n"
+                "🤝 **Collaborate** — find teammates and work on projects together.\n"
+                "🛠️ **Get support** — ask questions and help others.\n\n"
+                "Start by reading the rules and introducing yourself. We're glad you're here!"
+            ),
+            colour=discord.Colour.blurple(),
+        )
+        embed.set_footer(text=f"{ctx.guild.name} • Developer Community")
+        try:
+            await welcome.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+    if rules:
+        embed = discord.Embed(
+            title="📜 Community Guidelines",
+            description=(
+                "1. **Be respectful.** Treat everyone with courtesy.\n"
+                "2. **Keep it constructive.** Give helpful feedback and avoid harassment.\n"
+                "3. **No spam or advertising.** Share promotions only in permitted places.\n"
+                "4. **Respect intellectual property.** Credit original creators and do not share stolen code.\n"
+                "5. **Keep content in the right channels.** Use support and showcase channels appropriately.\n"
+                "6. **Follow Discord's Terms of Service.**\n\n"
+                "Staff may take action when these guidelines are violated."
+            ),
+            colour=discord.Colour.orange(),
+        )
+        try:
+            await rules.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+
 @bot.command(name="deleteserver")
 @commands.guild_only()
 @commands.has_guild_permissions(administrator=True)
