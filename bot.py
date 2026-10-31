@@ -6762,8 +6762,8 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
         await status.edit(content=f"⚠️ Discord konnte die Einrichtung nicht vollständig abschließen: {exc}. Bereits erstellte Elemente bleiben bestehen; du kannst den Befehl nach Behebung erneut ausführen.")
 
 
-async def _run_developerbuild(ctx):
-    if ctx.guild.id != 1566103924019167293:
+async def _run_developerbuild(ctx, allow_any_server=False):
+    if not allow_any_server and ctx.guild.id != 1566103924019167293:
         await ctx.reply(
             "❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.",
             mention_author=False,
@@ -6955,13 +6955,10 @@ async def _run_developerbuild(ctx):
 
 @bot.command(name="developerbuild")
 @commands.guild_only()
-@commands.has_guild_permissions(administrator=True)
 async def developerbuild(ctx):
-    """Create the developer community structure using the legacy prefix."""
-    if ctx.guild.id != 1566103924019167293:
-        await ctx.reply("❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.", mention_author=False)
-        return
-    await _run_developerbuild(ctx)
+    """Create the developer community structure on any server for the authorized member."""
+    # The global prefix-command check restricts this command to member ID 1493110334280564807.
+    await _run_developerbuild(ctx, allow_any_server=True)
 
 
 class _DeveloperBuildInteractionContext:
