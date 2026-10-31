@@ -5131,10 +5131,10 @@ async def build_bot_welcome_embeds(guild: discord.Guild):
 
 
 async def notify_bot_server_change(guild: discord.Guild, joined: bool):
-    """Send bot join/leave notices to a configured home-server text channel."""
-    channel_id = os.getenv("IRONWOLF_LOG_CHANNEL_ID", "").strip()
+    """Send IronWolf guild join/leave notices to the central security log."""
+    channel_id = os.getenv("IRONWOLF_LOG_CHANNEL_ID", "1566192543375433869").strip()
     if not channel_id.isdigit():
-        print("[SERVER-LOG] Set IRONWOLF_LOG_CHANNEL_ID to the destination text channel ID.")
+        print("[SERVER-LOG] Invalid IRONWOLF_LOG_CHANNEL_ID.")
         return
     try:
         channel = bot.get_channel(int(channel_id))
@@ -5143,17 +5143,44 @@ async def notify_bot_server_change(guild: discord.Guild, joined: bool):
         if not hasattr(channel, "send"):
             print(f"[SERVER-LOG] Configured channel {channel_id} cannot receive messages.")
             return
+
         embed = discord.Embed(
-            title="🟢 IronWolf wurde hinzugefügt" if joined else "🔴 IronWolf wurde entfernt",
+            title="🟢 IronWolf joined a server" if joined else "🔴 IronWolf left a server",
             description=(
-                f"**Server:** {discord.utils.escape_markdown(guild.name)}\n"
-                f"**Server-ID:** `{guild.id}`\n"
-                f"**Mitglieder:** {guild.member_count if guild.member_count is not None else 'unbekannt'}"
+                f"**Server name:** {discord.utils.escape_markdown(guild.name)}\n"
+                f"**Server ID:** `{guild.id}`\n"
+                f"**Members:** {guild.member_count if guild.member_count is not None else 'Unknown'}"
             ),
             color=discord.Color.green() if joined else discord.Color.red(),
             timestamp=datetime.now(timezone.utc),
         )
-        embed.set_footer(text="IronWolf · Server-Protokoll")
+
+        if joined:
+            inviter_text = "Unknown — Discord audit-log access may be missing."
+            try:
+                async for entry in guild.audit_logs(
+                    limit=10,
+                    action=discord.AuditLogAction.bot_add,
+                ):
+                    target = getattr(entry, "target", None)
+                    target_id = getattr(target, "id", None) or getattr(entry, "target_id", None)
+                    if bot.user and target_id == bot.user.id:
+                        inviter = entry.user
+                        inviter_text = (
+                            f"{inviter.mention} (`{inviter}`, ID: `{inviter.id}`)"
+                            if inviter else "Unknown"
+                        )
+                        break
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[SERVER-LOG] Could not read inviter audit log for guild {guild.id}: {type(exc).__name__}: {exc}")
+            embed.add_field(name="Invited by", value=inviter_text, inline=False)
+
+        embed.add_field(
+            name="Event",
+            value="Bot added to this server" if joined else "Bot removed from this server",
+            inline=True,
+        )
+        embed.set_footer(text="IronWolf · Global Server Logs")
         await channel.send(embed=embed)
         print(f"[SERVER-LOG] Sent {'join' if joined else 'leave'} notice for guild {guild.id}.")
     except (discord.HTTPException, discord.Forbidden, ValueError) as exc:
@@ -5162,6 +5189,9 @@ async def notify_bot_server_change(guild: discord.Guild, joined: bool):
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
+    # Always log the guild join, even when this guild is not enabled in the dashboard.
+    await notify_bot_server_change(guild, joined=True)
+
     # Only brand-new servers receive the safe-off default. Existing guild configs are untouched.
     gid = str(guild.id)
     if gid not in config:
@@ -5172,8 +5202,6 @@ async def on_guild_join(guild: discord.Guild):
     if isinstance(config.get(gid), dict) and config[gid].get("bot_enabled", True) is False:
         print(f"[CONFIG] Guild {gid} is disabled; skipping join actions until enabled in the dashboard.", flush=True)
         return
-    await notify_bot_server_change(guild, joined=True)
-
     # Create and equip Ironbot's own role when joining a server.
     try:
         bot_member = guild.me
