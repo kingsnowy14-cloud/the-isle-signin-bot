@@ -95,12 +95,12 @@ async def dashboard_prefix_command_check(ctx):
     prefix_enabled = await dashboard_command_enabled(guild_id, f"prefix:!{command_name}")
     dot_prefix_enabled = await dashboard_command_enabled(guild_id, f"prefix:.{command_name}")
     if not prefix_enabled or not dot_prefix_enabled:
-        await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
+        await ctx.send("This command has been disabled for this server in the web dashboard.")
         return False
     cog = getattr(ctx, "cog", None)
     module_name = cog.__class__.__name__ if cog is not None else None
     if not await dashboard_module_enabled(guild_id, module_name):
-        await ctx.send("Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.")
+        await ctx.send("This module has been disabled for this server in the web dashboard.")
         return False
     return True
 
@@ -118,7 +118,7 @@ async def dashboard_slash_command_check(interaction):
         return False
     key = f"slash:/{command.qualified_name}"
     if not await dashboard_command_enabled(interaction.guild_id, key):
-        message = bot_text(interaction.guild_id, "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
+        message = bot_text(interaction.guild_id, "This command has been disabled for this server in the web dashboard.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
@@ -129,14 +129,14 @@ async def dashboard_slash_command_check(interaction):
     premium_feature = {"SecurityTools": "security", "EventTools": "automation"}.get(module_name)
     # Seasonal slash commands are available without a premium feature flag.
     if premium_feature and not guild_has_feature(guild_config(interaction.guild_id), premium_feature):
-        message = bot_text(interaction.guild_id, "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.")
+        message = bot_text(interaction.guild_id, "This Pro module requires an active Premium+ account linked to this server.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
             await interaction.response.send_message(message, ephemeral=True)
         return False
     if not await dashboard_module_enabled(interaction.guild_id, module_name):
-        message = bot_text(interaction.guild_id, "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.")
+        message = bot_text(interaction.guild_id, "This module has been disabled for this server in the web dashboard.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
@@ -479,32 +479,32 @@ def guild_config(guild_id):
 SUPPORTED_BOT_LANGUAGES = {"en"}
 BOT_TRANSLATIONS = {
     "en": {
-        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "This command has been disabled for this server in the web dashboard.",
-        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "This Pro module requires an active Premium+ account linked to this server.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "This module has been disabled for this server in the web dashboard.",
+        "This command has been disabled for this server in the web dashboard.": "This command has been disabled for this server in the web dashboard.",
+        "This Pro module requires an active Premium+ account linked to this server.": "This Pro module requires an active Premium+ account linked to this server.",
+        "This module has been disabled for this server in the web dashboard.": "This module has been disabled for this server in the web dashboard.",
         "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Welcome {mention} to **{server}**! You are member **#{count}**.",
-        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** has left **{server}**. We wish you all the best."
+        "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** has left **{server}**. We wish you all the best."
     },
     "cs": {
-        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento příkaz byl pro tento server vypnut ve webovém dashboardu.",
-        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Tento modul Pro vyžaduje aktivní účet Premium+ propojený s tímto serverem.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Tento modul byl pro tento server vypnut ve webovém dashboardu.",
+        "This command has been disabled for this server in the web dashboard.": "Tento příkaz byl pro tento server vypnut ve webovém dashboardu.",
+        "This Pro module requires an active Premium+ account linked to this server.": "Tento modul Pro vyžaduje aktivní účet Premium+ propojený s tímto serverem.",
+        "This module has been disabled for this server in the web dashboard.": "Tento modul byl pro tento server vypnut ve webovém dashboardu.",
         "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Vítej {mention} na serveru **{server}**! Jsi člen číslo **{count}**.",
-        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** opustil(a) server **{server}**. Přejeme vše dobré."
+        "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** opustil(a) server **{server}**. Přejeme vše dobré."
     },
     "fr": {
-        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Cette commande a été désactivée pour ce serveur dans le tableau de bord.",
-        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Ce module Pro nécessite un compte Premium+ actif lié à ce serveur.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Ce module a été désactivé pour ce serveur dans le tableau de bord.",
+        "This command has been disabled for this server in the web dashboard.": "Cette commande a été désactivée pour ce serveur dans le tableau de bord.",
+        "This Pro module requires an active Premium+ account linked to this server.": "Ce module Pro nécessite un compte Premium+ actif lié à ce serveur.",
+        "This module has been disabled for this server in the web dashboard.": "Ce module a été désactivé pour ce serveur dans le tableau de bord.",
         "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "Bienvenue {mention} sur **{server}** ! Vous êtes le membre **n° {count}**.",
-        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** a quitté **{server}**. Bonne continuation."
+        "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** a quitté **{server}**. Bonne continuation."
     },
     "es": {
-        "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.": "Este comando se ha desactivado para este servidor en el panel web.",
-        "Dieses Pro-Modul benötigt ein aktives, mit diesem Server verknüpftes Premium+-Konto.": "Este módulo Pro requiere una cuenta Premium+ activa vinculada a este servidor.",
-        "Dieses Modul wurde für diesen Server im Web-Dashboard deaktiviert.": "Este módulo se ha desactivado para este servidor en el panel web.",
+        "This command has been disabled for this server in the web dashboard.": "Este comando se ha desactivado para este servidor en el panel web.",
+        "This Pro module requires an active Premium+ account linked to this server.": "Este módulo Pro requiere una cuenta Premium+ activa vinculada a este servidor.",
+        "This module has been disabled for this server in the web dashboard.": "Este módulo se ha desactivado para este servidor en el panel web.",
         "Willkommen {mention} auf **{server}**! Du bist Mitglied Nr. **{count}**.": "¡Bienvenido {mention} a **{server}**! Eres el miembro número **{count}**.",
-        "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!": "👋 **{user}** ha salido de **{server}**. ¡Te deseamos lo mejor!"
+        "👋 **{user}** has left **{server}**. We wish you all the best.": "👋 **{user}** ha salido de **{server}**. ¡Te deseamos lo mejor!"
     }
 }
 
@@ -1022,7 +1022,7 @@ class TicketCreateModal(discord.ui.Modal):
         if user_open_tickets >= 5:
             _ticket_creations_in_progress.discard(creation_key)
             await interaction.followup.send(
-                "Du kannst maximal 5 offene Tickets gleichzeitig haben. Bitte schließe zuerst ein bestehendes Ticket.",
+                "You can have a maximum of 5 open tickets at a time. Please close an existing ticket first.",
                 ephemeral=True,
             )
             return
@@ -1306,7 +1306,7 @@ class TicketControlView(discord.ui.View):
         )
         await interaction.channel.send(
             f"🔓 {interaction.user.mention} hat das Ticket freigegeben. "
-            f"Zuvor übernommen von: {previous_claimer_mention}. Das Ticket kann jetzt erneut übernommen werden."
+            f"Previously claimed by: {previous_claimer_mention}. The ticket can now be claimed again."
         )
 
     async def priority(self, interaction: discord.Interaction):
@@ -1336,7 +1336,7 @@ class TicketControlView(discord.ui.View):
         except discord.HTTPException:
             pass
         await interaction.response.send_message(
-            "🚩 Ticket als **Priorität** markiert." if is_priority else "Ticket-Priorität entfernt.",
+            "🚩 Ticket marked as **Priority**." if is_priority else "Ticket priority removed.",
             ephemeral=True,
         )
 
@@ -1742,7 +1742,7 @@ class CaptchaChoiceView(discord.ui.View):
             async def callback(interaction: discord.Interaction, selected=choice):
                 if interaction.user.id != self.user_id:
                     await interaction.response.send_message(
-                        "Diese Verifizierungsaufgabe gehört zu einer anderen Person. Drücke selbst auf den Verifizierungsbutton.",
+                        "This verification task belongs to someone else. Please click the verification button yourself.",
                         ephemeral=True,
                     )
                     return
@@ -1803,7 +1803,7 @@ async def finish_verification(interaction: discord.Interaction, cfg):
     verified_role = interaction.guild.get_role(int(verified_id)) if verified_id else None
     unverified_role = interaction.guild.get_role(int(unverified_id)) if unverified_id else None
     if not verified_role:
-        await respond("Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.")
+        await respond("The verification role setup is incomplete. Please contact an administrator.")
         return
     try:
         if unverified_role and unverified_role in interaction.user.roles:
@@ -1811,7 +1811,7 @@ async def finish_verification(interaction: discord.Interaction, cfg):
         if verified_role not in interaction.user.roles:
             await interaction.user.add_roles(verified_role, reason="Mitglied hat Verifizierung abgeschlossen")
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await respond(f"Rolle konnte nicht geändert werden: {type(exc).__name__}. Bitte Bot-Rollenposition prüfen.")
+        await respond(f"Could not update the role: {type(exc).__name__}. Please check the bot role hierarchy.")
         return
     await respond("✅ Du bist jetzt verifiziert. Willkommen!")
 
@@ -1897,7 +1897,7 @@ class VerifyView(discord.ui.View):
         verified_id = cfg.get("verified_role")
         if not verified_id or not interaction.guild.get_role(int(verified_id)):
             await interaction.response.send_message(
-                "Das Verifizierungs-Rollen-Setup ist unvollständig. Bitte Admin informieren.",
+                "The verification role setup is incomplete. Please contact an administrator.",
                 ephemeral=True,
             )
             return
@@ -2234,7 +2234,7 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
     inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
     lines = [f"• {member.mention} — {_activity_age_text(last_activity, now)}" for last_activity, member in inactive[:40]]
     if not lines:
-        description = f"Keine Mitglieder mit mindestens {tage} Tagen ohne erfasste Aktivität gefunden."
+        description = f"No members found with at least {tage} days without recorded activity."
     else:
         description = "\n".join(lines)
         if len(inactive) > 40:
@@ -2459,7 +2459,7 @@ async def moderation_warn(interaction: discord.Interaction, mitglied: discord.Me
 async def moderation_warnings(interaction: discord.Interaction, mitglied: discord.Member):
     records = _moderation_log(interaction.guild_id).get(str(mitglied.id), [])
     if not records:
-        await interaction.response.send_message(f"Für {mitglied.mention} sind keine Verwarnungen gespeichert.", ephemeral=True); return
+        await interaction.response.send_message(f"No warnings are recorded for {mitglied.mention}.", ephemeral=True); return
     lines = [f"**{i}.** {r.get('reason','Kein Grund')} — <@{r.get('moderator_id','0')}> · {r.get('timestamp','')[:10]}" for i, r in enumerate(records[-15:], 1)]
     await interaction.response.send_message(embed=create_embed(title=f"Verwarnungen: {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.orange()), ephemeral=True)
 
@@ -2469,7 +2469,7 @@ async def moderation_warnings(interaction: discord.Interaction, mitglied: discor
 async def moderation_clear_warnings(interaction: discord.Interaction, mitglied: discord.Member):
     _moderation_log(interaction.guild_id).pop(str(mitglied.id), None)
     save_json(DATA_FILE, data)
-    await interaction.response.send_message(f"Verwarnungen für {mitglied.mention} wurden gelöscht.", ephemeral=True)
+    await interaction.response.send_message(f"Warnings for {mitglied.mention} have been deleted.", ephemeral=True)
 
 
 @bot.tree.command(name="timeout", description="Temporarily timeout a member")
@@ -2538,13 +2538,13 @@ async def moderation_ban(interaction: discord.Interaction, mitglied: discord.Mem
 @app_commands.describe(anzahl="Number of messages (1–100)")
 async def moderation_purge(interaction: discord.Interaction, anzahl: app_commands.Range[int, 1, 100]):
     if not isinstance(interaction.channel, discord.TextChannel):
-        await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True); return
+        await interaction.response.send_message("This command can only be used in text channels.", ephemeral=True); return
     await interaction.response.defer(ephemeral=True)
     try:
         deleted = await interaction.channel.purge(limit=anzahl)
-        await interaction.followup.send(f"🧹 {len(deleted)} Nachrichten gelöscht.", ephemeral=True)
+        await interaction.followup.send(f"🧹 Deleted {len(deleted)} messages.", ephemeral=True)
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await interaction.followup.send(f"Löschen fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
+        await interaction.followup.send(f"Deletion failed: {type(exc).__name__}.", ephemeral=True)
 
 
 @bot.tree.command(name="clean", description="Bulk-delete selected messages in the current text channel")
@@ -2624,7 +2624,7 @@ async def moderation_clean(
 @app_commands.describe(sekunden="0 disables slowmode; maximum 21,600 seconds")
 async def moderation_slowmode(interaction: discord.Interaction, sekunden: app_commands.Range[int, 0, 21600]):
     if not isinstance(interaction.channel, discord.TextChannel):
-        await interaction.response.send_message("Dieser Befehl funktioniert nur in Textkanälen.", ephemeral=True); return
+        await interaction.response.send_message("This command can only be used in text channels.", ephemeral=True); return
     try:
         await interaction.channel.edit(slowmode_delay=sekunden, reason=f"Slowmode von {interaction.user}")
     except (discord.Forbidden, discord.HTTPException) as exc:
@@ -2698,7 +2698,7 @@ class BirthdayRegisterModal(discord.ui.Modal, title="Geburtstag eintragen"):
             if not 1 <= month <= 12 or not 1 <= day <= calendar.monthrange(2000, month)[1]:
                 raise ValueError
         except (TypeError, ValueError):
-            await interaction.response.send_message("Bitte gib einen gültigen Monat und Tag ein (z. B. Monat 7, Tag 24).", ephemeral=True)
+            await interaction.response.send_message("Please enter a valid month and day (for example, month 7, day 24).", ephemeral=True)
             return
         cfg = guild_config(interaction.guild.id)
         cfg.setdefault("birthdays", {})[str(interaction.user.id)] = {"month": month, "day": day}
@@ -2734,7 +2734,7 @@ class BirthdayRegisterView(discord.ui.View):
         user_id = str(interaction.user.id)
         birthdays = cfg.setdefault("birthdays", {})
         if user_id not in birthdays:
-            await interaction.response.send_message("Du hast keinen Geburtstag eingetragen, den ich löschen könnte.", ephemeral=True)
+            await interaction.response.send_message("You do not have a birthday saved to delete.", ephemeral=True)
             return
         birthdays.pop(user_id, None)
         cfg.setdefault("birthday_greeted_year", {}).pop(user_id, None)
@@ -2743,7 +2743,7 @@ class BirthdayRegisterView(discord.ui.View):
             await refresh_birthday_calendar(interaction.guild, cfg)
         except Exception as exc:
             print(f"[BIRTHDAY] Calendar refresh after self-delete failed for guild {interaction.guild.id}: {type(exc).__name__}: {exc}", flush=True)
-        await interaction.response.send_message("🗑️ Dein Geburtstagseintrag wurde gelöscht. Andere Einträge bleiben unverändert.", ephemeral=True)
+        await interaction.response.send_message("🗑️ Your birthday entry has been deleted. Other entries remain unchanged.", ephemeral=True)
 
 
 async def refresh_birthday_calendar(guild, cfg=None):
@@ -2818,7 +2818,7 @@ async def birthday_channel_set(interaction: discord.Interaction, kanal: discord.
 async def birthday_register(interaction: discord.Interaction, monat: app_commands.Range[int, 1, 12], tag: app_commands.Range[int, 1, 31]):
     import calendar
     if tag > calendar.monthrange(2000, monat)[1]:
-        await interaction.response.send_message("Dieses Datum gibt es nicht. Bitte Monat und Tag prüfen.", ephemeral=True)
+        await interaction.response.send_message("This date does not exist. Please check the month and day.", ephemeral=True)
         return
     cfg = guild_config(interaction.guild_id)
     cfg.setdefault("birthdays", {})[str(interaction.user.id)] = {"month": int(monat), "day": int(tag)}
@@ -2835,7 +2835,7 @@ async def birthday_delete(interaction: discord.Interaction):
         await refresh_birthday_calendar(interaction.guild, cfg)
     except Exception as exc:
         print(f"[BIRTHDAY] Calendar refresh after delete failed: {type(exc).__name__}: {exc}", flush=True)
-    await interaction.response.send_message("Dein gespeicherter Geburtstag wurde gelöscht.", ephemeral=True)
+    await interaction.response.send_message("Your saved birthday has been deleted.", ephemeral=True)
 
 async def birthday_worker():
     """Send birthday greetings once per year and keep the optional birthday role for that day."""
@@ -2908,7 +2908,7 @@ async def backup_command(interaction: discord.Interaction):
     try:
         await interaction.followup.send("Hier ist dein Backup von `config.json` und `data.json`.", file=discord.File(buffer, filename=f"bot-backup-{interaction.guild_id}.zip"), ephemeral=True)
     except discord.HTTPException:
-        await interaction.followup.send("Backup konnte nicht gesendet werden. Prüfe Dateigröße und Bot-Verbindung.", ephemeral=True)
+        await interaction.followup.send("The backup could not be sent. Check the file size and bot connection.", ephemeral=True)
 
 
 # ----------------------------- GIVEAWAY -----------------------------
@@ -3040,12 +3040,12 @@ class AnonymousFeedbackModal(discord.ui.Modal):
             await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         except (discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message(
-                "Dein Feedback konnte nicht gesendet werden. Bitte versuche es später erneut.",
+                "Your feedback could not be submitted. Please try again later.",
                 ephemeral=True,
             )
             return
         await interaction.response.send_message(
-            "✅ Danke! Dein Feedback wurde anonym übermittelt.",
+            "✅ Thank you! Your feedback was submitted anonymously.",
             ephemeral=True,
         )
 
@@ -3168,7 +3168,7 @@ async def _finish_giveaway(guild_id: int, channel_id: int, message_id: int, winn
         if winners:
             await channel.send(f"🎉 Giveaway beendet! Preis: **{prize}** — Gewinner: {', '.join(u.mention for u in winners)}")
         else:
-            await channel.send(f"Giveaway für **{prize}** beendet. Es gab keine gültigen Teilnehmer.")
+            await channel.send(f"Giveaway for **{prize}** has ended. There were no valid participants.")
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -3223,7 +3223,7 @@ async def giveaway_start(
 @app_commands.describe(plattform="Platform", link="Full URL starting with https://")
 async def social_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], link: str):
     if not (link.startswith("https://") or link.startswith("http://")) or len(link) > 500:
-        await interaction.response.send_message("Bitte gib einen vollständigen Link mit `https://` ein.", ephemeral=True); return
+        await interaction.response.send_message("Please enter a complete link starting with `https://`.", ephemeral=True); return
     guild_config(interaction.guild_id).setdefault("social_links", {})[plattform.value] = link
     save_json(CONFIG_FILE, config)
     await interaction.response.send_message(f"{plattform.name}-Link gespeichert.", ephemeral=True)
@@ -3305,7 +3305,7 @@ async def unban_command(interaction: discord.Interaction, user_id: str, grund: s
 async def lockdown_command(interaction: discord.Interaction):
     channel = interaction.channel
     if not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message("Nur in normalen Textkanälen möglich.", ephemeral=True)
+        await interaction.response.send_message("This can only be used in standard text channels.", ephemeral=True)
         return
     overwrite = channel.overwrites_for(interaction.guild.default_role)
     cfg = guild_config(interaction.guild_id)
@@ -3318,7 +3318,7 @@ async def lockdown_command(interaction: discord.Interaction):
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.response.send_message(f"Lockdown fehlgeschlagen: {type(exc).__name__}.", ephemeral=True)
         return
-    await interaction.response.send_message(f"🔒 {channel.mention} wurde gesperrt. Mit `/unlockdown` kannst du es wieder öffnen.")
+    await interaction.response.send_message(f"🔒 {channel.mention} has been locked. Use `/unlockdown` to unlock it.")
 
 
 @bot.tree.command(name="unlockdown", description="Unlock the current text channel")
@@ -3326,12 +3326,12 @@ async def lockdown_command(interaction: discord.Interaction):
 async def unlockdown_command(interaction: discord.Interaction):
     channel = interaction.channel
     if not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message("Nur in normalen Textkanälen möglich.", ephemeral=True)
+        await interaction.response.send_message("This can only be used in standard text channels.", ephemeral=True)
         return
     cfg = guild_config(interaction.guild_id)
     saved = cfg.setdefault("lockdown_overwrites", {})
     if str(channel.id) not in saved:
-        await interaction.response.send_message("Für diesen Kanal ist kein gespeicherter Lockdown vorhanden.", ephemeral=True)
+        await interaction.response.send_message("There is no saved lockdown for this channel.", ephemeral=True)
         return
     previous = saved.pop(str(channel.id))
     overwrite = channel.overwrites_for(interaction.guild.default_role)
@@ -3394,7 +3394,7 @@ async def rank_command(interaction: discord.Interaction, mitglied: discord.Membe
 @app_commands.checks.has_permissions(manage_guild=True)
 async def level_role_set(interaction: discord.Interaction, level: app_commands.Range[int, 1, 1000], rolle: discord.Role):
     if rolle.is_default() or rolle >= interaction.guild.me.top_role:
-        await interaction.response.send_message("Die Bot-Rolle muss über der Zielrolle stehen.", ephemeral=True)
+        await interaction.response.send_message("The bot role must be above the target role.", ephemeral=True)
         return
     guild_config(interaction.guild_id).setdefault("level_roles", {})[str(level)] = rolle.id
     save_json(CONFIG_FILE, config)
@@ -3431,7 +3431,7 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
         )
     except discord.Forbidden:
         await interaction.response.send_message(
-            "Ich darf in diesem Kanal keine Nachrichten senden. Prüfe meine Kanalrechte.",
+            "I cannot send messages in this channel. Please check my channel permissions.",
             ephemeral=True,
         )
         return
@@ -4008,7 +4008,7 @@ async def event_create(interaction: discord.Interaction, titel: str, datum: str,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     save_json(DATA_FILE, data)
-    await interaction.followup.send(f"Event veröffentlicht: {msg.jump_url}", ephemeral=True)
+    await interaction.followup.send(f"Event published: {msg.jump_url}", ephemeral=True)
 
 
 @bot.tree.command(name="ticket-stats", description="Show support ticket statistics")
@@ -4117,7 +4117,7 @@ async def social_alert_set(interaction: discord.Interaction, plattform: app_comm
             return
         source = normalized_source
     elif not re.fullmatch(r"[A-Za-z0-9_]{1,25}", source):
-        await interaction.response.send_message("Für Twitch bitte nur den Kanalnamen angeben.", ephemeral=True)
+        await interaction.response.send_message("For Twitch, please provide only the channel name.", ephemeral=True)
         return
 
     cfg = guild_config(interaction.guild_id)
@@ -4167,7 +4167,7 @@ async def social_alert_test(interaction: discord.Interaction, plattform: app_com
     alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
     matches = [(key, alert) for key, alert in alerts.items() if alert.get("platform") == plattform.value and (not quelle or str(alert.get("source", "")).casefold() == quelle.strip().casefold())]
     if not matches:
-        await interaction.response.send_message("Für diese Plattform/Quelle ist kein Alert eingerichtet.", ephemeral=True)
+        await interaction.response.send_message("No alert is configured for this platform/source.", ephemeral=True)
         return
     _, alert = matches[0]
     channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
@@ -5494,8 +5494,8 @@ async def on_member_remove(member: discord.Member):
     if cfg.get("leave_enabled", True) and leave_channel_id:
         channel = member.guild.get_channel(int(leave_channel_id))
         if isinstance(channel, discord.TextChannel):
-            template = cfg.get("leave_message") or "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!"
-            if template == "👋 **{user}** hat **{server}** verlassen. Wir wünschen dir alles Gute!":
+            template = cfg.get("leave_message") or "👋 **{user}** has left **{server}**. We wish you all the best."
+            if template == "👋 **{user}** has left **{server}**. We wish you all the best.":
                 template = bot_text(member.guild.id, template)
             leave_text = (template.replace("{user}", discord.utils.escape_markdown(member.display_name))
                           .replace("{server}", discord.utils.escape_markdown(member.guild.name))
