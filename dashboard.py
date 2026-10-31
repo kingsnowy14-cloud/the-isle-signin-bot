@@ -1186,7 +1186,30 @@ DASHBOARD_TRANSLATIONS = {
         "Bot language": "Bot-Sprache",
         "English": "Englisch",
         "Save settings": "Einstellungen speichern",
-        "Back to settings": "Zurück zu den Einstellungen"
+        "Back to settings": "Zurück zu den Einstellungen",
+        "Skip to content": "Zum Inhalt springen",
+        "Switch server": "Server wechseln",
+        "Server Settings": "Servereinstellungen",
+        "Main navigation": "Hauptnavigation",
+        "Server modules": "Servermodule",
+        "CONTROL CENTER": "KONTROLLZENTRUM",
+        "WELCOME TO IRONWOLF": "WILLKOMMEN BEI IRONWOLF",
+        "Premium costs €5 per year.": "Premium kostet 5 € pro Jahr.",
+        "Join our Discord": "Tritt unserem Discord bei",
+        "Manage Premium": "Premium verwalten",
+        "Tracked members": "Erfasste Mitglieder",
+        "Commands": "Befehle",
+        "Invite IronWolf": "IronWolf einladen",
+        "Support open": "Support öffnen",
+        "Status is retrieved directly from the running bot process.": "Der Status wird direkt aus dem laufenden Bot-Prozess ermittelt.",
+        "No matching servers found.": "Keine passenden Server gefunden.",
+        "Sign in with Discord": "Mit Discord anmelden",
+        "Sign in again": "Erneut anmelden",
+        "Open server": "Server öffnen",
+        "General settings": "Allgemeine Einstellungen",
+        "Channels & logs": "Kanäle & Protokolle",
+        "Temporary voice channels": "Temporäre Sprachkanäle",
+        "Protection & moderation": "Schutz & Moderation"
     }
 }
 
@@ -1213,7 +1236,14 @@ def _render(title, body, status=200):
         '</select></form>'
     )
     body = language_control + body
-    return make_response(_page(title, body), status)
+    rendered_page = _page(title, body)
+    # Translate the complete rendered document, including the global navigation
+    # and page chrome, not only the page-specific content.
+    rendered_page = _translate_dashboard(rendered_page, language)
+    response = make_response(rendered_page, status)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/privacy")
