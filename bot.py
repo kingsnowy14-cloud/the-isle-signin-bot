@@ -5173,14 +5173,62 @@ async def on_guild_join(guild: discord.Guild):
     # Always log the guild join, even when this guild is not enabled in the dashboard.
     await notify_bot_server_change(guild, joined=True)
 
-    """Thank the server owner by DM and post the command list in the new server."""
+    """DM the person who invited IronWolf with the official main-server announcement."""
     embeds = await build_bot_welcome_embeds(guild)
 
-    try:
-        await guild.owner.send(embeds=embeds[:10])
-        print(f"[WELCOME] Sent IronWolf welcome DM to owner of guild {guild.id}.")
-    except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
-        print(f"[WELCOME] Could not DM owner of guild {guild.id}: {type(exc).__name__}: {exc}")
+    inviter = None
+    # Discord may take a moment to make the bot_add audit-log entry available.
+    # The bot needs the "View Audit Log" permission to identify the inviter.
+    for attempt in range(3):
+        try:
+            async for entry in guild.audit_logs(
+                limit=15,
+                action=discord.AuditLogAction.bot_add,
+            ):
+                target_user = getattr(entry, "target", None)
+                target_id = getattr(target_user, "id", None) or getattr(entry, "target_id", None)
+                if bot.user and target_id == bot.user.id:
+                    inviter = entry.user
+                    break
+            if inviter:
+                break
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[WELCOME] Could not identify inviter in guild {guild.id}: {type(exc).__name__}: {exc}")
+            break
+        if attempt < 2 and not inviter:
+            await asyncio.sleep(2)
+
+    if inviter:
+        main_server_embed = discord.Embed(
+            title="🐺 IronWolf — Official Main Server",
+            description=(
+                "Hello! Thank you for inviting **IronWolf** to your Discord server.\n\n"
+                "We’d love to welcome you to the **official IronWolf Main Server** — "
+                "the central hub for the IronWolf community and project.\n\n"
+                "Join us there to:\n"
+                "🛠️ Report bugs and technical issues\n"
+                "💡 Share ideas and suggest new features\n"
+                "📢 Follow updates, announcements, and improvements\n"
+                "🤝 Get help and connect with other IronWolf users\n\n"
+                "**Join the official main server:**\n"
+                "https://discord.gg/KDKs5WPgaC\n\n"
+                "Thanks for being part of IronWolf!\n"
+                "— **The IronWolf Team**"
+            ),
+            color=discord.Color.blurple(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        main_server_embed.set_footer(text="IronWolf · Official Community")
+        try:
+            await inviter.send(embed=main_server_embed)
+            print(f"[WELCOME] Sent official main-server DM to inviter {inviter.id} for guild {guild.id}.")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[WELCOME] Could not DM inviter {inviter.id} for guild {guild.id}: {type(exc).__name__}: {exc}")
+    else:
+        print(
+            f"[WELCOME] Inviter for guild {guild.id} could not be identified. "
+            "Ensure IronWolf has the View Audit Log permission."
+        )
 
     target = guild.system_channel
     if target is None or not target.permissions_for(guild.me).send_messages:
