@@ -1087,6 +1087,8 @@ def _module_navigation():
     gid, active = parts[1], parts[2]
     modules = (
         ("", "🏠 Übersicht"),
+        ("welcome", "👋 Welcome"),
+        ("temporary-voice", "🔊 Temporary Voice"),
         ("tickets", "🎫 Tickets"),
         ("applications", "📝 Bewerbungen"),
         ("verification", "✅ Verifizierung"),
@@ -2294,6 +2296,24 @@ def guild_verified_accounts(guild_id):
     return _render(guild.name + " · Gaming-Verifizierung", body)
 
 
+@app.route("/guild/<guild_id>/welcome", methods=["GET"])
+def guild_welcome_settings(guild_id):
+    """Stable direct URL for welcome and goodbye settings."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    return redirect(url_for("guild_page", guild_id=str(guild.id), section="general") + "#settings-panel")
+
+
+@app.route("/guild/<guild_id>/temporary-voice", methods=["GET"])
+def guild_temporary_voice_settings(guild_id):
+    """Stable direct URL for temporary voice channel settings."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    return redirect(url_for("guild_page", guild_id=str(guild.id), section="voice") + "#settings-panel")
+
+
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
 def guild_page(guild_id):
     guild, response = _authorized_guild(guild_id)
@@ -2572,7 +2592,7 @@ def guild_page(guild_id):
     if section != "overview" and section not in {"general", "channels", "roles", "voice", "security", "modules", "template"}:
         section = "overview"
     popular = [
-        ("👋", "Welcome & Goodbye", "Welcome messages and private DMs", "?section=general#settings-panel"),
+        ("👋", "Welcome & Goodbye", "Welcome messages and private DMs", "/welcome"),
         ("🎟️", "Support Tickets", "Ticket panels and support teams", "/tickets"),
         ("🔐", "Verification", "Member verification and roles", "/verification"),
         ("✉️", "Messages & Buttons", "Create embeds and interactive buttons", "/messages"),
@@ -2581,10 +2601,10 @@ def guild_page(guild_id):
         ("🧪", "Security Lab", "Safely simulate raid, nuke and malicious-link attacks with no real server changes", "/security-lab"),
     ]
     categories = [
-        ("👥 Community & Engagement", [("👋", "Welcome & Goodbye", "Public welcomes, goodbye messages and DMs", "?section=general#settings-panel"), ("🎭", "Reaction Roles", "Self-service roles through reactions", "/reaction-roles"), ("💬", "Anonymous Feedback", "Collect suggestions and feedback", "/feedback"), ("🎂", "Birthdays", "Birthday announcements and saved dates", "/birthdays"), ("📈", "Leveling & XP", "XP, cooldowns and level rewards", "?section=general#settings-panel"), ("👥", "Team List", "Publish your server team", "/teamlist")]),
+        ("👥 Community & Engagement", [("👋", "Welcome & Goodbye", "Public welcomes, goodbye messages and DMs", "/welcome"), ("🎭", "Reaction Roles", "Self-service roles through reactions", "/reaction-roles"), ("💬", "Anonymous Feedback", "Collect suggestions and feedback", "/feedback"), ("🎂", "Birthdays", "Birthday announcements and saved dates", "/birthdays"), ("📈", "Leveling & XP", "XP, cooldowns and level rewards", "?section=general#settings-panel"), ("👥", "Team List", "Publish your server team", "/teamlist")]),
         ("🛡️ Security & Moderation", [("🧪", "Security Lab", "Run /security-test to simulate attacks safely without changing server content", "/security-lab"), ("🔐", "Verification", "Verification panels, channels and roles", "/verification"), ("🎮", "Gaming Verification", "Connect supported gaming accounts", "/verified-accounts"), ("🍯", "Honeypot", "Hidden trap channel and moderation response", "/honeypot"), ("🛡️", "Ping Protection", "Protect selected members from unwanted mentions", "/ping-protection"), ("⚙️", "Protection Settings", "Anti-raid and anti-nuke controls", "?section=security#settings-panel"), ("🎮", "Action Center", "Moderation and server actions", "/actions")]),
-        ("🎟️ Support & Communication", [("🎟️", "Ticket System", "Ticket panels, teams and categories", "/tickets"), ("🎧", "Voice Support", "Waiting rooms and private voice support", "?section=voice#settings-panel"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
-        ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("🎭", "Roles & Rewards", "Bot roles and level rewards", "?section=roles#settings-panel"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "?section=voice#settings-panel"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
+        ("🎟️ Support & Communication", [("🎟️", "Ticket System", "Ticket panels, teams and categories", "/tickets"), ("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
+        ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("🎭", "Roles & Rewards", "Bot roles and level rewards", "?section=roles#settings-panel"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
         ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
     ]
     def module_cards(items, popular_style=False):
