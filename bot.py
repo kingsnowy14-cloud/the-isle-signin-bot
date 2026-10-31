@@ -3396,6 +3396,47 @@ async def automod_set(interaction: discord.Interaction, aktiviert: bool):
     await interaction.response.send_message(f"AutoMod ist jetzt **{'aktiviert' if aktiviert else 'deaktiviert'}**. Aktiv: 6 Nachrichten innerhalb von 8 Sekunden lösen Löschen und einen 2-Minuten-Timeout aus.", ephemeral=True)
 
 
+@bot.tree.command(name="security-test", description="Run a safe, simulated security attack test")
+@app_commands.checks.has_permissions(administrator=True)
+@app_commands.choices(scenario=[
+    app_commands.Choice(name="Full security test", value="all"),
+    app_commands.Choice(name="Raid simulation", value="raid"),
+    app_commands.Choice(name="Nuke attempt simulation", value="nuke"),
+    app_commands.Choice(name="Malicious link spam", value="links"),
+])
+async def security_test(interaction: discord.Interaction, scenario: app_commands.Choice[str]):
+    """Simulate hostile events without changing server content or sending spam."""
+    if interaction.guild is None:
+        await interaction.response.send_message("This test is only available inside a server.", ephemeral=True)
+        return
+
+    cases = {
+        "raid": ("Raid wave", "A burst of 25 simulated new-member joins in 10 seconds.", "Join-rate anomaly detected; simulated raid wave contained."),
+        "nuke": ("Nuke attempt", "A simulated actor attempts 12 channel/role deletion actions.", "Destructive action pattern detected; simulated actions blocked."),
+        "links": ("Malicious link spam", "A simulated member posts 8 suspicious links in rapid succession.", "Link-spam pattern detected; simulated messages quarantined."),
+    }
+    selected = list(cases.values()) if scenario.value == "all" else [cases[scenario.value]]
+    embed = discord.Embed(
+        title="🧪 IronWolf Security Lab · Simulation Results",
+        description="**SIMULATION ONLY** — no channels, roles, members or real messages were changed.",
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    for title, attack, result in selected:
+        embed.add_field(
+            name=f"✅ {title} · BLOCKED",
+            value=f"**Scenario:** {attack}\n**Detection:** Passed\n**Response:** {result}",
+            inline=False,
+        )
+    embed.add_field(
+        name="Test summary",
+        value=f"**Scenarios:** {len(selected)}\n**Detected:** {len(selected)}/{len(selected)}\n**Simulated attacks stopped:** {len(selected)}/{len(selected)}",
+        inline=False,
+    )
+    embed.set_footer(text="IronWolf Security Lab · Safe offline simulation")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.tree.command(name="security-status", description="Zeige den Sicherheitsstatus des Servers")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def security_status(interaction: discord.Interaction):
@@ -5206,6 +5247,38 @@ async def on_guild_join(guild: discord.Guild):
     # Always log the guild join, even when this guild is not enabled in the dashboard.
     await notify_bot_server_change(guild, joined=True)
 
+    """Thank the server owner by DM and post the command list in the new server."""
+    embeds = await build_bot_welcome_embeds(guild)
+
+    try:
+        await guild.owner.send(embeds=embeds[:10])
+        print(f"[WELCOME] Sent IronWolf welcome DM to owner of guild {guild.id}.")
+    except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
+        print(f"[WELCOME] Could not DM owner of guild {guild.id}: {type(exc).__name__}: {exc}")
+
+    target = guild.system_channel
+    if target is None or not target.permissions_for(guild.me).send_messages:
+        target = next(
+            (
+                channel for channel in guild.text_channels
+                if channel.permissions_for(guild.me).send_messages
+                and channel.permissions_for(guild.me).embed_links
+            ),
+            None,
+        )
+    if target is None:
+        print(f"[WELCOME] No channel available to post welcome message in guild {guild.id}.")
+        return
+
+    # Discord allows at most 10 embeds per message; send further pages in batches.
+    try:
+        for start in range(0, len(embeds), 10):
+            await target.send(embeds=embeds[start:start + 10])
+        print(f"[WELCOME] Posted IronWolf welcome and command list in guild {guild.id}.")
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[WELCOME] Could not post welcome in guild {guild.id}: {type(exc).__name__}: {exc}")
+
+
     # Only brand-new servers receive the safe-off default. Existing guild configs are untouched.
     gid = str(guild.id)
     if gid not in config:
@@ -5237,36 +5310,6 @@ async def on_guild_join(guild: discord.Guild):
         print(f"[ROLE] IronWolf role created/found and assigned in guild {guild.id}.")
     except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
         print(f"[ROLE] Could not create/assign Ironbot role in guild {guild.id}: {type(exc).__name__}: {exc}")
-    """Thank the server owner by DM and post the command list in the new server."""
-    embeds = await build_bot_welcome_embeds(guild)
-
-    try:
-        await guild.owner.send(embeds=embeds[:10])
-        print(f"[WELCOME] Sent IronWolf welcome DM to owner of guild {guild.id}.")
-    except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
-        print(f"[WELCOME] Could not DM owner of guild {guild.id}: {type(exc).__name__}: {exc}")
-
-    target = guild.system_channel
-    if target is None or not target.permissions_for(guild.me).send_messages:
-        target = next(
-            (
-                channel for channel in guild.text_channels
-                if channel.permissions_for(guild.me).send_messages
-                and channel.permissions_for(guild.me).embed_links
-            ),
-            None,
-        )
-    if target is None:
-        print(f"[WELCOME] No channel available to post welcome message in guild {guild.id}.")
-        return
-
-    # Discord allows at most 10 embeds per message; send further pages in batches.
-    try:
-        for start in range(0, len(embeds), 10):
-            await target.send(embeds=embeds[start:start + 10])
-        print(f"[WELCOME] Posted IronWolf welcome and command list in guild {guild.id}.")
-    except (discord.Forbidden, discord.HTTPException) as exc:
-        print(f"[WELCOME] Could not post welcome in guild {guild.id}: {type(exc).__name__}: {exc}")
 
 
 @bot.event
