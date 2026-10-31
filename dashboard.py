@@ -2525,9 +2525,9 @@ def guild_page(guild_id):
                 if settings_section == "general":
                     # Missing flag is treated as enabled for legacy servers; new servers explicitly start disabled.
                     cfg["bot_enabled"] = request.form.get("bot_enabled") == "on"
-                    selected_language = "en"
-                    if selected_language not in {"de", "en", "cs", "fr", "es"}:
-                        abort(400, "Please select a supported bot language.")
+                    selected_language = request.form.get("bot_language", "en")
+                    if selected_language not in {"de", "en"}:
+                        abort(400, "Please select English or German.")
                     cfg["bot_language"] = selected_language
                     # Welcome and goodbye destinations are configured in the Welcome module.
                     text_channel_ids = {str(item.id) for item in guild.text_channels}
@@ -2677,7 +2677,7 @@ def guild_page(guild_id):
         if section == "general":
             bot_enabled_checked = " checked" if cfg.get("bot_enabled", True) else ""
             settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 Enable IronWolf on this server</label></div><p class="muted">When disabled, the bot will not respond on this server. New servers start disabled; existing servers keep their current behavior.</p>'
-            settings_html += '<label for="bot_language">🌐 Bot language</label><small>IronWolf is configured to use English for bot responses.</small><select id="bot_language" name="bot_language"><option value="en" selected>🇬🇧 English</option></select>'
+            settings_html += '<label for="bot_language">🌐 Bot language</label><small>Choose the language used for bot messages and supported command responses on this server. Default: English.</small><select id="bot_language" name="bot_language"><option value="en"' + (' selected' if cfg.get("bot_language", "en") == "en" else '') + '>🇬🇧 English</option><option value="de"' + (' selected' if cfg.get("bot_language") == "de" else '') + '>🇩🇪 Deutsch</option></select>'
             settings_html += '<h3>👋 Welcome module · Channels</h3><p class="muted">Choose where IronWolf welcomes new members and where goodbye messages are posted.</p>'
             settings_html += '<label for="welcome_channel">Public welcome channel</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
             settings_html += '<label for="goodbye_channel">Goodbye channel</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
