@@ -81,7 +81,7 @@ CHANNEL_SETTINGS = {
     "welcome_channel": "Public welcome channel",
     "goodbye_channel": "Goodbye channel",
     "birthday_channel": "Geburtstagskanal",
-    "levelup_channel": "Level-Up-Kanal",
+    "levelup_channel": "Level-up channel",
     "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Security log channel",
     "verify_channel": "Verifizierungskanal",
@@ -93,7 +93,7 @@ CHANNEL_SETTINGS = {
     "log_channel_id": "Moderations-Logkanal",
 }
 ROLE_SETTINGS = {
-    "support_role": "Support-Rolle",
+    "support_role": "Support role",
     "verified_role": "Verified role",
     "unverified_role": "Unverified role",
     "trusted_security_role": "Vertrauenswürdige Sicherheitsrolle",
@@ -1066,7 +1066,7 @@ def _module_command_footer():
     ]
     rows = []
     for item in matched:
-        status = "🟢 Enabled" if item.get("enabled") else "🔴 Deaktiviert"
+        status = "🟢 Enabled" if item.get("enabled") else "🔴 Disabled"
         rows.append(
             '<div class="row"><div><strong><code>' + html.escape(item["name"]) +
             '</code></strong><br><small>' + html.escape(item.get("kind", "Befehl")) +
@@ -1216,10 +1216,10 @@ def dashboard_auth_expired(error):
     """Keep expired Discord sessions actionable instead of showing a broken page."""
     session.clear()
     body = (
-        '<section class="card"><h1>Discord-Anmeldung abgelaufen</h1>'
-        '<p>Deine Sitzung ist nicht mehr gültig. Melde dich erneut über Discord an, '
+        '<section class="card"><h1>Discord Session Expired</h1>'
+        '<p>Your session is no longer valid. Melde dich erneut über Discord an, '
         'um zum Dashboard zurückzukehren.</p>'
-        '<a class="button" href="/login">Mit Discord erneut anmelden</a></section>'
+        '<a class="button" href="/login">Sign in with Discord again</a></section>'
     )
     return make_response(_page("Erneut anmelden", body), 401)
 
@@ -1272,7 +1272,7 @@ def _user_guilds():
     if guilds is None:
         # _api_get clears an expired OAuth session on HTTP 401. Return a
         # deliberate login response instead of treating it as a bad API payload.
-        abort(401, "Deine Discord-Anmeldung ist abgelaufen. Bitte melde dich erneut an.")
+        abort(401, "Your Discord session has expired. Please sign in again.")
     if not isinstance(guilds, list):
         abort(502, "Discord hat eine unerwartete Antwort auf die Serverliste geliefert.")
     with _guild_cache_lock:
@@ -1300,7 +1300,7 @@ def _authorized_guild(guild_id):
             f"oauth_match={bool(matches)}, bot_in_guild={guild is not None}.",
             flush=True,
         )
-        abort(403, "Server nicht verfügbar: Prüfe, ob der Bot noch auf dem Server ist und dein Discord-Konto Server verwalten darf.")
+        abort(403, "Server unavailable: Check that the bot is still in the server and that your Discord account has Manage Server permission.")
     return guild, None
 
 
@@ -4389,7 +4389,7 @@ def guild_tickets(guild_id):
         if category_id and not isinstance(category, discord.CategoryChannel):
             abort(400, "Bitte wähle eine gültige Ticket-Kategorie.")
         if support_role_id and support_role is None:
-            abort(400, "Bitte wähle eine gültige Support-Rolle.")
+            abort(400, "Bitte wähle eine gültige Support role.")
         panel.update({
             "title": title,
             "description": description,
@@ -4529,11 +4529,11 @@ def guild_tickets(guild_id):
     )
     body = ticket_metrics_html + (
         f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
-        '<p class="muted">Bearbeite Titel, Description, Anfragearten, Ticket-Kategorie und Support-Rolle. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
-        '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support-Rolle, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
+        '<p class="muted">Bearbeite Titel, Description, Anfragearten, Ticket-Kategorie und Support role. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
+        '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support role, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
-    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">' + "".join(f'<label>Button {i} (optional)</label><input name="button{i}" maxlength="80">' for i in range(2, 11)) + "".join(f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input name="button_description{i}" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) + '<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select><p class="muted">Im Free-Plan ist eine Anfrageart als Button verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p><script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>' + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#5865F2" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="5865F2" oninput="this.form.brand_color_picker.value=\'#\'+this.value"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500"></div>' if guild_has_feature(cfg, "branding") else '') + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
+    body += '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2><p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p><form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="__new__"><label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket"><label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea><label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">' + "".join(f'<label>Button {i} (optional)</label><input name="button{i}" maxlength="80">' for i in range(2, 11)) + "".join(f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input name="button_description{i}" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) + '<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select><p class="muted">Im Free-Plan ist eine Anfrageart als Button verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p><script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script><label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select><label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select><label>Support role (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support role verwenden —") + '</select>' + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#5865F2" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="5865F2" oninput="this.form.brand_color_picker.value=\'#\'+this.value"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500"></div>' if guild_has_feature(cfg, "branding") else '') + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     if not panels:
         body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Nutze das Formular „Neues Ticket-Panel erstellen“ oben, um eines direkt hier anzulegen.</div>'
     for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
@@ -4556,7 +4556,7 @@ def guild_tickets(guild_id):
             + '<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons"' + (' selected' if panel.get("display_mode", "buttons") == "buttons" else '') + '>Buttons (bis zu 10)</option><option value="select"' + (' selected' if panel.get("display_mode") == "select" else '') + '>Dropdown-Menü (bis zu 10 Optionen)</option></select>'
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
-            + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support-Rolle verwenden —") + '</select>'
+            + '<label>Support role (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support role verwenden —") + '</select>'
             + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
             + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color_picker.value=\'#\'+this.value" placeholder="5865F2"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><small>' + ('Aktuelles Logo: ' + html.escape(str(panel.get("brand_logo_filename", "hochgeladen")), quote=True) if panel.get("brand_logo_file") else 'Noch kein hochgeladenes Logo.') + '</small><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '"><div class="check"><input type="checkbox" name="remove_brand_logo" id="remove-logo-' + html.escape(str(panel_key), quote=True) + '"><label for="remove-logo-' + html.escape(str(panel_key), quote=True) + '">Hochgeladenes Logo entfernen</label></div>' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium-Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
             + '<button type="submit">Panel speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Dieses Ticket-Panel und seine Nachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '"><input type="hidden" name="action" value="delete_panel"><button type="submit" class="secondary">🗑️ Panel und Nachricht löschen</button></form></section>'
@@ -4732,7 +4732,7 @@ def guild_commands(guild_id):
                     disabled.add(alias_key)
         cfg["disabled_commands"] = sorted(disabled)
         _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Befehlsrechte", session.get("user_id"), "Deaktivierte Befehle: " + ", ".join(sorted(disabled))[:350])
+        _audit_dashboard_change(guild.id, "Befehlsrechte", session.get("user_id"), "Disablede Befehle: " + ", ".join(sorted(disabled))[:350])
         return redirect(url_for("guild_commands", guild_id=gid))
     commands = _command_records(guild.id)
     groups = {}
