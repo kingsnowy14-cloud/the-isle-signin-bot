@@ -812,7 +812,7 @@ def _page(title, body):
         except Exception:
             custom_theme_css = ""
     nav = (
-        '<nav><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
+        '<a class="skip-link" href="#main-content">Zum Inhalt springen</a><nav aria-label="Hauptnavigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
         + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
@@ -896,8 +896,27 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 .role-picker-tools{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}}
 .role-picker-tools button{{margin:0;padding:7px 10px}}
 .selection-summary{{font-size:12px;color:var(--muted);margin-left:auto}}
+/* Professional navigation, accessibility and responsive layouts */
+nav{{flex-wrap:wrap;row-gap:8px;column-gap:8px;min-height:62px}}
+nav .brand-mark{{margin-right:auto;white-space:nowrap}}
+nav a:not(:first-child){{font-size:12px;line-height:1.35;white-space:nowrap}}
+nav a.nav-download{{background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.28);color:#d8dcff}}
+nav a:focus-visible,.skip-link:focus{{outline:2px solid var(--accent);outline-offset:3px}}
+.skip-link{{position:fixed;z-index:100;top:8px;left:8px;padding:10px 14px;border-radius:9px;background:#fff;color:#111827;font-weight:800;transform:translateY(-150%)}}
+.skip-link:focus{{transform:translateY(0)}}
+main{{min-width:0}}
+input[type=email],input[type=number],input[type=date],input[type=time],input[type=search],input[type=url],input[type=tel]{{width:100%;max-width:100%;padding:11px 12px;border:1px solid rgba(163,177,211,.2);border-radius:9px;background:#0c1322;color:var(--text);font:inherit}}
+input[type=checkbox],input[type=radio]{{accent-color:#818cf8}}
+button:disabled,button[disabled],.button[aria-disabled=true]{{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{{outline:2px solid var(--accent);outline-offset:2px}}
+.card,.grid,.command-group,.dashboard-metric{{min-width:0}}
+table{{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+th{{text-align:left;font-size:12px;color:#c7ceff;white-space:nowrap}}
+td{{vertical-align:top;overflow-wrap:anywhere}}
+@media(max-width:760px){{nav{{position:sticky;gap:6px;padding:10px 12px}}nav .brand-mark{{width:100%;margin:0 0 2px}}nav a:not(:first-child){{font-size:11px;padding:6px 8px}}}}
+@media(max-width:420px){{nav a:not(:first-child){{white-space:normal;flex:1 1 auto;text-align:center}}main{{padding-left:12px;padding-right:12px}}}}
 {custom_theme_css}
-</style></head><body>{nav}<main>{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
+</style></head><body>{nav}<main id="main-content" tabindex="-1">{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
 
 
 
