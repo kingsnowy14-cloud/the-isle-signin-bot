@@ -2588,7 +2588,7 @@ def guild_security_lab(guild_id):
                     color=discord.Color.green() if passed == len(findings) and permission_passed == len(permission_checks) else discord.Color.orange(),
                     timestamp=datetime.now(timezone.utc),
                 )
-                for label, ok, detail in status_lines:
+                for status, label, detail in status_lines:
                     embed.add_field(name=f"{'✅' if ok == 'PASS' else '⚠️'} {label}", value=detail[:900], inline=False)
                 embed.set_footer(text="Live Discord checks · Non-destructive")
                 await log_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
