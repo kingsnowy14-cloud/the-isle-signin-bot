@@ -2515,29 +2515,54 @@ def guild_page(guild_id):
 
 
 
-@app.route("/guild/<guild_id>/security-lab", methods=["GET"])
+@app.route("/guild/<guild_id>/security-lab", methods=["GET", "POST"])
 def guild_security_lab(guild_id):
-    """Dashboard landing page for the safe, admin-only Discord security simulation."""
+    """Run safe security configuration simulations from the dashboard."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    result_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Please reload the page.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Administrator or Manage Server permission required.")
+        scenario = request.form.get("scenario", "all").strip().lower()
+        cases = {
+            "raid": ("Raid wave", "25 simulated member joins in 10 seconds.", bool(cfg.get("anti_raid_enabled")), "Anti-Raid"),
+            "nuke": ("Nuke attempt", "12 simulated channel/role deletion events.", bool(cfg.get("anti_nuke_enabled")), "Anti-Nuke"),
+            "links": ("Spam burst", "8 simulated rapid messages containing suspicious links.", bool(cfg.get("automod_enabled")), "AutoMod"),
+        }
+        if scenario not in {"all", *cases.keys()}:
+            abort(400, "Invalid security test scenario.")
+        selected = list(cases.values()) if scenario == "all" else [cases[scenario]]
+        passed = sum(1 for _, _, enabled, _ in selected if enabled)
+        result_html = '<section class="card"><h2>🧪 Simulation results</h2><p class="muted">SAFE SIMULATION — events are evaluated in memory only. No real channels, roles, members or messages are changed.</p>'
+        for title, attack, enabled, protection in selected:
+            status = "✅ PROTECTION ENABLED" if enabled else "⚠️ PROTECTION DISABLED"
+            detail = (protection + " is enabled in this server's configuration.") if enabled else (protection + " is disabled. Enable it in Security Settings.")
+            result_html += '<div class="notice"><strong>' + status + ' · ' + html.escape(title) + '</strong><br>Scenario: ' + html.escape(attack) + '<br>Configuration check: <strong>' + ("PASS" if enabled else "NEEDS ATTENTION") + '</strong><br>' + html.escape(detail) + '</div>'
+        result_html += '<p><strong>Protected scenarios:</strong> ' + str(passed) + '/' + str(len(selected)) + '<br><strong>Needs attention:</strong> ' + str(len(selected)-passed) + '/' + str(len(selected)) + '</p><p class="muted">This checks whether the related protection setting is enabled. It does not launch a live attack or prove runtime blocking.</p></section>'
     body = (
         '<section class="card"><span class="pill">IRONWOLF · SECURITY LAB</span>'
         '<h1 style="margin-top:12px">🧪 Security Lab</h1>'
-        '<p class="muted">Starte in Discord einen sicheren Konfigurationstest. Die Simulation erzeugt nur Testereignisse im Arbeitsspeicher und verändert keine echten Kanäle, Rollen, Mitglieder oder Nachrichten.</p>'
-        '<h2>So startest du den Test</h2>'
-        '<ol><li>Öffne deinen Discord-Server.</li>'
-        '<li>Gib den Slash-Befehl <code>/security-test</code> ein.</li>'
-        '<li>Wähle ein Szenario: <strong>Full security test</strong>, <strong>Raid simulation</strong>, <strong>Nuke attempt simulation</strong> oder <strong>Spam burst simulation</strong>.</li>'
-        '<li>Bestätige den Befehl. Das Ergebnis wird dir privat angezeigt.</li></ol>'
-        '<p><strong>Voraussetzung:</strong> Du musst Administrator auf dem Discord-Server sein.</p>'
-        '<p class="muted">Wichtig: Der Test prüft, ob die zugehörigen Schutzoptionen eingeschaltet sind. Er führt keinen echten Angriff aus und beweist nicht, dass jede Live-Aktion blockiert wird.</p>'
-        '<p><a class="button" href="/guild/' + gid + '?section=security#settings-panel">🛡️ Sicherheitseinstellungen öffnen</a> '
-        '<a class="button secondary" href="/guild/' + gid + '">← Zur Serverübersicht</a></p></section>'
+        '<p class="muted">Run safe security configuration checks directly from this dashboard. Simulations do not modify real server content.</p>'
+        + result_html +
+        '<section class="card"><h2>Run a security test</h2><form method="post">' + _csrf_field() +
+        '<label for="scenario">Test scenario</label><select id="scenario" name="scenario">'
+        '<option value="all">Full security test</option>'
+        '<option value="raid">Raid simulation</option>'
+        '<option value="nuke">Nuke attempt simulation</option>'
+        '<option value="links">Spam burst simulation</option>'
+        '</select><button type="submit">🧪 Run simulation</button></form>'
+        '<p class="muted">Requires Administrator or Manage Server permission. Tests only check whether Anti-Raid, Anti-Nuke and AutoMod settings are enabled; they do not perform live attacks.</p>'
+        '<p><a class="button" href="/guild/' + gid + '?section=security#settings-panel">🛡️ Open Security Settings</a> '
+        '<a class="button secondary" href="/guild/' + gid + '">← Back to server overview</a></p></section>'
     )
     return _render(guild.name + " · Security Lab", body)
-
 
 
 @app.route("/guild/<guild_id>/honeypot", methods=["GET", "POST"])
