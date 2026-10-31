@@ -921,8 +921,7 @@ class RegistrationModal(discord.ui.Modal):
                 return
             if not dinosaur or not location:
                 await interaction.response.send_message(
-                    "Dinosaur and location cannot be empty."
-                    else "Dinosaur and location cannot be empty.",
+                    "Dinosaur and location cannot be empty.",
                     ephemeral=True,
                 )
                 return
