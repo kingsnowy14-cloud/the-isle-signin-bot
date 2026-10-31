@@ -5132,25 +5132,28 @@ async def on_voice_state_update(
 async def build_bot_welcome_embeds(guild: discord.Guild):
     """Create a welcome message and a live list of registered slash commands."""
     welcome = discord.Embed(
-        title="🐺 Danke, dass du IronWolf hinzugefügt hast!",
+        title="🐺 Thanks for adding IronWolf!",
         description=(
-            f"Ich freue mich, auf **{discord.utils.escape_markdown(guild.name)}** dabei zu sein!\n\n"
-            "Ich biete unter anderem Spieler-Anmeldung/Abmeldung, Tickets, Moderation und Sicherheit, "
-            "Verifizierung, Umfragen, Vorschläge, Events, Statistiken, temporäre Voice-Channels, "
-            "Giveaways, Wirtschaft und weitere Community-Funktionen. Welche Funktionen verfügbar sind, "
-            "hängt teilweise von der Server-Konfiguration ab.\n\n"
-            "Nutze **/** in Discord, um die Slash-Befehle zu sehen. Die vollständige Liste steht unten."
+            f"Welcome to **{discord.utils.escape_markdown(guild.name)}**! I'm IronWolf, your server management and community assistant.\n\n"
+            "**What I can do:** member registration, welcome messages, tickets, moderation, anti-raid and anti-nuke protection, "
+            "verification, reaction roles, polls, suggestions, events, statistics, temporary voice channels, giveaways, "
+            "economy features, backups and more. Available features depend on your server setup and permissions.\n\n"
+            "Use **/** in Discord to explore slash commands. The command directory is included below."
         ),
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
+    welcome.add_field(name="🌐 Website", value="[Open the IronWolf website](https://king-snowy-at.base44.app/)", inline=True)
+    welcome.add_field(name="🖥️ Dashboard", value="[Open the server dashboard](https://ironwolf-bot.up.railway.app/)", inline=True)
+    welcome.add_field(name="💬 Support", value="[Join the support Discord](https://discord.gg/T3AYmFmbrS)", inline=True)
+    welcome.add_field(name="➕ Invite IronWolf", value="[Add the bot to another server](https://discord.com/oauth2/authorize?client_id=1558547445187743804&scope=bot%20applications.commands&permissions=0)", inline=False)
     welcome.set_footer(text="IronWolf · Created by KingSnowy")
 
     lines = []
     def collect(commands_list, prefix=""):
         for command in commands_list:
             qualified = f"{prefix} {command.name}".strip()
-            description = (getattr(command, "description", None) or "Keine Beschreibung").replace("\n", " ").strip()
+            description = (getattr(command, "description", None) or "No description available").replace("\n", " ").strip()
             lines.append(f"**/{qualified}** — {description}")
             if isinstance(command, app_commands.Group):
                 collect(command.commands, qualified)
@@ -5158,7 +5161,7 @@ async def build_bot_welcome_embeds(guild: discord.Guild):
     collect(bot.tree.get_commands())
     lines = sorted(set(lines), key=str.casefold)
     if not lines:
-        lines = ["Die Slash-Befehle werden gerade geladen. Bitte prüfe sie in Discord mit **/**."]
+        lines = ["Slash commands are still loading. Use **/** in Discord to explore them."]
 
     embeds = [welcome]
     page, length = [], 0
