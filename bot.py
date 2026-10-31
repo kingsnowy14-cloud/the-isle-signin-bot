@@ -3379,18 +3379,6 @@ async def security_test(interaction: discord.Interaction, scenario: app_commands
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="security-status", description="Show the server security status")
-@app_commands.checks.has_permissions(manage_guild=True)
-async def security_status(interaction: discord.Interaction):
-    cfg = guild_config(interaction.guild_id)
-    embed = create_embed(title="🛡️ Security Center", color=discord.Color.green())
-    embed.add_field(name="Anti-Raid", value="Aktiv" if cfg.get("anti_raid_enabled", False) else "Aus", inline=True)
-    embed.add_field(name="Anti-Nuke", value="Aktiv" if cfg.get("anti_nuke_enabled", False) else "Aus", inline=True)
-    embed.add_field(name="AutoMod", value="Aktiv" if cfg.get("automod_enabled", False) else "Aus", inline=True)
-    embed.add_field(name="Security-Log", value=f"<#{cfg['security_log_channel']}>" if cfg.get("security_log_channel") else "Nicht gesetzt", inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
 @bot.tree.command(name="daily", description="Claim XP once every 24 hours")
 async def daily_command(interaction: discord.Interaction):
     if not interaction.guild_id:
