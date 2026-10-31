@@ -855,19 +855,22 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 /* Dashboard layout: persistent module sidebar with a focused content area */
 @media(min-width:900px){{
  body{{padding-left:246px}}
- nav{{position:fixed;inset:0 auto 0 0;width:246px;height:100vh;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;padding:22px 14px;background:rgba(10,15,29,.97);border-right:1px solid var(--border);border-bottom:0;box-shadow:8px 0 30px rgba(0,0,0,.16)}}
- nav a:first-child{{width:100%;padding:8px 10px 20px;margin-bottom:12px;border-bottom:1px solid var(--border);font-size:16px;line-height:1.5}}
- nav a:not(:first-child){{display:flex;align-items:center;width:100%;min-height:40px;padding:9px 11px;border:1px solid transparent;border-radius:10px;background:transparent;font-size:13px;box-shadow:none;transform:none}}
- nav a:not(:first-child):hover{{transform:none;background:rgba(139,157,255,.09);border-color:rgba(139,157,255,.22);box-shadow:none}}
- nav .nav-logout{{margin-top:auto;padding-top:12px;border-top:1px solid var(--border)}}
- nav .nav-logout-button{{width:100%;margin-top:0;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);box-shadow:none}}
+ nav:not(.module-nav){{position:sticky;top:0;inset:auto;width:100%;height:auto;overflow:visible;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:11px 22px;background:rgba(11,16,32,.96);border-right:0;border-bottom:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.12)}}
+ nav:not(.module-nav) a:first-child{{width:auto;padding:7px 10px;margin:0 auto 0 0;border:0;font-size:16px}}
+ nav:not(.module-nav) a:not(:first-child){{display:inline-flex;width:auto;min-height:34px;padding:7px 10px;border:1px solid transparent;border-radius:9px;background:transparent;font-size:12px;box-shadow:none;transform:none}}
+ nav:not(.module-nav) .nav-logout{{margin:0;padding:0;border:0}}
+ .module-nav{{position:fixed;z-index:9;inset:64px auto 0 0;width:246px;height:calc(100vh - 64px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:stretch;gap:4px;flex-wrap:nowrap;margin:0;padding:16px 12px;border:0;border-right:1px solid var(--border);border-radius:0;background:rgba(10,15,29,.98)}}
+ .module-nav-title{{padding:7px 10px 10px}}
+ .module-nav-link{{width:100%;min-height:36px;white-space:normal}}
  main{{max-width:1440px;margin:30px auto;padding:0 34px 52px}}
 }}
 @media(max-width:899px){{
  body{{padding-left:0}}
- nav{{position:sticky;inset:auto;width:auto;height:auto;overflow:visible;flex-direction:row;flex-wrap:wrap;align-items:center;padding:11px 14px}}
- nav a:first-child{{width:100%;padding-bottom:8px;margin-bottom:4px}}
- nav .nav-logout{{margin:0}}
+ nav:not(.module-nav){{position:sticky;inset:auto;width:auto;height:auto;overflow:visible;flex-direction:row;flex-wrap:wrap;align-items:center;padding:11px 14px}}
+ nav:not(.module-nav) a:first-child{{width:100%;padding-bottom:8px;margin-bottom:4px}}
+ nav:not(.module-nav) .nav-logout{{margin:0}}
+ .module-nav{{position:relative;width:100%;height:auto;max-height:220px;overflow-x:auto;overflow-y:hidden;flex-direction:row;align-items:center;flex-wrap:nowrap;margin:0 0 18px;padding:10px;border:1px solid var(--border);border-radius:13px}}
+ .module-nav-link{{width:auto;white-space:nowrap}}
 }}
 \n@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{scroll-behavior:auto!important;transition:none!important;animation:none!important}}}}
 /* GalaxyBot-inspired clean module dashboard */
@@ -1078,48 +1081,53 @@ def _module_command_footer():
 
 
 def _module_navigation():
-    """Provide consistent, direct navigation between every server module page."""
+    """Render the English module sidebar on every server dashboard page."""
     if not request.path.startswith("/guild/"):
         return ""
     parts = request.path.strip("/").split("/")
-    if len(parts) != 3 or not parts[1].isdigit():
+    if len(parts) not in (2, 3) or not parts[1].isdigit():
         return ""
-    gid, active = parts[1], parts[2]
+    gid = parts[1]
+    active = parts[2] if len(parts) == 3 else "starter"
     modules = (
-        ("", "🏠 Übersicht"),
-        ("welcome", "👋 Welcome"),
-        ("temporary-voice", "🔊 Temporary Voice"),
-        ("tickets", "🎫 Tickets"),
-        ("applications", "📝 Bewerbungen"),
-        ("verification", "✅ Verifizierung"),
-        ("messages", "💬 Nachrichten"),
-        ("reaction-roles", "🎭 Reaktionsrollen"),
-        ("automation", "⚙️ Automatisierung"),
-        ("birthdays", "🎂 Geburtstage"),
-        ("teamlist", "👥 Teamliste"),
-        ("verified-accounts", "🔐 Konten"),
-        ("ausweis", "🪪 Ausweis"),
-        ("isle-roster", "🦖 Isle-Roster"),
-        ("security-lab", "🛡️ Security Lab"),
-        ("honeypot", "🍯 Honeypot"),
-        ("ping-protection", "📡 Ping-Schutz"),
-        ("actions", "🔨 Aktionen"),
-        ("feedback", "💡 Feedback"),
-        ("economy", "💰 Wirtschaft"),
-        ("branding", "🎨 Branding"),
-        ("server-statistics", "📊 Serverstatistik"),
-        ("stats", "📈 Bot-Statistik"),
-        ("server-boost", "🚀 Server-Booster"),
-        ("commands", "⌘ Befehle"),
-        ("audit-log", "📋 Audit-Log"),
-        ("health", "❤️ Status"),
-        ("backup", "💾 Backup"),
-        ("premium", "👑 Premium"),
+        ("starter", "🏠 Starter Module", "?section=overview"),
+        ("welcome", "👋 Welcome & Goodbye", "/welcome"),
+        ("tickets", "🎟️ Support Tickets", "/tickets"),
+        ("verification", "🔐 Verification", "/verification"),
+        ("reaction-roles", "🎭 Reaction Roles", "/reaction-roles"),
+        ("feedback", "💬 Anonymous Feedback", "/feedback"),
+        ("birthdays", "🎂 Birthdays", "/birthdays"),
+        ("teamlist", "👥 Team List", "/teamlist"),
+        ("general", "📈 Leveling & XP", "?section=general#settings-panel"),
+        ("temporary-voice", "🔊 Temporary Voice", "/temporary-voice"),
+        ("applications", "📝 Applications", "/applications"),
+        ("messages", "✉️ Message Builder", "/messages"),
+        ("automation", "📣 Automation", "/automation"),
+        ("security-lab", "🛡️ Security Center", "/security-lab"),
+        ("wolfshield", "🧱 Protection Settings", "/wolfshield"),
+        ("honeypot", "🍯 Honeypot", "/honeypot"),
+        ("ping-protection", "📡 Ping Protection", "/ping-protection"),
+        ("actions", "⚔️ Action Center", "/actions"),
+        ("verified-accounts", "🎮 Gaming Verification", "/verified-accounts"),
+        ("branding", "🎨 Server Branding", "/branding"),
+        ("roles", "🎭 Roles & Rewards", "?section=roles#settings-panel"),
+        ("channels", "📡 Channels & Logs", "?section=channels#settings-panel"),
+        ("server-statistics", "📊 Server Statistics", "/server-statistics"),
+        ("economy", "💰 Economy", "/economy"),
+        ("server-boost", "🚀 Server Boosts", "/server-boost"),
+        ("stats", "📈 Live Statistics", "/stats"),
+        ("commands", "⌘ Commands", "/commands"),
+        ("audit-log", "📜 Audit Log", "/audit-log"),
+        ("health", "🩺 System Health", "/health"),
+        ("backup", "🗄️ Backup & Restore", "/backup"),
+        ("premium", "✨ Premium", "/premium"),
+        ("module-manager", "🧩 Module Manager", "?section=modules"),
+        ("module-template", "🛠️ Module Template", "?section=template"),
     )
     links = []
-    for slug, label in modules:
-        href = "/guild/" + gid + (("/" + slug) if slug else "?section=general")
-        current = active == (slug or "")
+    for key, label, target in modules:
+        href = "/guild/" + gid + (target if target.startswith("?") else target)
+        current = (active == "starter" and key == "starter") or active == key
         links.append(
             '<a class="module-nav-link' + (' is-active' if current else '') +
             '" href="' + href + '"' +
@@ -1127,11 +1135,10 @@ def _module_navigation():
             html.escape(label) + '</a>'
         )
     return (
-        '<nav class="module-nav" aria-label="Servermodule">'
-        '<span class="module-nav-title">SERVERMODULE</span>' +
-        ''.join(links) + '</nav>'
+        '<aside class="module-nav" aria-label="Server modules">'
+        '<div class="module-nav-title">SERVER MODULES</div>' +
+        ''.join(links) + '</aside>'
     )
-
 
 def _render(title, body, status=200):
     body = _module_navigation() + body
@@ -2715,8 +2722,8 @@ def guild_page(guild_id):
         body += '<section class="iw-category"><h2>🧩 Module availability</h2>' + modules_html + '</section>'
     elif section == "template":
         body += '<section class="iw-category"><h2>🛠️ Create a module template</h2>' + module_form + '</section>'
-    body += '<section class="iw-section"><div class="iw-heading"><div><span class="iw-kicker">START HERE</span><h2>⭐ Popular modules</h2><p>Quick access to the features most servers set up first.</p></div><a href="/guild/' + gid + '?section=modules">Manage modules →</a></div>' + module_cards(popular, True) + '</section>'
-    body += '<div class="iw-heading"><div><span class="iw-kicker">EXPLORE IRONWOLF</span><h2>All modules</h2><p>Find every feature grouped by purpose.</p></div></div>'
+    body += '<section class="iw-section"><div class="iw-heading"><div><span class="iw-kicker">START HERE</span><h2>⭐ Starter Module</h2><p>Your starting point for setting up IronWolf on this server.</p></div><a href="/guild/' + gid + '?section=modules">Manage modules →</a></div>' + module_cards(popular, True) + '</section>'
+    body += '<div class="iw-heading"><div><span class="iw-kicker">EXPLORE IRONWOLF</span><h2>All Modules</h2><p>Browse every feature, grouped by purpose.</p></div></div>'
     for title, items in categories:
         body += '<section class="iw-category"><h2>' + title + '</h2><p class="iw-category-subtitle">' + str(len(items)) + ' tools in this category</p>' + module_cards(items) + '</section>'
     body += '<section class="iw-category"><h2>⚙️ General configuration</h2><p class="iw-category-subtitle">Core server settings, channels, roles and voice options.</p>' + settings_cards + '</section>'
