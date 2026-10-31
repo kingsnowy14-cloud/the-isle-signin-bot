@@ -90,7 +90,7 @@ async def dashboard_prefix_command_check(ctx):
     if guild_id is not None:
         guild_cfg = guild_config(guild_id)
         if guild_cfg.get("bot_enabled", True) is False:
-            await ctx.send("IronWolf ist für diesen Server noch nicht freigeschaltet. Ein Administrator kann den Bot im Dashboard aktivieren.")
+            await ctx.send("IronWolf has not been enabled for this server yet. A server administrator can enable it in the dashboard.")
             return False
     prefix_enabled = await dashboard_command_enabled(guild_id, f"prefix:!{command_name}")
     dot_prefix_enabled = await dashboard_command_enabled(guild_id, f"prefix:.{command_name}")
@@ -110,7 +110,7 @@ async def dashboard_slash_command_check(interaction):
         return True
     guild_cfg = guild_config(interaction.guild_id)
     if guild_cfg.get("bot_enabled", True) is False:
-        message = bot_text(interaction.guild_id, "IronWolf ist für diesen Server noch nicht freigeschaltet. Ein Administrator kann den Bot im Dashboard aktivieren.")
+        message = bot_text(interaction.guild_id, "IronWolf has not been enabled for this server yet. A server administrator can enable it in the dashboard.")
         if interaction.response.is_done():
             await interaction.followup.send(message, ephemeral=True)
         else:
@@ -634,7 +634,7 @@ async def premium_automation_worker():
                 try:
                     user = await bot.fetch_user(int(user_id))
                     plan_label = "Premium"
-                    await user.send(f"Dein {plan_label}-Zugang bei IronWolf ist abgelaufen. Deine Premium-Funktionen wurden deaktiviert. Wenn du Premium erneut möchtest, wende dich bitte an das IronWolf-Team.")
+                    await user.send(f"Your IronWolf {plan_label} access has expired. Your Premium features have been disabled. Contact the IronWolf team if you would like to renew Premium.")
                     mark_expiry_dm_sent(user_id)
                     print(f"[PREMIUM] Expiry DM sent to user {user_id}.", flush=True)
                 except discord.Forbidden:
@@ -698,7 +698,8 @@ async def premium_automation_worker():
 
 
 def user_language(user_id):
-    return data.setdefault("languages", {}).get(str(user_id), "en")
+    """IronWolf uses English as its single interface language."""
+    return "en"
 
 
 TEXTS = {
@@ -728,7 +729,7 @@ TEXTS = {
         "signin_modal": "Anmelden",
         "signout_modal": "Abmelden",
         "submit": "Absenden",
-        "language_saved": "Deine private Formular- und Bestätigungssprache ist jetzt Deutsch.",
+        "language_saved": "The bot language is English.",
     },
     "cs": {
         "dinosaur": "Dinosaurus",
@@ -912,7 +913,7 @@ class RegistrationModal(discord.ui.Modal):
         if self.action == "Sign In":
             if current:
                 await interaction.response.send_message(
-                    "Du bist bereits angemeldet. Melde dich zuerst ab, bevor du deine Registrierung änderst."
+                    "You are already signed in. Please sign out before changing your registration."
                     if self.language == "de" else
                     "You are already signed in. Please sign out before creating a new registration.",
                     ephemeral=True,
@@ -920,7 +921,7 @@ class RegistrationModal(discord.ui.Modal):
                 return
             if not dinosaur or not location:
                 await interaction.response.send_message(
-                    "Dinosaurier und Standort dürfen nicht leer sein." if self.language == "de"
+                    "Dinosaur and location cannot be empty."
                     else "Dinosaur and location cannot be empty.",
                     ephemeral=True,
                 )
@@ -1133,7 +1134,7 @@ class TicketPanelSelect(discord.ui.Select):
             labels = panel.get("labels", [])
             label = labels[index]
         except (TypeError, ValueError, IndexError, KeyError):
-            await interaction.response.send_message("Diese Ticket-Auswahl ist nicht mehr gültig. Bitte nutze ein aktuelles Panel.", ephemeral=True)
+            await interaction.response.send_message("This ticket selection is no longer valid. Please use a current panel.", ephemeral=True)
             return
         await interaction.response.send_modal(TicketCreateModal(self.panel_key, index, str(label)))
 
@@ -1161,9 +1162,9 @@ class TicketPanelView(discord.ui.View):
 
 class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
     note = discord.ui.TextInput(
-        label="Notiz (nur für das Support-Team)",
+        label="Note (support team only)",
         style=discord.TextStyle.paragraph,
-        placeholder="Interne Zusammenfassung oder nächste Schritte …",
+        placeholder="Internal summary or next steps...",
         min_length=2,
         max_length=1000,
         required=True,
@@ -1210,7 +1211,7 @@ class TicketControlView(discord.ui.View):
         self.add_item(release_button)
 
         priority_button = discord.ui.Button(
-            label="Priorität umschalten",
+            label="Toggle priority",
             style=discord.ButtonStyle.secondary,
             emoji="🚩",
             custom_id="ticket:priority",
@@ -1227,7 +1228,7 @@ class TicketControlView(discord.ui.View):
         async def add_note(interaction: discord.Interaction):
             meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
             if not meta or not is_support(interaction.user, meta, interaction.guild):
-                await interaction.response.send_message("Nur das Support-Team kann interne Notizen hinzufügen.", ephemeral=True)
+                await interaction.response.send_message("Only the support team can add internal notes.", ephemeral=True)
                 return
             await interaction.response.send_modal(TicketInternalNoteModal())
         note_button.callback = add_note
@@ -1319,7 +1320,7 @@ class TicketControlView(discord.ui.View):
         cfg = guild_config(interaction.guild_id)
         if not guild_has_feature(cfg, "ticket"):
             await interaction.response.send_message(
-                "🚩 Die Prioritätsfunktion gehört zum Premium-Ticket-System. Öffne die Premium-Seite im Dashboard für Details.",
+                "🚩 Priority is part of the Premium Ticket System. Open the Premium page in the dashboard for details.",
                 ephemeral=True,
             )
             return
@@ -2092,7 +2093,7 @@ async def help_command(interaction: discord.Interaction):
         embed = create_embed(
             title="📖 Hilfe – aktuelle Befehle",
             description=(
-                "Alle aktuell registrierten Befehle. Nutze die Buttons zum Blättern.\n"
+                "All currently registered commands. Use the buttons to navigate.\n"
                 "**Slash-Befehle** beginnen mit `/`, **Prefix-Befehle** beginnen mit `!`."
             ),
             color=discord.Color.blurple(),
@@ -2119,12 +2120,12 @@ async def help_command(interaction: discord.Interaction):
         async def interaction_check(self, button_interaction: discord.Interaction) -> bool:
             if button_interaction.user.id != self.owner_id:
                 await button_interaction.response.send_message(
-                    "Diese Hilfe-Navigation gehört einer anderen Person.", ephemeral=True
+                    "This help navigation belongs to someone else.", ephemeral=True
                 )
                 return False
             return True
 
-        @discord.ui.button(label="◀ Zurück", style=discord.ButtonStyle.secondary)
+        @discord.ui.button(label="◀ Back", style=discord.ButtonStyle.secondary)
         async def previous_button(self, button_interaction: discord.Interaction, button: discord.ui.Button):
             self.page = max(0, self.page - 1)
             self._update_buttons()
@@ -2173,7 +2174,7 @@ def _member_last_activity(member):
 
 def _activity_age_text(last_activity, now=None):
     if last_activity is None:
-        return "Keine Aktivität erfasst"
+        return "No activity recorded"
     now = now or datetime.now(timezone.utc)
     age = max(0, int((now - last_activity).total_seconds()))
     return f"vor {format_duration(age)}"
@@ -2195,17 +2196,17 @@ async def clan_activity(interaction: discord.Interaction, mitglied: discord.Memb
         voice_seconds += max(0, int((datetime.now(timezone.utc) - started_at).total_seconds()))
     last_activity = _member_last_activity(target)
     embed = create_embed(
-        title=f"🦖 Clan-Aktivität · {target.display_name}",
+        title=f"🦖 Clan Activity · {target.display_name}",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
     embed.set_thumbnail(url=target.display_avatar.url)
     embed.add_field(name="💬 Messages", value=f"{int(stats.get('messages', 0)):,}".replace(",", "."), inline=True)
     embed.add_field(name="🔊 Voice-Zeit", value=format_duration(voice_seconds), inline=True)
-    embed.add_field(name="🕒 Letzte Aktivität", value=_activity_age_text(last_activity), inline=False)
+    embed.add_field(name="🕒 Last Activity", value=_activity_age_text(last_activity), inline=False)
     if last_activity:
         embed.add_field(name="📅 Datum", value=discord.utils.format_dt(last_activity, style="F"), inline=False)
-    embed.set_footer(text="Aktivität wird ab Aktivierung der Erfassung gespeichert. • Created by KingSnowy")
+    embed.set_footer(text="Activity is recorded from the time tracking is enabled. • Created by KingSnowy")
     await interaction.response.send_message(embed=embed, ephemeral=(target.id != interaction.user.id))
 
 
@@ -3263,7 +3264,7 @@ async def modlogs_command(interaction: discord.Interaction, mitglied: discord.Me
     lines = [f"`#{c['id']}` **{c['action']}** — {c['reason'][:180]} · {c['timestamp'][:10]}" for c in cases[-12:]]
     lines.extend([f"**Warnung** — {w.get('reason','Kein Grund')[:180]} · {w.get('timestamp','')[:10]}" for w in warnings[-5:]])
     if not lines:
-        await interaction.response.send_message("Keine gespeicherten Moderationsfälle gefunden.", ephemeral=True)
+        await interaction.response.send_message("No moderation cases found.", ephemeral=True)
         return
     await interaction.response.send_message(embed=create_embed(title=f"Moderationsakte: {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.orange()), ephemeral=True)
 
@@ -3274,7 +3275,7 @@ async def case_command(interaction: discord.Interaction, nummer: app_commands.Ra
     cases = data.setdefault("mod_cases", {}).get(str(interaction.guild_id), [])
     case = next((c for c in cases if int(c.get("id", 0)) == nummer), None)
     if not case:
-        await interaction.response.send_message("Dieser Fall wurde nicht gefunden. Fälle werden ab jetzt gespeichert.", ephemeral=True)
+        await interaction.response.send_message("This case was not found. Cases will be recorded from now on.", ephemeral=True)
         return
     embed = create_embed(title=f"Moderationsfall #{case['id']}", description=f"**Aktion:** {case['action']}\n**Mitglied:** <@{case['user_id']}>\n**Moderator:** <@{case['moderator_id']}>\n**Grund:** {case['reason']}\n**Zeit:** {case['timestamp']}", color=discord.Color.orange())
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3355,7 +3356,7 @@ async def automod_set(interaction: discord.Interaction, aktiviert: bool):
 @bot.tree.command(name="daily", description="Claim XP once every 24 hours")
 async def daily_command(interaction: discord.Interaction):
     if not interaction.guild_id:
-        await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+        await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
         return
     key = f"{interaction.guild_id}:{interaction.user.id}"
     now = time.time()
@@ -3418,7 +3419,7 @@ async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.Voi
 )
 async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel, text: str):
     if not interaction.guild or kanal.guild.id != interaction.guild.id:
-        await interaction.response.send_message("Bitte wähle einen Kanal von diesem Server.", ephemeral=True)
+        await interaction.response.send_message("Please select a channel from this server.", ephemeral=True)
         return
     if not text.strip():
         await interaction.response.send_message("Der Nachrichtentext darf nicht leer sein.", ephemeral=True)
@@ -3436,7 +3437,7 @@ async def nachricht(interaction: discord.Interaction, kanal: discord.TextChannel
         return
     except discord.HTTPException:
         await interaction.response.send_message(
-            "Die Nachricht konnte nicht gesendet werden. Bitte prüfe den Text und versuche es erneut.",
+            "The message could not be sent. Please check the text and try again.",
             ephemeral=True,
         )
         return
@@ -3661,7 +3662,7 @@ class IDCardApplyButton(discord.ui.Button):
         self.guild_id = guild_id
     async def callback(self, interaction: discord.Interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
-            await interaction.response.send_message("Dieses Panel gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("This panel belongs to a different server.", ephemeral=True)
             return
         cfg = guild_config(interaction.guild.id)
         if not cfg.get("id_card_enabled", False):
@@ -3694,12 +3695,12 @@ class IDCardReviewView(discord.ui.View):
         self.add_item(IDCardReviewButton(app_id, False))
     async def _decide(self, interaction, approve):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Nur das Serverteam kann Anträge bearbeiten.", ephemeral=True)
+            await interaction.response.send_message("Only the server team can review applications.", ephemeral=True)
             return
         cfg = guild_config(interaction.guild.id)
         role_id = cfg.get("id_card_review_role_id")
         if not (interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.manage_guild or (role_id and any(r.id == int(role_id) for r in interaction.user.roles))):
-            await interaction.response.send_message("Dir fehlt die Berechtigung für Ausweisanträge.", ephemeral=True)
+            await interaction.response.send_message("You do not have permission to manage membership card applications.", ephemeral=True)
             return
         row = RECORDS.setdefault("id_card_applications", {}).get(self.app_id)
         if not row or int(row.get("guild_id", 0)) != interaction.guild.id or row.get("status") != "pending":
@@ -3740,7 +3741,7 @@ class IDCardReviewView(discord.ui.View):
 @app_commands.checks.has_permissions(manage_guild=True)
 async def ausweis_command(interaction: discord.Interaction):
     if interaction.guild is None:
-        await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+        await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
         return
     cfg = guild_config(interaction.guild.id)
     if not cfg.get("id_card_enabled", False):
@@ -3941,7 +3942,7 @@ async def poll_command(interaction: discord.Interaction, frage: str, option1: st
 @app_commands.describe(vorschlag="Dein Vorschlag für den Server")
 async def suggest_command(interaction: discord.Interaction, vorschlag: str):
     if not interaction.guild_id:
-        await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True); return
+        await interaction.response.send_message("This command is only available in a server.", ephemeral=True); return
     cfg = guild_config(interaction.guild_id)
     channel_id = cfg.get("suggestion_channel")
     channel = interaction.guild.get_channel(int(channel_id)) if channel_id else None
@@ -4559,7 +4560,7 @@ class ClaimVoiceSupportView(discord.ui.View):
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         if guild is None or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
             return
         cfg = guild_config(guild.id)
         role_id = cfg.get("voice_support_role")
@@ -4652,7 +4653,7 @@ class ActiveVoiceSupportView(discord.ui.View):
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         if guild is None or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
             return
         cfg = guild_config(guild.id)
         role_id = cfg.get("voice_support_role")
@@ -5775,7 +5776,7 @@ class ApplicationDecisionButton(discord.ui.Button):
 
     async def callback(self, interaction):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Nur Teammitglieder auf dem Server können Bewerbungen bearbeiten.", ephemeral=True)
+            await interaction.response.send_message("Only server team members can review applications.", ephemeral=True)
             return
         row = RECORDS.setdefault("applications", {}).get(self.app_id)
         if not row or row.get("guild_id") != interaction.guild.id:
@@ -5951,7 +5952,7 @@ class Applications(commands.Cog):
         ping_rolle: discord.Role = None
     ):
         if not interaction.guild:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
             return
         questions = [q.strip() for q in (frage1, frage2, frage3, frage4, frage5) if q and q.strip()]
         if not questions:
@@ -6026,7 +6027,7 @@ class Applications(commands.Cog):
         frage20: str = None
     ):
         if not interaction.guild:
-            await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
             return
         questions = [q.strip() for q in (frage1, frage2, frage3, frage4, frage5, frage6, frage7, frage8, frage9, frage10, frage11, frage12, frage13, frage14, frage15, frage16, frage17, frage18, frage19, frage20) if q and q.strip()]
         if not questions:
@@ -6710,7 +6711,7 @@ async def _ensure_server_voice(guild, category, name, overwrites=None):
 async def _build_server_template(ctx, role_specs, channel_specs, template_title):
     guild = ctx.guild
     if guild is None:
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
         return
 
     status = await ctx.reply(
@@ -7053,7 +7054,7 @@ async def deleteserver_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.reply("❌ Nur Server-Administratoren dürfen diesen Befehl verwenden.", mention_author=False)
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     else:
         await ctx.reply(f"❌ Fehler bei !deleteserver: {error}", mention_author=False)
 
@@ -7175,7 +7176,7 @@ async def server_template_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.reply("❌ Du brauchst die Berechtigung **Server verwalten**, um diesen Befehl zu benutzen.", mention_author=False)
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     else:
         await ctx.reply(f"❌ Fehler beim Serverbau: {error}", mention_author=False)
 
@@ -7187,12 +7188,12 @@ async def module_manager_command(interaction: discord.Interaction):
     dashboard_url = os.getenv("DASHBOARD_PUBLIC_URL", "").strip().rstrip("/")
     if not dashboard_url:
         await interaction.response.send_message(
-            "Das Web-Dashboard ist noch nicht vollständig eingerichtet. Bitte setze DASHBOARD_PUBLIC_URL sowie die Discord-OAuth2-Variablen in Railway.",
+            "The web dashboard is not fully configured yet. Please set DASHBOARD_PUBLIC_URL and the Discord OAuth2 variables in Railway.",
             ephemeral=True,
         )
         return
     await interaction.response.send_message(
-        f"🐺 **IronWolf Control Center**\nÖffne das Dashboard, um Module und Befehle für diesen Server zu verwalten: {dashboard_url}",
+        f"🐺 **IronWolf Control Center**\nOpen the dashboard to manage modules and commands for this server: {dashboard_url}",
         ephemeral=True,
         allowed_mentions=discord.AllowedMentions.none(),
     )
@@ -7470,7 +7471,7 @@ async def the_isle_bau_error(ctx, error):
             mention_author=False,
         )
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     elif isinstance(error, commands.CommandInvokeError):
         original = error.original
         print(f"[THEISLEBAU] Fehler in !TheIsleBau: {type(original).__name__}: {original}", flush=True)
@@ -7761,7 +7762,7 @@ async def filmserver_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.reply("❌ Für !filmserver brauchst du die Berechtigung **Server verwalten**.", mention_author=False)
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     else:
         await ctx.reply(f"❌ Fehler bei !filmserver: {error}", mention_author=False)
 
@@ -8204,7 +8205,7 @@ async def englisch_command_error(ctx, error):
             mention_author=False,
         )
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.reply("Dieser Befehl funktioniert nur auf einem Discord-Server.", mention_author=False)
+        await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     else:
         original = getattr(error, "original", error)
         print(f"[ENGLISH TRANSLATION] Command error: {type(original).__name__}: {original}", flush=True)
