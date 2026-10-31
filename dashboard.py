@@ -1097,7 +1097,6 @@ def _module_navigation():
         ("teamlist", "👥 Teamliste"),
         ("verified-accounts", "🔐 Konten"),
         ("ausweis", "🪪 Ausweis"),
-        ("teamlist", "👥 Teamliste"),
         ("isle-roster", "🦖 Isle-Roster"),
         ("security-lab", "🛡️ Security Lab"),
         ("honeypot", "🍯 Honeypot"),
