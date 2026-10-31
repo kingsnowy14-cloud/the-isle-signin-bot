@@ -1147,9 +1147,72 @@ def _module_navigation():
         ''.join(links) + '</aside>'
     )
 
+DASHBOARD_TRANSLATIONS = {
+    "en": {
+        "Dein Server. Deine Regeln.": "Your server. Your rules.",
+        "Verwalte deine IronWolf-Server an einem Ort: Einstellungen, Befehle und Modulvorlagen.": "Manage your IronWolf servers in one place: settings, commands, and module templates.",
+        "Erfasste Mitglieder": "Tracked members",
+        "Befehle": "Commands",
+        "IronWolf einladen": "Invite IronWolf",
+        "Hinweis: Die Werte aktualisieren sich beim Neuladen der Seite.": "Note: Values update when you reload the page.",
+        "Was du hier machen kannst": "What you can do here",
+        "Serverbezogene Einstellungen mit Formularen ändern": "Change server-specific settings using forms",
+        "Neue Python-Modulvorlagen erstellen und herunterladen": "Create and download new Python module templates",
+        "Deine Server": "Your servers",
+        "Wähle einen Server, um seine Einstellungen zu öffnen.": "Choose a server to open its settings.",
+        "Keine passenden Server gefunden": "No matching servers found",
+        "Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.": "Check your Discord permissions and make sure IronWolf is on the server.",
+        "Mit Discord anmelden": "Sign in with Discord",
+        "Einstellungen, Befehle und Module verwalten": "Manage settings, commands, and modules",
+        "Server öffnen": "Open server",
+        "Allgemein": "General",
+        "Anonymes Feedback": "Anonymous feedback",
+        "Befehle im Dashboard öffnen": "Open commands in dashboard",
+        "Erneut anmelden": "Sign in again"
+    },
+    "de": {
+        "Your Control Center 🐺": "Dein Kontrollzentrum 🐺",
+        "Manage your connected Discord servers from one convenient dashboard.": "Verwalte deine verbundenen Discord-Server bequem über ein Dashboard.",
+        "Your servers": "Deine Server",
+        "Choose a server to open its settings.": "Wähle einen Server, um seine Einstellungen zu öffnen.",
+        "No matching servers found.": "Keine passenden Server gefunden.",
+        "Manage settings, commands, and modules": "Einstellungen, Befehle und Module verwalten",
+        "Open server": "Server öffnen",
+        "General settings": "Allgemeine Einstellungen",
+        "Channels & logs": "Kanäle & Protokolle",
+        "Roles": "Rollen",
+        "Temporary voice channels": "Temporäre Sprachkanäle",
+        "Protection & moderation": "Schutz & Moderation",
+        "Bot language": "Bot-Sprache",
+        "English": "Englisch",
+        "Save settings": "Einstellungen speichern",
+        "Back to settings": "Zurück zu den Einstellungen"
+    }
+}
+
+def _translate_dashboard(value, language):
+    translations = DASHBOARD_TRANSLATIONS.get(language, {})
+    for source in sorted(translations, key=len, reverse=True):
+        value = value.replace(source, translations[source])
+    return value
+
 def _render(title, body, status=200):
-    body = _module_navigation() + body
-    body += _module_command_footer()
+    language = session.get("dashboard_language", "en")
+    if language not in {"en", "de"}:
+        language = "en"
+    body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
+    title = _translate_dashboard(title, language)
+    selected_en = " selected" if language == "en" else ""
+    selected_de = " selected" if language == "de" else ""
+    language_control = (
+        '<form method="post" action="/language" class="language-switcher">' + _csrf_field() +
+        '<label for="dashboard_language">🌐 Language / Sprache</label>' +
+        '<select id="dashboard_language" name="language" onchange="this.form.submit()">' +
+        '<option value="en"' + selected_en + '>🇬🇧 English</option>' +
+        '<option value="de"' + selected_de + '>🇩🇪 Deutsch</option>' +
+        '</select></form>'
+    )
+    body = language_control + body
     return make_response(_page(title, body), status)
 
 
@@ -1432,6 +1495,17 @@ def _public_status_panel():
         '<p class="muted"><small>Hinweis: Die Werte aktualisieren sich beim Neuladen der Seite.</small></p>'
         '</section>'
     )
+
+
+@app.route("/language", methods=["POST"])
+def set_dashboard_language():
+    if not _csrf_ok():
+        abort(400, "Security check failed. Please reload the page.")
+    language = request.form.get("language", "en")
+    if language not in {"en", "de"}:
+        abort(400, "Please select English or German.")
+    session["dashboard_language"] = language
+    return redirect(request.referrer or url_for("index"))
 
 
 @app.route("/")
