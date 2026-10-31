@@ -823,7 +823,7 @@ def _page(title, body):
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
         + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a>'
-        + ('<a href="/logout">Abmelden</a>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
+        + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Abmelden</button></form>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
         + '</nav>'
     )
     return f"""<!doctype html>
@@ -899,6 +899,10 @@ th,td{{border-color:var(--border);padding:10px 12px}}
 /* Professional navigation, accessibility and responsive layouts */
 nav{{flex-wrap:wrap;row-gap:8px;column-gap:8px;min-height:62px}}
 nav .brand-mark{{margin-right:auto;white-space:nowrap}}
+nav .nav-logout{{display:inline-flex;margin:0}}
+nav .nav-logout input{{display:none}}
+nav .nav-logout-button{{margin:0;padding:7px 11px;border-radius:9px;background:transparent;border:1px solid transparent;color:var(--text);font:inherit;font-size:12px;font-weight:800;box-shadow:none}}
+nav .nav-logout-button:hover{{background:rgba(139,157,255,.09);border-color:rgba(139,157,255,.22);color:#fff;transform:none;box-shadow:none}}
 nav a:not(:first-child){{font-size:12px;line-height:1.35;white-space:nowrap}}
 nav a.nav-download{{background:rgba(129,140,248,.12);border-color:rgba(129,140,248,.28);color:#d8dcff}}
 nav a:focus-visible,.skip-link:focus{{outline:2px solid var(--accent);outline-offset:3px}}
@@ -1412,8 +1416,10 @@ def callback():
     return redirect(url_for("index"))
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
+    if not _csrf_ok():
+        abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
     session.clear()
     return redirect(url_for("index"))
 
