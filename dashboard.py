@@ -2661,8 +2661,8 @@ def guild_reaction_roles(guild_id):
             abort(400, "Bitte eine gültige Rolle auswählen.")
         if not message_text or len(message_text) > 2000:
             abort(400, "Bitte gib eine Nachricht mit 1 bis 2000 Zeichen ein.")
-        if not emoji or len(emoji) > 100:
-            abort(400, "Bitte ein Emoji eingeben, z. B. ✅ oder <:name:123456789012345678>.")
+        if len(emoji) > 100:
+            abort(400, "Emoji must be 100 characters or fewer.")
         role = valid_roles[role_raw]
         me = guild.me
         if me is None or not me.guild_permissions.manage_roles or role >= me.top_role:
@@ -2670,7 +2670,8 @@ def guild_reaction_roles(guild_id):
         channel = valid_channels[channel_raw]
         async def _configure_reaction_role():
             message = await channel.send(message_text, allowed_mentions=discord.AllowedMentions.none())
-            await message.add_reaction(emoji)
+            if emoji:
+                await message.add_reaction(emoji)
             return message.id
         try:
             message_id = asyncio.run_coroutine_threadsafe(_configure_reaction_role(), _bot.loop).result(timeout=20)
@@ -2681,7 +2682,8 @@ def guild_reaction_roles(guild_id):
         message_raw = str(message_id)
         records.append({"id": secrets.token_hex(8), "channel_id": int(channel_raw), "message_id": message_id, "emoji": emoji, "role_id": int(role_raw)})
         _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Reaktionsrollen", session.get("user_id"), f"Reaktionsrolle eingerichtet: {emoji} -> {role.name} auf Nachricht {message_raw}")
+        emoji_label = emoji or "Any emoji"
+        _audit_dashboard_change(guild.id, "Reaction Roles", session.get("user_id"), f"Reaction role created: {emoji_label} -> {role.name} on message {message_raw}")
         return redirect(url_for("guild_reaction_roles", guild_id=gid, saved="added"))
     records = cfg.get("reaction_roles", [])
     if not isinstance(records, list):
@@ -2695,20 +2697,20 @@ def guild_reaction_roles(guild_id):
         f'<option value="{html.escape(str(item), quote=True)}">{html.escape(item.name)} {html.escape(str(item))}</option>'
         for item in server_emojis
     )
-    body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🎭 Reaktionsrollen</h1><p class="muted">Schreibe deine Nachricht, wähle Kanal, Emoji und Rolle aus. Der Bot sendet die Nachricht und fügt das Emoji automatisch hinzu. Bei Reaktion wird die Rolle vergeben; beim Entfernen der Reaktion wird sie entfernt.</p>'
+    body = '<span class="pill">IRONWOLF · SERVER CONTROL</span><h1 style="margin-top:12px">🎭 Reaction Roles</h1><p class="muted">Write your message, choose a channel and role, and optionally select an emoji. If you leave the emoji empty, reactions with any emoji will grant the role. Removing a reaction removes the role.</p>'
     if request.args.get("saved") == "added":
-        body += '<div class="notice">✅ Reaktionsrolle gespeichert und Emoji zur Nachricht hinzugefügt.</div>'
+        body += '<div class="notice">✅ Reaction role saved and message sent.</div>'
     elif request.args.get("saved") == "deleted":
         body += '<div class="notice">✅ Reaktionsrolle gelöscht.</div>'
-    body += '<section class="card"><h2>＋ Reaktionsrolle erstellen & Nachricht senden</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add">'
+    body += '<section class="card"><h2>＋ Create reaction role & send message</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="add">'
     body += '<label for="channel_id">Textkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
     body += '<label for="message_text">Deine Nachricht</label><textarea id="message_text" name="message_text" required maxlength="2000" rows="5" placeholder="Schreibe hier die Nachricht, die im ausgewählten Kanal erscheinen soll …"></textarea><small>Maximal 2000 Zeichen. Die Nachricht wird vom Bot gesendet.</small>'
-    body += '<label for="emoji">Server-Emoji auswählen</label><select id="emoji" name="emoji">' + emoji_options + '</select>'
+    body += '<label for="emoji">Server emoji (optional)</label><select id="emoji" name="emoji">' + emoji_options + '</select>'
     if not server_emojis:
         body += '<p class="muted">Auf diesem Server sind keine benutzerdefinierten Emojis verfügbar. Du kannst stattdessen ein normales Emoji eingeben.</p>'
-    body += '<label for="emoji_manual">Oder normales Emoji manuell eingeben</label><input id="emoji_manual" name="emoji_manual" type="text" maxlength="100" placeholder="z. B. ✅ (optional, überschreibt die Auswahl)">'
-    body += '<label for="role_id">Zu vergebende Rolle</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">📨 Nachricht senden & Reaktionsrolle erstellen</button></form></section>'
-    body += '<section class="card"><h2>📋 Konfigurierte Reaktionsrollen</h2>'
+    body += '<label for="emoji_manual">Or enter an emoji manually (optional)</label><input id="emoji_manual" name="emoji_manual" type="text" maxlength="100" placeholder="e.g. ✅ (overrides the selection)"><small>Leave both emoji fields empty to accept every emoji reaction.</small>'
+    body += '<label for="role_id">Role to assign</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">📨 Nachricht senden & Reaktionsrolle erstellen</button></form></section>'
+    body += '<section class="card"><h2>📋 Configured reaction roles</h2>'
     if not records:
         body += '<p class="muted">Noch keine Reaktionsrollen eingerichtet.</p>'
     else:
@@ -2716,7 +2718,7 @@ def guild_reaction_roles(guild_id):
         for item in records:
             role = guild.get_role(int(item.get("role_id", 0))) if str(item.get("role_id", "")).isdigit() else None
             channel = guild.get_channel(int(item.get("channel_id", 0))) if str(item.get("channel_id", "")).isdigit() else None
-            body += '<tr><td>' + html.escape(str(item.get("emoji", ""))) + '</td><td>' + html.escape(role.name if role else "Gelöschte Rolle") + '</td><td>' + html.escape("#" + channel.name if channel else "Gelöschter Kanal") + '</td><td><code>' + html.escape(str(item.get("message_id", ""))) + '</code></td><td><form method="post" style="margin:0" onsubmit="return confirm(\'Diese Reaktionsrolle löschen?\')">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="record_id" value="' + html.escape(str(item.get("id", "")), quote=True) + '"><button type="submit" class="secondary">Löschen</button></form></td></tr>'
+            body += '<tr><td>' + html.escape(str(item.get("emoji", "")) or "Any emoji") + '</td><td>' + html.escape(role.name if role else "Gelöschte Rolle") + '</td><td>' + html.escape("#" + channel.name if channel else "Gelöschter Kanal") + '</td><td><code>' + html.escape(str(item.get("message_id", ""))) + '</code></td><td><form method="post" style="margin:0" onsubmit="return confirm(\'Diese Reaktionsrolle löschen?\')">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="record_id" value="' + html.escape(str(item.get("id", "")), quote=True) + '"><button type="submit" class="secondary">Löschen</button></form></td></tr>'
         body += '</tbody></table></div>'
     body += '</section><p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Reaktionsrollen", body)
