@@ -48,7 +48,7 @@ class GuildGateBot(commands.Bot):
         super().dispatch(event, *args, **kwargs)
 
 
-bot = GuildGateBot(command_prefix=".", intents=intents, case_insensitive=True)
+bot = GuildGateBot(command_prefix=("!", "."), intents=intents, case_insensitive=True)
 _automation_worker_task = None
 _birthday_worker_task = None
 
@@ -92,8 +92,9 @@ async def dashboard_prefix_command_check(ctx):
         if guild_cfg.get("bot_enabled", True) is False:
             await ctx.send("IronWolf ist für diesen Server noch nicht freigeschaltet. Ein Administrator kann den Bot im Dashboard aktivieren.")
             return False
-    prefix_keys = {f"prefix:!{command_name}", f"prefix:.{command_name}"}
-    if any(not await dashboard_command_enabled(guild_id, key) for key in prefix_keys):
+    prefix_enabled = await dashboard_command_enabled(guild_id, f"prefix:!{command_name}")
+    dot_prefix_enabled = await dashboard_command_enabled(guild_id, f"prefix:.{command_name}")
+    if not prefix_enabled or not dot_prefix_enabled:
         await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
     cog = getattr(ctx, "cog", None)
