@@ -2706,15 +2706,20 @@ def guild_page(guild_id):
     metrics = (("Modules", len(module_records)), ("Active modules", sum(1 for item in module_records if item["enabled"])), ("Active commands", sum(1 for item in command_records if item["enabled"])), ("Disabled commands", sum(1 for item in command_records if not item["enabled"])))
     body = '<section class="iw-hero"><span class="iw-kicker">IRONWOLF · CONTROL PANEL</span><h1>🐺 ' + html.escape(guild.name) + '</h1><p>Your server, organized. Manage community, security and automation from one place.</p><small>SERVER ID · ' + gid + '</small></section>'
     body += '<div class="iw-metrics">' + "".join('<div><small>' + label + '</small><strong>' + str(value) + '</strong></div>' for label, value in metrics) + '</div>'
+    # Render the selected section immediately after the server summary. Previously
+    # settings_html was built above but never appended to the response body, so
+    # settings links loaded the page without displaying their target panel.
+    if settings_html:
+        body += settings_html
+    if section == "modules":
+        body += '<section class="iw-category"><h2>🧩 Module availability</h2>' + modules_html + '</section>'
+    elif section == "template":
+        body += '<section class="iw-category"><h2>🛠️ Create a module template</h2>' + module_form + '</section>'
     body += '<section class="iw-section"><div class="iw-heading"><div><span class="iw-kicker">START HERE</span><h2>⭐ Popular modules</h2><p>Quick access to the features most servers set up first.</p></div><a href="/guild/' + gid + '?section=modules">Manage modules →</a></div>' + module_cards(popular, True) + '</section>'
     body += '<div class="iw-heading"><div><span class="iw-kicker">EXPLORE IRONWOLF</span><h2>All modules</h2><p>Find every feature grouped by purpose.</p></div></div>'
     for title, items in categories:
         body += '<section class="iw-category"><h2>' + title + '</h2><p class="iw-category-subtitle">' + str(len(items)) + ' tools in this category</p>' + module_cards(items) + '</section>'
     body += '<section class="iw-category"><h2>⚙️ General configuration</h2><p class="iw-category-subtitle">Core server settings, channels, roles and voice options.</p>' + settings_cards + '</section>'
-    if section == "modules":
-        body += '<section class="iw-category"><h2>🧩 Module availability</h2>' + modules_html + '</section>'
-    if section == "template":
-        body += '<section class="iw-category"><h2>🛠️ Create a module template</h2>' + module_form + '</section>'
     return _render(guild.name + " · Control Center", body)
 
 
