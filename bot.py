@@ -3083,7 +3083,8 @@ async def _handle_reaction_role(payload: discord.RawReactionActionEvent, add: bo
         if str(record.get("message_id")) != str(payload.message_id):
             continue
         saved_emoji = str(record.get("emoji", "")).strip()
-        matches = ((emoji_id is not None) and (saved_emoji == str(emoji_id) or saved_emoji.endswith(":" + str(emoji_id) + ">"))) or ((emoji_id is None) and saved_emoji == emoji_name)
+        # An empty emoji means every reaction emoji on this message is accepted.
+        matches = not saved_emoji or (((emoji_id is not None) and (saved_emoji == str(emoji_id) or saved_emoji.endswith(":" + str(emoji_id) + ">"))) or ((emoji_id is None) and saved_emoji == emoji_name))
         if not matches:
             continue
         try:
