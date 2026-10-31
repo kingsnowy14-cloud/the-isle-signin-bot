@@ -164,7 +164,7 @@ def _steam_write_store_locked(value):
 
 def _create_steam_link_url(guild_id, discord_user_id):
     if not guild_id:
-        raise ValueError("Steam kann nur über einen Verifizierungsbutton innerhalb eines Discord-Servers verknüpft werden.")
+        raise ValueError("Steam kann nur über einen Verifizierungsbutton innerhalb eines Discord Serverss verknüpft werden.")
     callback_uri, origin = _steam_callback_config()
     token = secrets.token_urlsafe(32)
     now = time.time()
@@ -530,7 +530,7 @@ def _roblox_write_store_locked(value):
 
 def _create_roblox_link_url(guild_id, discord_user_id):
     if not guild_id:
-        raise ValueError("Roblox kann nur über einen Verifizierungsbutton innerhalb eines Discord-Servers verknüpft werden.")
+        raise ValueError("Roblox kann nur über einen Verifizierungsbutton innerhalb eines Discord Serverss verknüpft werden.")
     client_id, client_secret, callback_uri = _roblox_callback_config()
     token = secrets.token_urlsafe(32)
     now = time.time()
@@ -1163,7 +1163,7 @@ def public_privacy_policy():
       <p>IronWolf ist ein Discord-Bot mit einer Weboberfläche zur Kontoverifizierung. Diese Erklärung beschreibt die Verarbeitung bei der freiwilligen Verknüpfung eines Roblox-Kontos mit einem Discord-Konto.</p>
       <h2>Welche Daten verarbeitet werden</h2>
       <ul>
-        <li>Discord-Nutzer-ID und gegebenenfalls die Discord-Server-ID, um die Verknüpfung dem richtigen Konto und Server zuzuordnen.</li>
+        <li>Discord-Nutzer-ID und gegebenenfalls die Discord Servers-ID, um die Verknüpfung dem richtigen Konto und Server zuzuordnen.</li>
         <li>Roblox-Benutzer-ID und Roblox-Benutzername, die Roblox nach der OAuth-Autorisierung bereitstellt.</li>
         <li>Verknüpfungs- und Verifizierungsstatus sowie Zeitstempel, die zur Vermeidung doppelter oder missbräuchlicher Verknüpfungen benötigt werden.</li>
         <li>OAuth-Statusdaten, die vorübergehend für den sicheren Abschluss des Autorisierungsablaufs benötigt werden.</li>
@@ -1193,11 +1193,11 @@ def public_terms_of_service():
       <h1>IronWolf – Nutzungsbedingungen</h1>
       <p><strong>Stand:</strong> 17. Oktober 2026</p>
       <h2>1. Zweck des Dienstes</h2>
-      <p>IronWolf bietet Funktionen für Discord-Communitys, darunter die freiwillige Verknüpfung eines Roblox-Kontos zur Identitätsbestätigung innerhalb eines Discord-Servers.</p>
+      <p>IronWolf bietet Funktionen für Discord-Communitys, darunter die freiwillige Verknüpfung eines Roblox-Kontos zur Identitätsbestätigung innerhalb eines Discord Serverss.</p>
       <h2>2. Nutzung und Autorisierung</h2>
       <p>Du musst zur Nutzung berechtigt sein, die angegebenen Konten zu verwenden. Die Roblox-Verknüpfung wird über den offiziellen OAuth-Ablauf von Roblox autorisiert. Teile IronWolf niemals dein Roblox-Passwort mit.</p>
       <h2>3. Verifizierungsfunktionen</h2>
-      <p>Nach erfolgreicher Autorisierung kann IronWolf Roblox-Kontoinformationen speichern und – abhängig von der Konfiguration und den Berechtigungen des Discord-Bots – eine Discord-Rolle vergeben oder den Discord-Nickname ändern. Das Ergebnis kann von den Einstellungen und Berechtigungen des jeweiligen Discord-Servers abhängen.</p>
+      <p>Nach erfolgreicher Autorisierung kann IronWolf Roblox-Kontoinformationen speichern und – abhängig von der Konfiguration und den Berechtigungen des Discord-Bots – eine Discord-Rolle vergeben oder den Discord-Nickname ändern. Das Ergebnis kann von den Einstellungen und Berechtigungen des jeweiligen Discord Serverss abhängen.</p>
       <h2>4. Missbrauch</h2>
       <p>Du darfst den Dienst nicht zur Täuschung, zum Umgehen von Sicherheitsmaßnahmen, zur unbefugten Kontonutzung oder für rechtswidrige Zwecke verwenden. Versuche nicht, den OAuth-Ablauf zu manipulieren oder fremde Konten zu verknüpfen.</p>
       <h2>5. Verfügbarkeit und Änderungen</h2>
@@ -1423,7 +1423,7 @@ def _public_status_panel():
         '<h2 style="margin-top:14px"><span style="color:' + status_color + '">● ' + status_label + '</span></h2>'
         '<p class="muted">Status wird direkt aus dem laufenden Bot-Prozess ermittelt.</p>'
         '<div class="grid">'
-        '<div class="notice"><small>Discord-Server</small><h2>' + str(guild_count) + '</h2></div>'
+        '<div class="notice"><small>Discord Servers</small><h2>' + str(guild_count) + '</h2></div>'
         '<div class="notice"><small>Erfasste Mitglieder</small><h2>' + str(member_count) + '</h2></div>'
         '<div class="notice"><small>Befehle</small><h2>' + str(prefix_count + slash_count) + '</h2><small>' + str(prefix_count) + ' Prefix · ' + str(slash_count) + ' Slash</small></div>'
         '</div>'
@@ -1441,20 +1441,20 @@ def index():
         body = """<section class="card hero"><span class="pill">CONTROL CENTER</span><h1 style="margin-top:16px">Dein Server. Deine Regeln.</h1>
 <p>Verwalte deine IronWolf-Server an einem Ort: Einstellungen, Befehle und Modulvorlagen.</p>
 <div class="notice">🔐 Die Anmeldung erfolgt über Discord. Du kannst nur Server verwalten, auf denen du „Server verwalten“ oder Administrator-Rechte besitzt und auf denen der Bot online ist.</div>
-<a class="button" href="/login">Mit Discord anmelden</a> <a class="button secondary" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ IronWolf für Windows herunterladen</a>
+<a class="button" href="/login">Sign in with Discord</a> <a class="button secondary" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ IronWolf für Windows herunterladen</a>
 <div class="notice">Windows-App: Nach der Installation kann IronWolf beim Windows-Anmelden starten. Die Discord-Anmeldung bleibt weiterhin erforderlich.</div>
-<div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> Fragen oder Nachrichten? <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Tritt unserem Discord bei</a>.</div>
+<div class="notice">✨ <strong>Premium costs €5 per year.</strong> Fragen oder Nachrichten? <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Join our Discord</a>.</div>
 <h2>Was du hier machen kannst</h2><ul><li>Serverbezogene Einstellungen mit Formularen ändern</li><li>Prefix- und Slash-Befehle einzeln aktivieren/deaktivieren</li><li>Neue Python-Modulvorlagen erstellen und herunterladen</li></ul></section>"""
         if not _oauth_ready():
             body += '<div class="card"><h2>Einmalige Einrichtung nötig</h2><p>Setze in Railway die Variablen <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>, <code>DASHBOARD_REDIRECT_URI</code> und <code>DASHBOARD_SECRET_KEY</code>. Als Redirect URI muss exakt die öffentliche URL plus <code>/callback</code> in der Discord Developer Portal OAuth2-Einstellung stehen.</p></div>'
         body += _public_status_panel()
-        body += '<section class="card"><h2>📜 Befehle & Funktionen</h2><p>Nach der Discord-Anmeldung kannst du die vorhandenen Prefix- und Slash-Befehle ansehen und verwalten. Die Liste wird aus den tatsächlich geladenen Bot-Befehlen erstellt.</p><a class="button secondary" href="/login">Befehle im Dashboard öffnen →</a></section>'
+        body += '<section class="card"><h2>📜 Commands & Features</h2><p>After signing in with Discord, you can view and manage the available prefix and slash commands. Die Liste wird aus den tatsächlich geladenen Bot-Befehlen erstellt.</p><a class="button secondary" href="/login">Befehle im Dashboard öffnen →</a></section>'
         return _render("Control Center", body)
     try:
         guilds = _user_guilds()
     except (requests.RequestException, ValueError, KeyError):
         session.clear()
-        return _render("Discord-Anmeldung", '<div class="card"><h1>Anmeldung abgelaufen</h1><p>Bitte melde dich erneut an.</p><a class="button" href="/login">Erneut anmelden</a></div>', 401)
+        return _render("Discord-Anmeldung", '<div class="card"><h1>Session Expired</h1><p>Please sign in again.</p><a class="button" href="/login">Erneut anmelden</a></div>', 401)
     cards = []
     for item in guilds:
         if not (int(item.get("permissions", "0")) & (MANAGE_GUILD | ADMINISTRATOR)):
@@ -1464,10 +1464,10 @@ def index():
         if not bot_guild:
             continue
         cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
-    body = '<section class="card hero"><span class="pill">WILLKOMMEN BEI IRONWOLF</span><h1 style="margin-top:14px">Dein Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord-Server bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium kostet 5 € pro Jahr.</strong> <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
+    body = '<section class="card hero"><span class="pill">WELCOME TO IRONWOLF</span><h1 style="margin-top:14px">Your Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord Servers bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium costs €5 per year.</strong> <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
     body += _public_status_panel()
     body += '<p><a class="button" href="/premium">✨ Manage Premium →</a></p>'
-    body += '<div class="grid">' + ("".join(cards) or '<div class="card">Keine passenden Server gefunden. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
+    body += '<div class="grid">' + ("".join(cards) or '<div class="card">No matching servers found. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
     return _render("Deine Server", body)
 
 
@@ -1482,12 +1482,12 @@ def anonymous_feedback():
         entries = []
     if request.method == "POST":
         if not _csrf_ok():
-            abort(400, "Sicherheitsprüfung fehlgeschlagen. Bitte lade die Seite neu.")
+            abort(400, "Security check failed. Please reload the page.")
         rating = request.form.get("rating", "")
         category = request.form.get("category", "Allgemein")
         allowed_categories = ("Allgemein", "Dashboard", "Ticketsystem", "Verifizierung", "Module")
         if rating not in ("like", "dislike"):
-            abort(400, "Bitte wähle 👍 oder 👎.")
+            abort(400, "Please choose 👍 or 👎.")
         if category not in allowed_categories:
             category = "Allgemein"
         # Intentionally do not store account IDs, IP addresses, user agents, or session data.
@@ -1501,8 +1501,8 @@ def anonymous_feedback():
     dislikes = sum(1 for x in entries if x.get("rating") == "dislike")
     cats = ("Allgemein", "Dashboard", "Ticketsystem", "Verifizierung", "Module")
     rows = ''.join('<div class="row"><strong>' + html.escape(cat) + '</strong><span>👍 ' + str(sum(1 for x in entries if x.get("category") == cat and x.get("rating") == "like")) + ' · 👎 ' + str(sum(1 for x in entries if x.get("category") == cat and x.get("rating") == "dislike")) + '</span></div>' for cat in cats)
-    notice = '<div class="notice">Danke! Dein Feedback wurde anonym gespeichert.</div>' if request.args.get("sent") == "1" else ""
-    body = '<section class="card"><span class="pill">ANONYMES FEEDBACK</span><h1>Wie gefällt dir IronWolf?</h1><p>Es werden keine Discord-ID, kein Name und keine IP-Adresse im Feedback-Datensatz gespeichert. Die Statistik ist zusammengefasst.</p>' + notice + '<form method="post">' + _csrf_field() + '<label>Bereich</label><select name="category"><option>Allgemein</option><option>Dashboard</option><option>Ticketsystem</option><option>Verifizierung</option><option>Module</option></select><label>Bewertung</label><p><label><input type="radio" name="rating" value="like" required> 👍 Gefällt mir</label><label><input type="radio" name="rating" value="dislike" required> 👎 Verbesserungsbedarf</label></p><label>Kommentar (optional; bitte keine persönlichen Daten eintragen)</label><textarea name="comment" maxlength="500" placeholder="Was können wir verbessern?"></textarea><button type="submit">Anonym absenden</button></form></section><section class="card"><h2>Feedback-Statistik</h2><div class="grid"><div class="notice">Alle Bewertungen<h2>' + str(total) + '</h2></div><div class="notice">👍 Gefällt<h2>' + str(likes) + '</h2></div><div class="notice">👎 Verbesserungsbedarf<h2>' + str(dislikes) + '</h2></div></div><h3>Nach Bereich</h3>' + rows + '</section>'
+    notice = '<div class="notice">Thank you! Your feedback has been saved anonymously.</div>' if request.args.get("sent") == "1" else ""
+    body = '<section class="card"><span class="pill">ANONYMOUS FEEDBACK</span><h1>How do you like IronWolf?</h1><p>Es werden keine Discord-ID, kein Name und keine IP-Adresse im Feedback-Datensatz gespeichert. Die Statistik ist zusammengefasst.</p>' + notice + '<form method="post">' + _csrf_field() + '<label>Bereich</label><select name="category"><option>Allgemein</option><option>Dashboard</option><option>Ticketsystem</option><option>Verifizierung</option><option>Module</option></select><label>Bewertung</label><p><label><input type="radio" name="rating" value="like" required> 👍 Gefällt mir</label><label><input type="radio" name="rating" value="dislike" required> 👎 Verbesserungsbedarf</label></p><label>Kommentar (optional; bitte keine persönlichen Daten eintragen)</label><textarea name="comment" maxlength="500" placeholder="Was können wir verbessern?"></textarea><button type="submit">Anonym absenden</button></form></section><section class="card"><h2>Feedback-Statistik</h2><div class="grid"><div class="notice">Alle Bewertungen<h2>' + str(total) + '</h2></div><div class="notice">👍 Gefällt<h2>' + str(likes) + '</h2></div><div class="notice">👎 Verbesserungsbedarf<h2>' + str(dislikes) + '</h2></div></div><h3>Nach Bereich</h3>' + rows + '</section>'
     return _render("Anonymes Feedback", body)
 
 
@@ -5253,7 +5253,7 @@ def guild_wolfchronicle(guild_id):
             card += '<p class="notice"><strong>Abschlussnotiz:</strong> ' + resolution_note + '</p>'
         card += '</section>'
         cards.append(card)
-    timeline = "".join(cards) if cards else '<section class="card"><h2>Noch keine Vorfälle</h2><p>Erstelle hier einen Eintrag oder nutze im Discord-Server <code>/wolfincident</code>. Beide Wege schreiben in dieselbe serverbezogene Chronik.</p></section>'
+    timeline = "".join(cards) if cards else '<section class="card"><h2>Noch keine Vorfälle</h2><p>Erstelle hier einen Eintrag oder nutze im Discord Servers <code>/wolfincident</code>. Beide Wege schreiben in dieselbe serverbezogene Chronik.</p></section>'
     body = (
         '<section class="card"><h1>📚 WolfChronicle · Gemeinsames Incident-Center</h1>'
         '<p class="muted">Ein gemeinsamer Verlauf für Discord und Website. Vorfälle bleiben serverbezogen gespeichert, sind begrenzt auf 100 Einträge und können hier nachverfolgt werden. Es werden keine Nachrichten automatisch gesammelt und keine Strafen ausgeführt.</p>'
