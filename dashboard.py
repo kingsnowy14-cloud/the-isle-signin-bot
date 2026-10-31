@@ -2481,11 +2481,11 @@ def guild_page(guild_id):
         ("✉️", "Messages & Buttons", "Create embeds and interactive buttons", "/messages"),
         ("🎭", "Reaction Roles", "Self-service member roles", "/reaction-roles"),
         ("🛡️", "Security Center", "Anti-raid and server protection", "?section=security#settings-panel"),
-        ("🧪", "Security Lab", "Safely simulate raid, nuke and malicious-link attacks with no real server changes", "?section=security#settings-panel"),
+        ("🧪", "Security Lab", "Safely simulate raid, nuke and malicious-link attacks with no real server changes", "/security-lab"),
     ]
     categories = [
         ("👥 Community & Engagement", [("👋", "Welcome & Goodbye", "Public welcomes, goodbye messages and DMs", "?section=general#settings-panel"), ("🎭", "Reaction Roles", "Self-service roles through reactions", "/reaction-roles"), ("💬", "Anonymous Feedback", "Collect suggestions and feedback", "/feedback"), ("🎂", "Birthdays", "Birthday announcements and saved dates", "/birthdays"), ("📈", "Leveling & XP", "XP, cooldowns and level rewards", "?section=general#settings-panel"), ("👥", "Team List", "Publish your server team", "/teamlist")]),
-        ("🛡️ Security & Moderation", [("🧪", "Security Lab", "Run /security-test to simulate attacks safely without changing server content", "?section=security#settings-panel"), ("🔐", "Verification", "Verification panels, channels and roles", "/verification"), ("🎮", "Gaming Verification", "Connect supported gaming accounts", "/verified-accounts"), ("🍯", "Honeypot", "Hidden trap channel and moderation response", "/honeypot"), ("🛡️", "Ping Protection", "Protect selected members from unwanted mentions", "/ping-protection"), ("⚙️", "Protection Settings", "Anti-raid and anti-nuke controls", "?section=security#settings-panel"), ("🎮", "Action Center", "Moderation and server actions", "/actions")]),
+        ("🛡️ Security & Moderation", [("🧪", "Security Lab", "Run /security-test to simulate attacks safely without changing server content", "/security-lab"), ("🔐", "Verification", "Verification panels, channels and roles", "/verification"), ("🎮", "Gaming Verification", "Connect supported gaming accounts", "/verified-accounts"), ("🍯", "Honeypot", "Hidden trap channel and moderation response", "/honeypot"), ("🛡️", "Ping Protection", "Protect selected members from unwanted mentions", "/ping-protection"), ("⚙️", "Protection Settings", "Anti-raid and anti-nuke controls", "?section=security#settings-panel"), ("🎮", "Action Center", "Moderation and server actions", "/actions")]),
         ("🎟️ Support & Communication", [("🎟️", "Ticket System", "Ticket panels, teams and categories", "/tickets"), ("🎧", "Voice Support", "Waiting rooms and private voice support", "?section=voice#settings-panel"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
         ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("🎭", "Roles & Rewards", "Bot roles and level rewards", "?section=roles#settings-panel"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "?section=voice#settings-panel"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
         ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
@@ -2512,6 +2512,30 @@ def guild_page(guild_id):
         body += '<section class="iw-category"><h2>🛠️ Create a module template</h2>' + module_form + '</section>'
     return _render(guild.name + " · Control Center", body)
 
+
+
+@app.route("/guild/<guild_id>/security-lab", methods=["GET"])
+def guild_security_lab(guild_id):
+    """Dashboard landing page for the safe, admin-only Discord security simulation."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    body = (
+        '<section class="card"><span class="pill">IRONWOLF · SECURITY LAB</span>'
+        '<h1 style="margin-top:12px">🧪 Security Lab</h1>'
+        '<p class="muted">Starte in Discord einen sicheren Konfigurationstest. Die Simulation erzeugt nur Testereignisse im Arbeitsspeicher und verändert keine echten Kanäle, Rollen, Mitglieder oder Nachrichten.</p>'
+        '<h2>So startest du den Test</h2>'
+        '<ol><li>Öffne deinen Discord-Server.</li>'
+        '<li>Gib den Slash-Befehl <code>/security-test</code> ein.</li>'
+        '<li>Wähle ein Szenario: <strong>Full security test</strong>, <strong>Raid simulation</strong>, <strong>Nuke attempt simulation</strong> oder <strong>Spam burst simulation</strong>.</li>'
+        '<li>Bestätige den Befehl. Das Ergebnis wird dir privat angezeigt.</li></ol>'
+        '<p><strong>Voraussetzung:</strong> Du musst Administrator auf dem Discord-Server sein.</p>'
+        '<p class="muted">Wichtig: Der Test prüft, ob die zugehörigen Schutzoptionen eingeschaltet sind. Er führt keinen echten Angriff aus und beweist nicht, dass jede Live-Aktion blockiert wird.</p>'
+        '<p><a class="button" href="/guild/' + gid + '?section=security#settings-panel">🛡️ Sicherheitseinstellungen öffnen</a> '
+        '<a class="button secondary" href="/guild/' + gid + '">← Zur Serverübersicht</a></p></section>'
+    )
+    return _render(guild.name + " · Security Lab", body)
 
 
 
