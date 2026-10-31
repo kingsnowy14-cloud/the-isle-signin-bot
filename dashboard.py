@@ -2219,7 +2219,7 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} ist zu lang.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
+                    for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
                         cfg[key] = request.form.get(key) == "on"
                     numeric_settings = {
                         "automod_threshold": (3, 20, 6),
@@ -2350,19 +2350,19 @@ def guild_page(guild_id):
     section = request.args.get("section", "overview")
     settings_html = ""
     if section in ("general", "channels", "roles", "voice", "security"):
-        settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"Allgemeine Einstellungen","channels":"Kanäle & Logs","roles":"Rollen","voice":"Temporäre Voice-Kanäle","security":"Schutz & Moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
+        settings_html = '<section class="card" id="settings-panel"><h2>⚙️ ' + {"general":"General settings","channels":"Channels & logs","roles":"Roles","voice":"Temporary voice channels","security":"Protection & moderation"}[section] + '</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="settings"><input type="hidden" name="settings_section" value="' + section + '">'
         if section == "general":
             bot_enabled_checked = " checked" if cfg.get("bot_enabled", True) else ""
             settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 IronWolf auf diesem Server aktivieren</label></div><p class="muted">Ist diese Option aus, reagiert der Bot auf diesem Server nicht. Neue Server starten deaktiviert; bestehende Server behalten ihr bisheriges Verhalten.</p>'
             settings_html += '<label for="bot_language">🌐 Bot language</label><small>IronWolf is configured to use English for bot responses.</small><select id="bot_language" name="bot_language"><option value="en" selected>🇬🇧 English</option></select>'
-            settings_html += '<h3>👋 Willkommensmodul · Kanäle auswählen</h3><p class="muted">Lege fest, wohin IronWolf neue Mitglieder begrüßt und wo Nachrichten beim Verlassen des Servers erscheinen.</p>'
-            settings_html += '<label for="welcome_channel">Willkommenskanal</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
-            settings_html += '<label for="goodbye_channel">Auf-Wiedersehen-Kanal</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
+            settings_html += '<h3>👋 Welcome module · Channels</h3><p class="muted">Choose where IronWolf welcomes new members and where goodbye messages are posted.</p>'
+            settings_html += '<label for="welcome_channel">Public welcome channel</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
+            settings_html += '<label for="goodbye_channel">Goodbye channel</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
             settings_html += '<p class="muted">👑 Der Invite-Tracker ist ein Premium-Modul. Aktiviere ihn nur, wenn für diesen Server ein entsprechender Premium-Zugang besteht.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
-                label = {"welcome_embed": "Willkommensnachricht als Embed senden", "leave_enabled": "Auf-Wiedersehen-Nachricht aktivieren", "leave_embed": "Auf-Wiedersehen-Nachricht als Embed senden"}.get(key, BOOL_SETTINGS.get(key, key))
+            for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
+                label = {"welcome_embed": "Send welcome message as an embed", "leave_enabled": "Enable goodbye messages", "leave_embed": "Send goodbye message as an embed"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
             settings_html += "<h3>AutoMod & XP konfigurieren</h3>"
