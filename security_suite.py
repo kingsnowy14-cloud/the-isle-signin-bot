@@ -96,17 +96,17 @@ class VerifyButton(discord.ui.View):
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         if guild is None or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Bitte nutze diesen Button auf dem Server.", ephemeral=True)
+            await interaction.response.send_message("Please use this button in the server.", ephemeral=True)
             return
         cfg = guild_state(guild.id)
         role_id = cfg.get("verified_role_id")
         role = guild.get_role(role_id) if role_id else None
         if role is None:
-            await interaction.response.send_message("Verifizierung ist noch nicht vollständig konfiguriert. Bitte Team kontaktieren.", ephemeral=True)
+            await interaction.response.send_message("Verification is not fully configured yet. Please contact the team.", ephemeral=True)
             return
         me = bot_member(guild)
         if me is None or not me.guild_permissions.manage_roles or role >= me.top_role or role.managed:
-            await interaction.response.send_message("Der Bot kann die Verifizierungsrolle nicht sicher vergeben. Bitte Rollenrechte und Hierarchie prüfen.", ephemeral=True)
+            await interaction.response.send_message("The bot cannot safely assign the verification role. Please check its role permissions and hierarchy.", ephemeral=True)
             return
         member = interaction.user
         try:
@@ -116,14 +116,14 @@ class VerifyButton(discord.ui.View):
             unverified = guild.get_role(unverified_id) if unverified_id else None
             if unverified and unverified in member.roles:
                 if unverified >= me.top_role or unverified.managed:
-                    await interaction.response.send_message("Die Unverified-Rolle liegt über der Bot-Rolle; Team muss die Hierarchie korrigieren.", ephemeral=True)
+                    await interaction.response.send_message("The Unverified role is above the bot's role; the team must correct the role hierarchy.", ephemeral=True)
                     return
                 await member.remove_roles(unverified, reason="IronWolf verification completed")
         except discord.Forbidden:
-            await interaction.response.send_message("Discord verweigert die Rollenänderung. Bitte Bot-Rechte und Rollen-Hierarchie prüfen.", ephemeral=True)
+            await interaction.response.send_message("Discord denied the role change. Please check the bot's permissions and role hierarchy.", ephemeral=True)
             return
-        await interaction.response.send_message("✅ Verifizierung abgeschlossen.", ephemeral=True)
-        await send_log(guild, f"✅ {member} ({member.id}) hat die Verifizierung abgeschlossen.")
+        await interaction.response.send_message("✅ Verification completed.", ephemeral=True)
+        await send_log(guild, f"✅ {member} ({member.id}) has completed verification.")
 
 
 class SecuritySuite(commands.Cog):
@@ -134,7 +134,7 @@ class SecuritySuite(commands.Cog):
     def require_bot_permissions(self, guild, *, manage_roles=False, manage_messages=False):
         me = bot_member(guild)
         if me is None:
-            return False, "Bot-Mitglied konnte nicht geladen werden."
+            return False, "Could not load the bot member."
         if manage_roles and not me.guild_permissions.manage_roles:
             return False, "Dem Bot fehlt **Rollen verwalten** (für Kanalrechte/Rollenänderungen)."
         if manage_messages and not me.guild_permissions.manage_messages:
