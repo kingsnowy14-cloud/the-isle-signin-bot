@@ -6685,7 +6685,7 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
             created_roles += int(created)
 
         everyone = guild.default_role
-        admin_role = role_map.get("Administrator")
+        admin_role = role_map.get("👑 Administrator") or role_map.get("Administrator")
         moderator_role = role_map.get("Moderator")
         staff_overwrites = {
             everyone: discord.PermissionOverwrite(view_channel=False),
@@ -6702,7 +6702,7 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
             )
 
         for category_name, channels in channel_specs:
-            is_staff = category_name in {"🛡️ TEAM", "🛡️ STAFF", "🔒 TEAM-BEREICH"}
+            is_staff = category_name in {"🛡️ TEAM", "🛡️ STAFF", "🔒 TEAM-BEREICH", "🔒 STAFF AREA"}
             category, created = await _ensure_server_category(
                 guild, category_name, staff_overwrites if is_staff else None
             )
@@ -6752,18 +6752,9 @@ async def _run_developerbuild(ctx):
         )
         return
 
+    # Keep the role list intentionally simple: one dedicated admin role.
     roles = [
-        ("👑 Founder", discord.Colour.from_rgb(220, 175, 55), discord.Permissions(administrator=True)),
-        ("🛡️ Administrator", discord.Colour.from_rgb(220, 65, 65), discord.Permissions.none()),
-        ("🔨 Developer", discord.Colour.from_rgb(90, 145, 235), discord.Permissions.none()),
-        ("🧰 Senior Developer", discord.Colour.from_rgb(125, 95, 220), discord.Permissions.none()),
-        ("🛡️ Moderator", discord.Colour.from_rgb(230, 130, 55), discord.Permissions.none()),
-        ("🎫 Support Team", discord.Colour.from_rgb(55, 175, 185), discord.Permissions.none()),
-        ("🤝 Partner", discord.Colour.from_rgb(225, 115, 175), discord.Permissions.none()),
-        ("💎 Premium Member", discord.Colour.from_rgb(190, 115, 235), discord.Permissions.none()),
-        ("👤 Member", discord.Colour.from_rgb(90, 190, 125), discord.Permissions.none()),
-        ("🌱 New Member", discord.Colour.from_rgb(155, 165, 175), discord.Permissions.none()),
-        ("🤖 Bots", discord.Colour.from_rgb(115, 120, 135), discord.Permissions.none()),
+        ("👑 Administrator", discord.Colour.from_rgb(220, 65, 65), discord.Permissions(administrator=True)),
     ]
     channels = [
         ("📌 START HERE", [
@@ -6804,6 +6795,68 @@ async def _run_developerbuild(ctx):
         ]),
     ]
     await _build_server_template(ctx, roles, channels, "Discord Developer Community")
+
+    # Automatically wire up welcome messages and a working ticket panel.
+    guild = ctx.guild
+    cfg = guild_config(guild.id)
+    welcome = discord.utils.get(guild.text_channels, name="👋・welcome")
+    if welcome:
+        cfg["welcome_channel"] = welcome.id
+        cfg["welcome_embed"] = True
+        cfg["welcome_bots_enabled"] = False
+        cfg["welcome_message"] = "Welcome {mention} to **{server}**! You are member **#{count}**. Please read #📜・rules and introduce yourself."
+    admin_role = discord.utils.get(guild.roles, name="👑 Administrator")
+    if admin_role:
+        cfg["support_role"] = admin_role.id
+
+    ticket_category, _ = await _ensure_server_category(
+        guild, "🎫 TICKETS",
+        {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            **({admin_role: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True)} if admin_role else {}),
+        },
+    )
+    ticket_panel_channel, _ = await _ensure_server_text(
+        guild, ticket_category, "🎫・create-ticket",
+        "Open a private support ticket here.",
+    )
+    panel_key = "developerbuild-default"
+    labels = ["General Support", "Technical Support", "Partnership / Business"]
+    cfg.setdefault("ticket_panels", {})[panel_key] = {
+        "title": "🎫 Contact the Team",
+        "description": "Choose the type of help you need. A private ticket channel will be created for you.",
+        "labels": labels,
+        "category_id": ticket_category.id,
+        "support_role_id": admin_role.id if admin_role else None,
+        "channel_id": ticket_panel_channel.id,
+    }
+    save_json(CONFIG_FILE, config)
+    existing_panel = None
+    try:
+        async for message in ticket_panel_channel.history(limit=30):
+            if message.author == bot.user and any(embed.title == "🎫 Contact the Team" for embed in message.embeds):
+                existing_panel = message
+                break
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+    if existing_panel:
+        await existing_panel.edit(
+            embed=create_embed(
+                title="🎫 Contact the Team",
+                description="Choose the type of help you need. A private ticket channel will be created for you.",
+                color=discord.Color.blurple(),
+            ),
+            view=TicketPanelView(panel_key, labels),
+        )
+    else:
+        await ticket_panel_channel.send(
+            embed=create_embed(
+                title="🎫 Contact the Team",
+                description="Choose the type of help you need. A private ticket channel will be created for you.",
+                color=discord.Color.blurple(),
+            ),
+            view=TicketPanelView(panel_key, labels),
+        )
     welcome = discord.utils.get(ctx.guild.text_channels, name="👋・welcome")
     rules = discord.utils.get(ctx.guild.text_channels, name="📜・rules")
     if welcome:
