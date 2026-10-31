@@ -460,6 +460,7 @@ DEFAULT_GUILD_CONFIG = {
     "welcome_message": "Welcome {mention} to **{server}**! You are member **#{count}**.",
     "welcome_embed": False,
     "welcome_bots_enabled": False,
+    "welcome_dm_enabled": False,
     "self_roles": [],
     "birthday_channel": None,
     "levelup_channel": None,
@@ -2677,35 +2678,48 @@ async def moderation_slowmode(interaction: discord.Interaction, sekunden: app_co
 
 # ----------------------------- WELCOME -----------------------------
 
-@bot.tree.command(name="welcome-set", description="Setze den Begrüßungskanal")
+@bot.tree.command(name="welcome-channel", description="Set the channel for public welcome messages")
 @app_commands.checks.has_permissions(manage_guild=True)
-async def welcome_set(interaction: discord.Interaction, kanal: discord.TextChannel):
-    guild_config(interaction.guild_id)["welcome_channel"] = kanal.id
+async def welcome_set(interaction: discord.Interaction, channel: discord.TextChannel):
+    guild_config(interaction.guild_id)["welcome_channel"] = channel.id
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"Begrüßungen werden künftig in {kanal.mention} gesendet.", ephemeral=True)
+    await interaction.response.send_message(f"Public welcome messages will be sent to {channel.mention}.", ephemeral=True)
 
 
-@bot.tree.command(name="welcome-message", description="Lege den Begrüßungstext fest")
+@bot.tree.command(name="welcome-dm", description="Enable or disable welcome messages sent privately to new members")
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(text="Platzhalter: {mention}, {user}, {server}, {count}")
+@app_commands.describe(enabled="True = send a private welcome message, False = do not send DMs")
+async def welcome_dm(interaction: discord.Interaction, enabled: bool):
+    cfg = guild_config(interaction.guild_id)
+    cfg["welcome_dm_enabled"] = enabled
+    save_json(CONFIG_FILE, config)
+    status = "enabled" if enabled else "disabled"
+    await interaction.response.send_message(
+        f"Private welcome messages are now **{status}**.", ephemeral=True
+    )
+
+
+@bot.tree.command(name="welcome-message", description="Set the welcome message template")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(text="Available placeholders: {mention}, {user}, {server}, {count}")
 async def welcome_message(interaction: discord.Interaction, text: str):
     if len(text) > 1500:
-        await interaction.response.send_message("Der Text darf maximal 1500 Zeichen lang sein.", ephemeral=True); return
+        await interaction.response.send_message("The message must be 1,500 characters or fewer.", ephemeral=True); return
     guild_config(interaction.guild_id)["welcome_message"] = text
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message("Begrüßungstext gespeichert. Platzhalter: `{mention}`, `{user}`, `{server}`, `{count}`.", ephemeral=True)
+    await interaction.response.send_message("Welcome message saved. Placeholders: `{mention}`, `{user}`, `{server}`, `{count}`.", ephemeral=True)
 
 
-@bot.tree.command(name="welcome-bots", description="Schalte Begrüßungsnachrichten für Bots ein oder aus")
+@bot.tree.command(name="welcome-bots", description="Choose whether bot accounts receive welcome messages")
 @app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(aktiv="Ja = Bots begrüßen, Nein = Bots nicht begrüßen")
-async def welcome_bots(interaction: discord.Interaction, aktiv: bool):
+@app_commands.describe(enabled="True = welcome bots, False = do not welcome bots")
+async def welcome_bots(interaction: discord.Interaction, enabled: bool):
     cfg = guild_config(interaction.guild_id)
-    cfg["welcome_bots_enabled"] = aktiv
+    cfg["welcome_bots_enabled"] = enabled
     save_json(CONFIG_FILE, config)
-    status = "aktiviert" if aktiv else "deaktiviert"
+    status = "enabled" if enabled else "disabled"
     await interaction.response.send_message(
-        f"Begrüßungsnachrichten für Bots sind jetzt **{status}**.", ephemeral=True
+        f"Welcome messages for bots are now **{status}**.", ephemeral=True
     )
 
 
@@ -5327,6 +5341,21 @@ async def on_member_join(member: discord.Member):
             await member.add_roles(unverified_role, reason="Neue Mitglieder müssen sich verifizieren")
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[VERIFY] Could not assign unverified role: {type(exc).__name__}: {exc}")
+    # Optional private welcome message; disabled by default to avoid unsolicited DMs.
+    if should_welcome and cfg.get("welcome_dm_enabled", False):
+        dm_template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
+        dm_text = (dm_template.replace("{mention}", member.mention)
+                   .replace("{user}", discord.utils.escape_markdown(member.display_name))
+                   .replace("{server}", discord.utils.escape_markdown(member.guild.name))
+                   .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
+        try:
+            await member.send(
+                dm_text[:1900],
+                allowed_mentions=discord.AllowedMentions(users=False, roles=False, everyone=False),
+            )
+            print(f"[WELCOME] Sent private welcome message to {member} ({member.id}) in guild {member.guild.id}.")
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[WELCOME] Could not DM member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
     # Welcome messages for bots can be toggled per server with /welcome-bots.
     should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
     welcome_channel_id = cfg.get("welcome_channel")
