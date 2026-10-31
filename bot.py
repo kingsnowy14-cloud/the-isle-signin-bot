@@ -6794,7 +6794,45 @@ async def _run_developerbuild(ctx):
             ("voice", "🛡️ Staff Voice", None),
         ]),
     ]
-    await _build_server_template(ctx, roles, channels, "Discord Developer Community")
+    # Ultiz-style community foundation: dedicated areas for protection,
+    # engagement, support and announcements. These are real channels for the
+    # bot's existing modules; modules that need extra setup remain configurable.
+    channels.extend([
+        ("🛡️ SECURITY & MODERATION", [
+            ("text", "🚨・reports", "Member reports for the moderation team."),
+            ("text", "📋・server-logs", "Server activity and moderation logs."),
+            ("text", "⚠️・mod-actions", "Internal moderation actions and case notes."),
+            ("text", "🛡️・verification", "Verification information and instructions."),
+        ]),
+        ("🎉 COMMUNITY & ENGAGEMENT", [
+            ("text", "🏆・levels-and-leaderboard", "Community levels, XP and leaderboards."),
+            ("text", "🎁・giveaways", "Community giveaways and prize announcements."),
+            ("text", "📅・events-and-schedule", "Events, activities and community schedule."),
+            ("text", "💡・suggestions", "Share and vote on community suggestions."),
+            ("text", "📊・server-statistics", "Community statistics and milestones."),
+            ("text", "🎂・birthdays", "Community birthday announcements."),
+            ("text", "⭐・starboard", "A place for the community's best messages."),
+        ]),
+        ("📝 FORMS & COMMUNITY TOOLS", [
+            ("text", "📝・applications", "Applications and community forms."),
+            ("text", "🎭・reaction-roles", "Choose your community roles here."),
+            ("text", "📣・creator-alerts", "Creator, stream and video announcements."),
+            ("text", "❓・faq-and-help", "Frequently asked questions and useful help."),
+            ("text", "📚・knowledge-base", "Guides, documentation and useful resources."),
+        ]),
+        ("📢 CONTENT & ANNOUNCEMENTS", [
+            ("text", "📌・important-updates", "Important updates and pinned information."),
+            ("text", "🗳️・polls", "Community polls and decisions."),
+            ("text", "📸・community-media", "Screenshots, videos and shared creations."),
+            ("text", "🤖・bot-commands", "Use bot commands and discover available tools."),
+        ]),
+        ("🔊 VOICE LOUNGES", [
+            ("voice", "🎙️ Community Voice", None),
+            ("voice", "🎮 Gaming Voice", None),
+            ("voice", "🎵 Chill Lounge", None),
+        ]),
+    ])
+    await _build_server_template(ctx, roles, channels, "Ultiz-style Developer Community")
 
     # Automatically wire up welcome messages and a working ticket panel.
     guild = ctx.guild
