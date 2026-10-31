@@ -6743,6 +6743,13 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
 @commands.has_guild_permissions(administrator=True)
 async def developerbuild(ctx):
     """Create a professional English Discord developer community server."""
+    if ctx.guild.id != 1566103924019167293:
+        await ctx.reply(
+            "❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.",
+            mention_author=False,
+        )
+        return
+
     roles = [
         ("👑 Founder", discord.Colour.from_rgb(220, 175, 55), discord.Permissions(administrator=True)),
         ("🛡️ Administrator", discord.Colour.from_rgb(220, 65, 65), discord.Permissions.none()),
