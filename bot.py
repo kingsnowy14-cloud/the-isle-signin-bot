@@ -87,7 +87,13 @@ async def dashboard_prefix_command_check(ctx):
     if is_server_build_prefix and ctx.author.id != 1493110334280564807:
         return False
 
-    if not await dashboard_command_enabled(guild_id, f"prefix:!{command_name}"):
+    if guild_id is not None:
+        guild_cfg = guild_config(guild_id)
+        if guild_cfg.get("bot_enabled", True) is False:
+            await ctx.send("IronWolf ist für diesen Server noch nicht freigeschaltet. Ein Administrator kann den Bot im Dashboard aktivieren.")
+            return False
+    prefix_keys = {f"prefix:!{command_name}", f"prefix:.{command_name}"}
+    if any(not await dashboard_command_enabled(guild_id, key) for key in prefix_keys):
         await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
     cog = getattr(ctx, "cog", None)
@@ -101,6 +107,14 @@ async def dashboard_slash_command_check(interaction):
     command = interaction.command
     if command is None or interaction.guild_id is None:
         return True
+    guild_cfg = guild_config(interaction.guild_id)
+    if guild_cfg.get("bot_enabled", True) is False:
+        message = bot_text(interaction.guild_id, "IronWolf ist für diesen Server noch nicht freigeschaltet. Ein Administrator kann den Bot im Dashboard aktivieren.")
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+        return False
     key = f"slash:/{command.qualified_name}"
     if not await dashboard_command_enabled(interaction.guild_id, key):
         message = bot_text(interaction.guild_id, "Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
@@ -5138,10 +5152,12 @@ async def on_guild_join(guild: discord.Guild):
             if command.hidden or command.name == "help":
                 continue
             disabled.add(f"prefix:!{command.qualified_name}")
+            disabled.add(f"prefix:.{command.qualified_name}")
         for command in bot.tree.walk_commands():
             if isinstance(command, app_commands.Group):
                 continue
             disabled.add(f"slash:/{command.qualified_name}")
+        cfg["bot_enabled"] = False
         cfg["disabled_commands"] = sorted(disabled)
         save_json(CONFIG_FILE, config)
         print(f"[COMMAND-GATE] New guild {guild.id}: disabled {len(disabled)} commands by default; enable them in the dashboard.", flush=True)
