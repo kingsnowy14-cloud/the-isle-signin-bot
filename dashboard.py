@@ -4266,7 +4266,7 @@ def guild_commands(guild_id):
     groups = {}
     for item in commands:
         groups.setdefault(item["cog"], []).append(item)
-    command_html = '<span class="pill">IRONWOLF · COMMAND CENTER</span><h1 style="margin-top:12px">⌘ Befehle</h1><p class="muted">Alle Befehle sind nach Modul gruppiert. Schalte nur die Befehle ab, die auf diesem Server nicht verfügbar sein sollen.</p><div class="section-nav"><a href="/guild/' + gid + '">← Serverübersicht</a><a href="#prefix">Prefix-Befehle</a><a href="#slash">Slash-Befehle</a></div>'
+    command_html = '<span class="pill">IRONWOLF · COMMAND CENTER</span><h1 style="margin-top:12px">⌘ Befehle</h1><p class="muted">Bei neu hinzugefügten Servern sind alle Befehle standardmäßig deaktiviert. Aktiviere hier nur die Prefix- und Slash-Befehle, die auf diesem Server verfügbar sein sollen. Bereits bestehende Server behalten ihre bisherigen Einstellungen.</p><div class="section-nav"><a href="/guild/' + gid + '">← Serverübersicht</a><a href="#prefix">Prefix-Befehle</a><a href="#slash">Slash-Befehle</a></div>'
     command_html += '<div class="notice">🔎 Suche nach Befehlsnamen oder Modul. Die Liste wird sofort gefiltert; Änderungen anschließend unten speichern.</div>'
     command_html += '<label for="command-search">Befehle durchsuchen</label><input id="command-search" type="search" placeholder="z. B. !filmserver, /ticket, Moderation …" autocomplete="off" style="width:100%;box-sizing:border-box;margin:0 0 16px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text)">'
     command_html += '<p id="command-search-count" class="muted" aria-live="polite"></p>'
