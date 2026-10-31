@@ -113,23 +113,30 @@ async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
     command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
 
-    # Only this member may run server-building prefix commands (commands whose
-    # names indicate server setup/building). This is an additional identity
-    # gate; normal prefix commands retain their existing checks.
+    # Only this member may run server-building prefix commands.
+    # Check both the registered command name and the text the member invoked,
+    # because discord.py may normalize command names (e.g. serverRPbau).
     server_build_prefix_names = {
-        "serverbau", "serverRPbau", "developerbuild",
-        "serverbuild", "server-rp-bau",
+        "serverbau", "serverRPbau", "server_rp_bau",
+        "developerbuild", "serverbuild", "server-rp-bau",
     }
-    if command_name.casefold() in {name.casefold() for name in server_build_prefix_names}:
-        if ctx.author.id != 1493110334280564807:
-            return False
+    invoked_name = (getattr(ctx, "invoked_with", "") or "").casefold()
+    is_server_build_prefix = (
+        command_name.casefold() in {name.casefold() for name in server_build_prefix_names}
+        or invoked_name in {name.casefold() for name in server_build_prefix_names}
+    )
+    if is_server_build_prefix and ctx.author.id != 1493110334280564807:
+        return False
 
     # Silently ignore !stats on this specific server; do not send a reply.
     if guild_id == 1561027077984227371 and command_name.casefold() == "stats":
         return False
 
-    # Preserve the existing restriction on other prefix commands on this server.
-    if guild_id == 1561027077984227371:
+    # Preserve the existing restriction on other prefix commands on this server,
+    # but let the authorized member use the explicitly permitted server-build commands.
+    if guild_id == 1561027077984227371 and not (
+        is_server_build_prefix and ctx.author.id == 1493110334280564807
+    ):
         return False
 
     if guild_id == LEVEL_DISABLED_GUILD_ID and command_name.casefold() in LEVEL_PREFIX_COMMANDS_DISABLED:
