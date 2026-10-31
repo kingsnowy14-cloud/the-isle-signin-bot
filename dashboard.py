@@ -56,19 +56,20 @@ _GUILD_CACHE_STALE_TTL = 300
 
 TEXT_SETTINGS = {
     "welcome_message": {
-        "label": "Willkommensnachricht",
-        "help": "Platzhalter: {mention}, {server}, {count}",
+        "label": "Welcome message",
+        "help": "Placeholders: {mention}, {server}, {count}",
         "max_length": 1000,
     },
     "leave_message": {
-        "label": "Auf-Wiedersehen-Nachricht",
-        "help": "Platzhalter: {user}, {server}, {count}",
+        "label": "Goodbye message",
+        "help": "Placeholders: {user}, {server}, {count}",
         "max_length": 1000,
     },
 
 }
 BOOL_SETTINGS = {
-    "welcome_bots_enabled": "Willkommensnachrichten für Bots",
+    "welcome_bots_enabled": "Send welcome messages to bot accounts",
+    "welcome_dm_enabled": "Send a private welcome DM to new members",
     "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
     "xp_enabled": "Level- und XP-System aktivieren",
@@ -76,8 +77,8 @@ BOOL_SETTINGS = {
     "anti_raid_enabled": "Anti-Raid-Schutz",
 }
 CHANNEL_SETTINGS = {
-    "welcome_channel": "Willkommenskanal",
-    "goodbye_channel": "Auf-Wiedersehen-Kanal",
+    "welcome_channel": "Public welcome channel",
+    "goodbye_channel": "Goodbye channel",
     "birthday_channel": "Geburtstagskanal",
     "levelup_channel": "Level-Up-Kanal",
     "invite_log_channel": "Invite-Tracker-Logkanal",
@@ -812,8 +813,8 @@ def _page(title, body):
         except Exception:
             custom_theme_css = ""
     nav = (
-        '<a class="skip-link" href="#main-content">Zum Inhalt springen</a><nav aria-label="Hauptnavigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
-        + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
+        '<a class="skip-link" href="#main-content">Skip to content</a><nav aria-label="Main navigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
+        + ('<a class="nav-server" href="/">🎮 Switch server</a>' if logged_in else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
@@ -823,11 +824,11 @@ def _page(title, body):
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
         + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop-App</a>'
-        + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Abmelden</button></form>' if logged_in else '<a href="/login">Mit Discord anmelden</a>')
+        + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Log out</button></form>' if logged_in else '<a href="/login">Log in with Discord</a>')
         + '</nav>'
     )
     return f"""<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} · IronWolf</title>
 <style>
 :root{{--bg:#080b12;--panel:#101725;--panel2:#151f30;--text:#f2f5fb;--muted:#98a7bd;--accent:#72c7ff;--accent2:#b7e5ff;--border:rgba(154,177,211,.17);--shadow:0 22px 70px rgba(0,0,0,.34);--glow:rgba(91,141,255,.14);}}
