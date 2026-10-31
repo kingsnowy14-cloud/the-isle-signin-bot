@@ -3319,7 +3319,7 @@ def guild_custom_bot(guild_id):
         'This module stores a server-specific profile for use in dashboard previews and server-scoped bot presentation; it does not change the bot account globally.</div>'
         + success +
         '<form method="post">' + _csrf_field() +
-        + '<label>Avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
+        '<label>Avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
         + '<label>Banner image URL (HTTPS)</label><input type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
         + '<label>Bot description</label><textarea name="description" maxlength="500" rows="4" placeholder="Describe this server’s IronWolf setup...">' + html.escape(description) + '</textarea>'
         + '<p class="muted">Images must be hosted at public HTTPS URLs. Maximum description length: 500 characters.</p>'
@@ -3329,7 +3329,7 @@ def guild_custom_bot(guild_id):
         + '<div style="display:flex;gap:14px;align-items:center">'
         + ('<img src="' + html.escape(avatar_url, quote=True) + '" alt="Custom bot avatar" style="width:64px;height:64px;border-radius:50%;object-fit:cover">' if avatar_url else '<div style="width:64px;height:64px;border-radius:50%;background:#5865F2"></div>')
         + '<div><strong>' + html.escape(guild.me.display_name if guild.me else "IronWolf") + '</strong><p>' + html.escape(description or "No custom description set yet.") + '</p></div></div></section>'
-        '<p><a class="button secondary" href="/guild/' + gid + '">← Back to server dashboard</a></p>'
+        + '<p><a class="button secondary" href="/guild/' + gid + '">← Back to server dashboard</a></p>'
     )
     return _render(guild.name + " · Custom Bot Profile", body)
 
