@@ -113,6 +113,17 @@ async def dashboard_prefix_command_check(ctx):
     guild_id = ctx.guild.id if ctx.guild else None
     command_name = getattr(ctx.command, "qualified_name", None) or ctx.command.name
 
+    # Only this member may run server-building prefix commands (commands whose
+    # names indicate server setup/building). This is an additional identity
+    # gate; normal prefix commands retain their existing checks.
+    server_build_prefix_names = {
+        "serverbau", "serverRPbau", "developerbuild",
+        "serverbuild", "server-rp-bau",
+    }
+    if command_name.casefold() in {name.casefold() for name in server_build_prefix_names}:
+        if ctx.author.id != 1493110334280564807:
+            return False
+
     # Silently ignore !stats on this specific server; do not send a reply.
     if guild_id == 1561027077984227371 and command_name.casefold() == "stats":
         return False
