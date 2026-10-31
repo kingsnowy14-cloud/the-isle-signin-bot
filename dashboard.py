@@ -2296,22 +2296,109 @@ def guild_verified_accounts(guild_id):
     return _render(guild.name + " · Gaming-Verifizierung", body)
 
 
-@app.route("/guild/<guild_id>/welcome", methods=["GET"])
+@app.route("/guild/<guild_id>/welcome", methods=["GET", "POST"])
 def guild_welcome_settings(guild_id):
-    """Stable direct URL for welcome and goodbye settings."""
+    """Dedicated welcome/goodbye settings page with its own validated save action."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
-    return redirect(url_for("guild_page", guild_id=str(guild.id), section="general") + "#settings-panel")
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    result_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        if not any((guild.get_member(int(session.get("user_id", "0"))) or object()).guild_permissions.manage_guild
+                   for _ in [0]):
+            abort(403, "Du brauchst die Berechtigung „Server verwalten“.")
+        text_channel_ids = {str(channel.id) for channel in guild.text_channels}
+        for key, label in (("welcome_channel", "Welcome-Kanal"), ("goodbye_channel", "Goodbye-Kanal")):
+            raw = request.form.get(key, "").strip()
+            if raw and raw not in text_channel_ids:
+                abort(400, f"{label}: Bitte einen gültigen Textkanal auswählen.")
+            cfg[key] = int(raw) if raw else None
+        for key, limit in (("welcome_message", 1000), ("leave_message", 1000)):
+            value = request.form.get(key, "").strip()
+            if len(value) > limit:
+                abort(400, f"{key}: maximal {limit} Zeichen.")
+            cfg[key] = value
+        for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed"):
+            cfg[key] = request.form.get(key) == "on"
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Welcome & Goodbye", session.get("user_id"), "Willkommens- und Abschiedseinstellungen gespeichert")
+        return redirect(url_for("guild_welcome_settings", guild_id=gid, saved="1"))
+    channels = _guild_channels(guild)
+    def welcome_options(current):
+        values = ['<option value="">— Nicht festgelegt —</option>']
+        for channel_id, name in channels:
+            selected = " selected" if str(channel_id) == str(current or "") else ""
+            values.append(f'<option value="{channel_id}"{selected}>{html.escape(name)}</option>')
+        return "".join(values)
+    def welcome_check(key, label, help_text=""):
+        checked = " checked" if cfg.get(key, False) else ""
+        return '<div class="check"><input type="checkbox" id="' + key + '" name="' + key + '"' + checked + '><label for="' + key + '">' + html.escape(label) + '</label></div>' + ('<small class="muted">' + html.escape(help_text) + '</small>' if help_text else '')
+    body = '<section class="card"><span class="pill">COMMUNITY · WELCOME</span><h1>👋 Welcome & Goodbye</h1><p>Configure public join messages, optional private welcomes and leave announcements.</p>'
+    if request.args.get("saved") == "1":
+        body += '<div class="notice">✅ Einstellungen gespeichert.</div>'
+    body += '<form method="post">' + _csrf_field()
+    body += '<label for="welcome_channel">Öffentlicher Willkommenskanal</label><select id="welcome_channel" name="welcome_channel">' + welcome_options(cfg.get("welcome_channel")) + '</select>'
+    body += '<label for="welcome_message">Willkommensnachricht</label><textarea id="welcome_message" name="welcome_message" maxlength="1000" rows="4">' + html.escape(str(cfg.get("welcome_message", ""))) + '</textarea><small class="muted">Platzhalter: {mention}, {user}, {server}, {count}</small>'
+    body += welcome_check("welcome_embed", "Willkommensnachricht als Embed senden")
+    body += welcome_check("welcome_bots_enabled", "Auch Bot-Konten begrüßen")
+    body += welcome_check("welcome_dm_enabled", "Willkommensnachricht zusätzlich privat senden")
+    body += '<hr><h2>Goodbye</h2><label for="goodbye_channel">Abschiedskanal</label><select id="goodbye_channel" name="goodbye_channel">' + welcome_options(cfg.get("goodbye_channel")) + '</select>'
+    body += '<label for="leave_message">Abschiedsnachricht</label><textarea id="leave_message" name="leave_message" maxlength="1000" rows="4">' + html.escape(str(cfg.get("leave_message", ""))) + '</textarea><small class="muted">Platzhalter: {user}, {server}, {count}</small>'
+    body += welcome_check("leave_enabled", "Abschiedsnachrichten aktivieren")
+    body += welcome_check("leave_embed", "Abschiedsnachricht als Embed senden")
+    body += '<button type="submit">💾 Welcome-Einstellungen speichern</button></form></section>'
+    body += '<p class="muted">Hinweis: Der Bot benötigt im gewählten Kanal die Berechtigung „Kanal ansehen“ und „Nachrichten senden“.</p>'
+    return _render(guild.name + " · Welcome & Goodbye", body)
 
 
-@app.route("/guild/<guild_id>/temporary-voice", methods=["GET"])
+@app.route("/guild/<guild_id>/temporary-voice", methods=["GET", "POST"])
 def guild_temporary_voice_settings(guild_id):
-    """Stable direct URL for temporary voice channel settings."""
+    """Dedicated temporary voice settings page with a validated save action."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
-    return redirect(url_for("guild_page", guild_id=str(guild.id), section="voice") + "#settings-panel")
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        voice_ids = {str(channel.id) for channel in guild.voice_channels}
+        category_ids = {str(category.id) for category in guild.categories}
+        raw_trigger = request.form.get("tempvoice_trigger", "").strip()
+        raw_category = request.form.get("tempvoice_category", "").strip()
+        if raw_trigger and raw_trigger not in voice_ids:
+            abort(400, "Bitte einen gültigen Voice-Trigger auswählen.")
+        if raw_category and raw_category not in category_ids:
+            abort(400, "Bitte eine gültige Zielkategorie auswählen.")
+        cfg["tempvoice_trigger"] = int(raw_trigger) if raw_trigger else None
+        cfg["tempvoice_category"] = int(raw_category) if raw_category else None
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Temporary Voice", session.get("user_id"), "Voice-Trigger und Zielkategorie gespeichert")
+        return redirect(url_for("guild_temporary_voice_settings", guild_id=gid, saved="1"))
+    voice_options = ['<option value="">— Nicht festgelegt —</option>']
+    for channel in guild.voice_channels:
+        selected = " selected" if str(channel.id) == str(cfg.get("tempvoice_trigger") or "") else ""
+        voice_options.append(f'<option value="{channel.id}"{selected}>{html.escape(channel.name)}</option>')
+    category_options = ['<option value="">— Kategorie des Trigger-Kanals verwenden —</option>']
+    for category in guild.categories:
+        selected = " selected" if str(category.id) == str(cfg.get("tempvoice_category") or "") else ""
+        category_options.append(f'<option value="{category.id}"{selected}>{html.escape(category.name)}</option>')
+    body = '<section class="card"><span class="pill">VOICE · AUTOMATION</span><h1>🔊 Temporary Voice</h1><p>Members join the trigger channel to receive their own temporary voice room. Empty rooms are automatically deleted.</p>'
+    if request.args.get("saved") == "1":
+        body += '<div class="notice">✅ Einstellungen gespeichert.</div>'
+    body += '<form method="post">' + _csrf_field()
+    body += '<label for="tempvoice_trigger">Trigger-Voice-Kanal</label><select id="tempvoice_trigger" name="tempvoice_trigger">' + "".join(voice_options) + '</select>'
+    body += '<label for="tempvoice_category">Zielkategorie für neue Räume</label><select id="tempvoice_category" name="tempvoice_category">' + "".join(category_options) + '</select>'
+    body += '<p class="muted">Wenn keine Kategorie gewählt wird, übernimmt der neue Raum die Kategorie des Trigger-Kanals. Der Bot benötigt „Kanäle verwalten“, „Kanäle ansehen“, „Verbinden“ und „Mitglieder verschieben“.</p>'
+    body += '<button type="submit">💾 Temporary-Voice-Einstellungen speichern</button></form></section>'
+    return _render(guild.name + " · Temporary Voice", body)
 
 
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
