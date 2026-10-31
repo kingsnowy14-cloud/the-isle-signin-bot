@@ -87,7 +87,7 @@ async def dashboard_prefix_command_check(ctx):
     if is_server_build_prefix and ctx.author.id != 1493110334280564807:
         return False
 
-    if not await dashboard_command_enabled(guild_id, f"prefix:.{command_name}"):
+    if not await dashboard_command_enabled(guild_id, f"prefix:!{command_name}"):
         await ctx.send("Dieser Befehl wurde für diesen Server im Web-Dashboard deaktiviert.")
         return False
     cog = getattr(ctx, "cog", None)
@@ -5128,6 +5128,24 @@ async def notify_bot_server_change(guild: discord.Guild, joined: bool):
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
+    # New servers start with every available command disabled. Existing server
+    # configurations are never overwritten when the bot rejoins.
+    guild_key = str(guild.id)
+    if guild_key not in config:
+        cfg = guild_config(guild.id)
+        disabled = set()
+        for command in bot.walk_commands():
+            if command.hidden or command.name == "help":
+                continue
+            disabled.add(f"prefix:!{command.qualified_name}")
+        for command in bot.tree.walk_commands():
+            if isinstance(command, app_commands.Group):
+                continue
+            disabled.add(f"slash:/{command.qualified_name}")
+        cfg["disabled_commands"] = sorted(disabled)
+        save_json(CONFIG_FILE, config)
+        print(f"[COMMAND-GATE] New guild {guild.id}: disabled {len(disabled)} commands by default; enable them in the dashboard.", flush=True)
+
     # Always log the guild join, even when this guild is not enabled in the dashboard.
     await notify_bot_server_change(guild, joined=True)
 
