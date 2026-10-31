@@ -76,7 +76,13 @@ class GuildGateBot(commands.Bot):
                 current_config = globals().get("config", {})
                 guild_cfg = current_config.get(str(guild_id), {}) if isinstance(current_config, dict) else {}
                 # Missing flag means legacy server: preserve its previous behavior.
-                if isinstance(guild_cfg, dict) and guild_cfg.get("bot_enabled", True) is False:
+                # The owner's designated server must continue receiving message events
+                # so prefix commands (including legacy ! commands) remain usable there.
+                if (
+                    guild_id != 1566103924019167293
+                    and isinstance(guild_cfg, dict)
+                    and guild_cfg.get("bot_enabled", True) is False
+                ):
                     return
         super().dispatch(event, *args, **kwargs)
 
@@ -6738,11 +6744,7 @@ async def _build_server_template(ctx, role_specs, channel_specs, template_title)
         await status.edit(content=f"⚠️ Discord konnte die Einrichtung nicht vollständig abschließen: {exc}. Bereits erstellte Elemente bleiben bestehen; du kannst den Befehl nach Behebung erneut ausführen.")
 
 
-@bot.command(name="developerbuild")
-@commands.guild_only()
-@commands.has_guild_permissions(administrator=True)
-async def developerbuild(ctx):
-    """Create a professional English Discord developer community server."""
+async def _run_developerbuild(ctx):
     if ctx.guild.id != 1566103924019167293:
         await ctx.reply(
             "❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.",
@@ -6840,6 +6842,45 @@ async def developerbuild(ctx):
             await rules.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
             pass
+
+
+@bot.command(name="developerbuild")
+@commands.guild_only()
+@commands.has_guild_permissions(administrator=True)
+async def developerbuild(ctx):
+    """Create the developer community structure using the legacy prefix."""
+    if ctx.guild.id != 1566103924019167293:
+        await ctx.reply("❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.", mention_author=False)
+        return
+    await _run_developerbuild(ctx)
+
+
+class _DeveloperBuildInteractionContext:
+    """Small context adapter so the same builder can serve prefix and slash commands."""
+    def __init__(self, interaction):
+        self.interaction = interaction
+        self.guild = interaction.guild
+
+    async def reply(self, content, mention_author=False):
+        if self.interaction.response.is_done():
+            return await self.interaction.followup.send(content, wait=True)
+        await self.interaction.response.send_message(content)
+        return await self.interaction.original_response()
+
+
+@bot.tree.command(name="developerbuild", description="Create the English developer community server")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def developerbuild_slash(interaction: discord.Interaction):
+    if interaction.guild_id != 1566103924019167293:
+        await interaction.response.send_message(
+            "❌ Dieser Befehl ist nur auf dem dafür freigegebenen Server verfügbar.",
+            ephemeral=True,
+        )
+        return
+    await _run_developerbuild(_DeveloperBuildInteractionContext(interaction))
+
+
 
 
 @bot.command(name="deleteserver")
