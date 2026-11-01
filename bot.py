@@ -28,7 +28,6 @@ from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 
-# Emergency Hamburg public Roblox server monitor.
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
