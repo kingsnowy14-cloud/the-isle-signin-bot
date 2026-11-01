@@ -31,6 +31,32 @@ from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
 from emergency_hamburg import load_monitor_config, save_monitor_config, fetch_public_servers_page, server_limit_for_guild
 
+def _eh_cached_server_page(cursor=None):
+    """Cache Roblox pages to avoid rate limits from dashboard reloads and form posts."""
+    key = str(cursor or "")
+    now = time.time()
+    with _EH_SERVER_PAGE_CACHE_LOCK:
+        cached = _EH_SERVER_PAGE_CACHE.get(key)
+        if cached and now - cached["fetched_at"] <= _EH_SERVER_PAGE_TTL:
+            return cached["servers"], cached["next_cursor"], None
+    try:
+        servers, next_cursor = fetch_public_servers_page(max_pages=1, cursor=cursor)
+        with _EH_SERVER_PAGE_CACHE_LOCK:
+            _EH_SERVER_PAGE_CACHE[key] = {
+                "servers": servers, "next_cursor": next_cursor, "fetched_at": now
+            }
+        return servers, next_cursor, None
+    except Exception as exc:
+        with _EH_SERVER_PAGE_CACHE_LOCK:
+            cached = _EH_SERVER_PAGE_CACHE.get(key)
+        if cached and now - cached["fetched_at"] <= _EH_SERVER_PAGE_STALE_TTL:
+            return cached["servers"], cached["next_cursor"], (
+                "Roblox ist gerade nicht erreichbar (" + str(exc) +
+                "). Es wird eine zwischengespeicherte Serverliste angezeigt."
+            )
+        return [], None, str(exc)
+
+
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
 ADMINISTRATOR = 0x8
@@ -55,6 +81,10 @@ _guild_cache = {}
 _guild_cache_lock = threading.Lock()
 _GUILD_CACHE_TTL = 45
 _GUILD_CACHE_STALE_TTL = 300
+_EH_SERVER_PAGE_CACHE = {}
+_EH_SERVER_PAGE_CACHE_LOCK = threading.Lock()
+_EH_SERVER_PAGE_TTL = 90
+_EH_SERVER_PAGE_STALE_TTL = 600
 
 TEXT_SETTINGS = {
     "welcome_message": {
@@ -6216,13 +6246,17 @@ def guild_emergency_hamburg(guild_id):
     page_cursor = request.args.get("cursor", "") if request.method == "GET" else request.form.get("cursor", "")
     if page_cursor and len(page_cursor) > 2048:
         abort(400, "Ungültiger Roblox-Seiten-Cursor.")
-    try:
-        available_servers, next_server_cursor = fetch_public_servers_page(max_pages=5, cursor=page_cursor or None)
-    except Exception as exc:
+    available_servers, next_server_cursor, page_error = _eh_cached_server_page(page_cursor or None)
+    if page_error:
         notice = (
-            '<p class="notice">Roblox-API-Fehler beim Laden der Serverliste: ' +
-            html.escape(str(exc)[:240]) +
-            '. Bitte später erneut versuchen. Bereits gespeicherte Verbindungen bleiben erhalten.</p>'
+            '<p class="notice">Roblox-Hinweis: ' +
+            html.escape(str(page_error)[:300]) +
+            ' Bereits gespeicherte Verbindungen bleiben erhalten.</p>'
+        )
+    elif not available_servers:
+        notice = (
+            '<p class="notice">Roblox liefert für diesen Abschnitt aktuell keine öffentlichen Server. '
+            'Bitte später erneut versuchen. Bereits gespeicherte Verbindungen bleiben erhalten.</p>'
         )
 
     if request.method == "POST":
