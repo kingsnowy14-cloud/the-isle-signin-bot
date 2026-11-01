@@ -29,34 +29,6 @@ from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
-from emergency_hamburg import load_monitor_config, save_monitor_config, fetch_public_servers_page, server_limit_for_guild
-
-def _eh_cached_server_page(cursor=None):
-    """Cache Roblox pages to avoid rate limits from dashboard reloads and form posts."""
-    key = str(cursor or "")
-    now = time.time()
-    with _EH_SERVER_PAGE_CACHE_LOCK:
-        cached = _EH_SERVER_PAGE_CACHE.get(key)
-        if cached and now - cached["fetched_at"] <= _EH_SERVER_PAGE_TTL:
-            return cached["servers"], cached["next_cursor"], None
-    try:
-        servers, next_cursor = fetch_public_servers_page(max_pages=1, cursor=cursor)
-        with _EH_SERVER_PAGE_CACHE_LOCK:
-            _EH_SERVER_PAGE_CACHE[key] = {
-                "servers": servers, "next_cursor": next_cursor, "fetched_at": now
-            }
-        return servers, next_cursor, None
-    except Exception as exc:
-        with _EH_SERVER_PAGE_CACHE_LOCK:
-            cached = _EH_SERVER_PAGE_CACHE.get(key)
-        if cached and now - cached["fetched_at"] <= _EH_SERVER_PAGE_STALE_TTL:
-            return cached["servers"], cached["next_cursor"], (
-                "Roblox ist gerade nicht erreichbar (" + str(exc) +
-                "). Es wird eine zwischengespeicherte Serverliste angezeigt."
-            )
-        return [], None, str(exc)
-
-
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
 ADMINISTRATOR = 0x8
