@@ -1147,7 +1147,10 @@ def _module_navigation():
     return (
         '<aside class="module-nav" aria-label="Server modules">'
         '<div class="module-nav-title">SERVER MODULES</div>' +
-        ''.join(links) + '</aside>'
+        '<label class="module-search-label" for="module-nav-search">🔎 Module suchen</label>' +
+        '<input id="module-nav-search" class="module-nav-search" type="search" placeholder="Modul suchen …" autocomplete="off" aria-label="Module durchsuchen">' +
+        '<div class="module-nav-list">' + ''.join(links) + '</div>' +
+        '<script>(function(){var input=document.getElementById("module-nav-search");if(!input)return;var items=Array.prototype.slice.call(document.querySelectorAll(".module-nav-list .module-nav-link"));input.addEventListener("input",function(){var q=input.value.trim().toLocaleLowerCase();items.forEach(function(item){item.hidden=q!==""&&item.textContent.toLocaleLowerCase().indexOf(q)===-1;});});})();</script></aside>'
     )
 
 DASHBOARD_TRANSLATIONS = {
@@ -4755,7 +4758,23 @@ def guild_ai_knowledge(guild_id):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         action = request.form.get("action", "save")
         if action == "save":
-            cfg["ai_enabled_global"] = request.form.get("ai_enabled") == "on"
+            ai_enabled = request.form.get("ai_enabled") == "on"
+            ai_mode = request.form.get("ai_mode", "ticket").strip()
+            ai_channel_raw = request.form.get("ai_channel_id", "").strip()
+            valid_modes = {"ticket", "channel", "both"}
+            if ai_mode not in valid_modes:
+                abort(400, "Bitte wähle einen gültigen KI-Einsatzort.")
+            if ai_enabled and not guild_has_feature(cfg, "ticket"):
+                abort(403, "Der KI-Assistent ist eine Premium-Funktion. Verknüpfe zuerst Premium mit diesem Server.")
+            if ai_enabled and ai_mode in {"channel", "both"}:
+                valid_channel_ids = {str(channel.id) for channel in guild.text_channels}
+                if ai_channel_raw not in valid_channel_ids:
+                    abort(400, "Für den Kanal-Modus musst du einen gültigen Textkanal auswählen.")
+            elif ai_channel_raw and ai_channel_raw not in {str(channel.id) for channel in guild.text_channels}:
+                abort(400, "Bitte wähle einen gültigen Textkanal.")
+            cfg["ai_enabled_global"] = ai_enabled
+            cfg["ai_mode"] = ai_mode
+            cfg["ai_channel_id"] = int(ai_channel_raw) if ai_channel_raw else None
             cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
             cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         entries = cfg.setdefault("ai_knowledge", [])
@@ -4788,7 +4807,10 @@ def guild_ai_knowledge(guild_id):
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
         + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
         + '<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", True) else '') + '> KI-Assistent für diesen Server aktivieren</label>'
-        + '<p class="muted">Schaltet KI-Antworten in allen Ticket-Panels zentral ein oder aus. Die jeweilige Panel-Option muss zusätzlich aktiviert sein.</p>'
+        + ('<p class="muted">KI ist Premium. Wähle, wo der Assistent antworten soll. Im Ticket-Modus muss zusätzlich die KI-Option im jeweiligen Ticket-Panel aktiviert sein.</p>' if guild_has_feature(cfg, "ticket") else '<p class="notice">🔒 KI-Assistent und KI-Ticketsupport sind Premium-Funktionen. Verknüpfe Premium auf der Premium-Seite.</p>')
+        + '<label for="ai_mode">KI-Einsatzort (Premium)</label><select id="ai_mode" name="ai_mode"><option value="ticket"' + (' selected' if cfg.get("ai_mode", "ticket") == "ticket" else '') + '>Nur in Tickets</option><option value="channel"' + (' selected' if cfg.get("ai_mode") == "channel" else '') + '>In einem bestimmten Kanal</option><option value="both"' + (' selected' if cfg.get("ai_mode") == "both" else '') + '>In Tickets und im Kanal</option></select>'
+        + '<label for="ai_channel_id">KI-Kanal (für Kanal-Modus)</label><select id="ai_channel_id" name="ai_channel_id"><option value="">— Textkanal auswählen —</option>' + ''.join('<option value="' + str(channel.id) + '"' + (' selected' if str(cfg.get("ai_channel_id") or "") == str(channel.id) else '') + '>#' + html.escape(channel.name) + '</option>' for channel in guild.text_channels) + '</select>'
+        + '<p class="muted">Im Kanal-Modus antwortet die KI auf normale Nachrichten im ausgewählten Kanal. Ticket-Antworten funktionieren weiterhin nur, wenn das jeweilige Ticket-Panel KI-Support aktiviert hat.</p>'
         + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
         + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
         + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
