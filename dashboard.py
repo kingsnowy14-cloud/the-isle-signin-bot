@@ -29,6 +29,7 @@ from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
+from emergency_hamburg import load_monitor_config, save_monitor_config, fetch_public_servers, server_limit_for_guild
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -1235,6 +1236,7 @@ def _module_navigation():
         ("server-boost", "🚀 Server Boosts", "/server-boost"),
         ("__ai_category__", "🎮 Gaming", ""),
         ("verified-accounts", "🎮 Gaming Verification", "/verified-accounts"),
+        ("emergency-hamburg", "🚨 Emergency Hamburg Monitor", "/emergency-hamburg"),
         ("__ai_category__", "📊 Statistiken & System", ""),
         ("server-statistics", "📊 Server Statistics", "/server-statistics"),
         ("stats", "📈 Live Statistics", "/stats"),
@@ -6196,3 +6198,187 @@ def guild_wolfmirror(guild_id):
         '<a href="/guild/' + str(guild.id) + '/wolfpulse">WolfPulse prüfen ↗</a></p></section>'
     )
     return _page("WolfMirror · Security Digital Twin", body)
+
+@app.route("/guild/<guild_id>/emergency-hamburg", methods=["GET", "POST"])
+def guild_emergency_hamburg(guild_id):
+    """Configure this guild's own selected public Emergency Hamburg servers."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    monitor = load_monitor_config().get(str(guild.id), {})
+    monitor.setdefault("servers", [])
+    monitor.setdefault("allowed_role_ids", [])
+    limit = server_limit_for_guild(cfg)
+    notice = ""
+    available_servers = []
+    try:
+        available_servers = fetch_public_servers(max_pages=5)
+    except Exception as exc:
+        notice = (
+            '<p class="notice">Roblox-Serverliste konnte gerade nicht geladen werden: ' +
+            html.escape(str(exc)[:240]) +
+            '. Bereits gespeicherte Verbindungen bleiben erhalten.</p>'
+        )
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        action = request.form.get("action", "")
+        all_configs = load_monitor_config()
+        current = all_configs.setdefault(str(guild.id), {})
+        current.setdefault("servers", [])
+        current.setdefault("allowed_role_ids", [])
+
+        if action == "add_server":
+            job_id = str(request.form.get("job_id", "")).strip()
+            custom_name = str(request.form.get("display_name", "")).strip()[:80]
+            if not job_id or len(job_id) > 80 or not re.fullmatch(r"[A-Za-z0-9-]+", job_id):
+                abort(400, "Ungültige Roblox-Server-ID.")
+            if any(item.get("job_id") == job_id for item in current["servers"]):
+                abort(400, "Dieser Roblox-Server ist bereits verbunden.")
+            if len(current["servers"]) >= limit:
+                abort(403, "Das Serverlimit deines aktuellen Plans ist erreicht.")
+            selected = next((item for item in available_servers if item.get("id") == job_id), None)
+            if selected is None:
+                abort(400, "Der ausgewählte Server wurde in der aktuellen öffentlichen Roblox-Liste nicht gefunden. Bitte lade die Seite neu.")
+            current["servers"].append({
+                "job_id": job_id,
+                "name": custom_name or ("Emergency Hamburg · " + job_id[:8]),
+            })
+            save_monitor_config(all_configs)
+            _audit_dashboard_change(guild.id, "emergency_hamburg.add_server", session.get("user_id"), "Roblox-Server verbunden: " + job_id[:12])
+            return redirect(url_for("guild_emergency_hamburg", guild_id=guild.id))
+
+        if action == "remove_server":
+            job_id = str(request.form.get("job_id", "")).strip()
+            before = len(current["servers"])
+            current["servers"] = [item for item in current["servers"] if item.get("job_id") != job_id]
+            if len(current["servers"]) == before:
+                abort(404, "Diese Roblox-Verbindung wurde nicht gefunden.")
+            save_monitor_config(all_configs)
+            _audit_dashboard_change(guild.id, "emergency_hamburg.remove_server", session.get("user_id"), "Roblox-Server getrennt: " + job_id[:12])
+            return redirect(url_for("guild_emergency_hamburg", guild_id=guild.id))
+
+        if action == "save_settings":
+            channel_id = str(request.form.get("channel_id", "")).strip()
+            if not channel_id.isdigit():
+                abort(400, "Bitte wähle einen gültigen Statuskanal.")
+            channel = guild.get_channel(int(channel_id))
+            if not isinstance(channel, discord.TextChannel):
+                abort(400, "Der ausgewählte Statuskanal ist kein Textkanal dieses Discord-Servers.")
+            role_ids = []
+            valid_role_ids = {str(role.id) for role in guild.roles if role != guild.default_role and not role.managed}
+            for role_id in request.form.getlist("allowed_role_ids"):
+                if role_id in valid_role_ids and role_id not in role_ids:
+                    role_ids.append(role_id)
+            current["channel_id"] = channel_id
+            current["allowed_role_ids"] = role_ids
+            current["enabled"] = request.form.get("enabled") == "on"
+            current["message_id"] = current.get("message_id")
+            save_monitor_config(all_configs)
+            _audit_dashboard_change(guild.id, "emergency_hamburg.settings", session.get("user_id"), "Statuskanal und Rollenberechtigungen aktualisiert")
+            return redirect(url_for("guild_emergency_hamburg", guild_id=guild.id))
+
+        if action == "reset_message":
+            current["message_id"] = None
+            save_monitor_config(all_configs)
+            return redirect(url_for("guild_emergency_hamburg", guild_id=guild.id))
+        abort(400, "Unbekannte Aktion.")
+
+    monitor = load_monitor_config().get(str(guild.id), monitor)
+    servers = monitor.get("servers", [])
+    connected_ids = {item.get("job_id") for item in servers}
+    server_options = []
+    for item in available_servers:
+        job_id = str(item.get("id", ""))
+        if not job_id or job_id in connected_ids:
+            continue
+        playing = int(item.get("playing", 0) or 0)
+        maximum = int(item.get("maxPlayers", 0) or 0)
+        ping = item.get("ping")
+        fps = item.get("fps")
+        details = str(playing) + "/" + str(maximum) + " Spieler"
+        if ping is not None:
+            details += " · " + str(round(float(ping))) + " ms"
+        if fps is not None:
+            details += " · " + str(round(float(fps))) + " FPS"
+        server_options.append(
+            '<option value="' + html.escape(job_id, quote=True) + '">' +
+            html.escape(details + " · " + job_id[:12]) + '</option>'
+        )
+    role_options = []
+    selected_roles = set(str(value) for value in monitor.get("allowed_role_ids", []))
+    for role in sorted(guild.roles, key=lambda item: item.position, reverse=True):
+        if role == guild.default_role or role.managed:
+            continue
+        checked = " selected" if str(role.id) in selected_roles else ""
+        role_options.append(
+            '<option value="' + str(role.id) + '"' + checked + '>' +
+            html.escape(role.name) + '</option>'
+        )
+    channel_options = []
+    selected_channel = str(monitor.get("channel_id") or "")
+    for channel in sorted(guild.text_channels, key=lambda item: item.position):
+        selected = " selected" if str(channel.id) == selected_channel else ""
+        channel_options.append(
+            '<option value="' + str(channel.id) + '"' + selected + '>' +
+            html.escape("#" + channel.name) + '</option>'
+        )
+
+    connected_cards = []
+    for item in servers:
+        job_id = str(item.get("job_id", ""))
+        name = html.escape(str(item.get("name") or ("Emergency Hamburg · " + job_id[:8])))
+        connected_cards.append(
+            '<div class="row"><div><strong>' + name + '</strong><br><small>Job ID: ' +
+            html.escape(job_id) + '</small></div><form method="post">' + _csrf_field() +
+            '<input type="hidden" name="action" value="remove_server">'
+            '<input type="hidden" name="job_id" value="' + html.escape(job_id, quote=True) + '">'
+            '<button class="danger secondary" type="submit">Trennen</button></form></div>'
+        )
+    connected_html = "".join(connected_cards) if connected_cards else '<p class="muted">Noch keine Roblox-Server verbunden. Wähle unten einen öffentlichen Server aus.</p>'
+    options_html = "".join(server_options) or '<option value="">Keine weiteren Server in der aktuellen API-Seite gefunden</option>'
+    roles_html = "".join(role_options) or '<option disabled>Keine auswählbaren Rollen vorhanden</option>'
+    channels_html = "".join(channel_options) or '<option value="">Kein Textkanal verfügbar</option>'
+    enabled_checked = " checked" if monitor.get("enabled", True) else ""
+    status_message = (
+        '<p class="muted">Automatische Aktualisierung alle 5 Minuten. Die Nachricht wird bearbeitet und nicht bei jedem Durchlauf neu gesendet.</p>'
+        if monitor.get("message_id") else
+        '<p class="muted">Nach dem Speichern und Aktivieren wird die Statusnachricht automatisch im gewählten Kanal erstellt.</p>'
+    )
+    body = (
+        '<section class="card"><h1>🚨 Emergency Hamburg · Roblox Monitor</h1>'
+        '<p>Verbinde nur die öffentlichen Emergency-Hamburg-Server, die dieser Discord-Server anzeigen soll. Jede Discord-Guild besitzt eine vollständig getrennte Auswahl und Statusnachricht.</p>'
+        + notice +
+        '<div class="grid"><div class="stat"><strong>' + str(len(servers)) + ' / ' + str(limit) +
+        '</strong><small>Verbundene Roblox-Server · Planlimit</small></div><div class="stat"><strong>5 Min.</strong><small>Aktualisierungsintervall</small></div></div>'
+        '<h2>Verbundene Roblox-Server</h2>' + connected_html +
+        '<form method="post" class="card">' + _csrf_field() +
+        '<input type="hidden" name="action" value="add_server">'
+        '<h2>＋ Öffentlichen Server verbinden</h2>'
+        '<label>Server aus der öffentlichen Liste<select name="job_id" required>' + options_html + '</select></label>'
+        '<label>Eigener Anzeigename (optional)<input name="display_name" maxlength="80" placeholder="z. B. Polizei Roleplay"></label>'
+        '<button type="submit"' + (' disabled' if len(servers) >= limit or not server_options else '') + '>Roblox-Server hinzufügen</button>'
+        '<p class="muted">Es werden nur Server angeboten, die Roblox aktuell über die öffentliche Serverliste zurückliefert. Falls ein Server nicht erscheint, kann er über diese Oberfläche derzeit nicht ausgewählt werden.</p></form></section>'
+        '<section class="card"><h2>⚙️ Statusnachricht & Berechtigungen</h2>'
+        '<form method="post">' + _csrf_field() +
+        '<input type="hidden" name="action" value="save_settings">'
+        '<label>Statuskanal<select name="channel_id" required>' + channels_html + '</select></label>'
+        '<label>Rollen mit Zugriff auf /eh-status und /eh-refresh <small>Administrator und Serverbesitzer haben immer Zugriff.</small>'
+        '<select name="allowed_role_ids" multiple size="6">' + roles_html + '</select></label>'
+        '<label><input type="checkbox" name="enabled" value="on"' + enabled_checked + '> Automatische Statusnachricht aktivieren</label>'
+        '<button type="submit">💾 Einstellungen speichern</button></form>'
+        + status_message +
+        '<form method="post">' + _csrf_field() +
+        '<input type="hidden" name="action" value="reset_message">'
+        '<button class="secondary" type="submit">Statusnachricht neu erstellen</button></form></section>'
+        '<section class="card"><h2>ℹ️ Daten & Grenzen</h2>'
+        '<ul><li>Spielerzahl, maximale Plätze, Ping und FPS stammen aus öffentlich verfügbaren Roblox-Serverdaten.</li>'
+        '<li>Spielerrollen wie Polizei, Feuerwehr oder Rettungsdienst sind nicht über diese öffentliche API verfügbar.</li>'
+        '<li>Ein Server kann offline gehen oder aus der öffentlichen Liste verschwinden. In diesem Fall wird er als offline angezeigt.</li>'
+        '<li>Die Roblox-API kann Ergebnisse begrenzen oder vorübergehend nicht erreichbar sein. Der Monitor zeigt dann den letzten Status mit Fehlerhinweis.</li></ul>'
+        '</section>'
+    )
+    return _page("Emergency Hamburg Monitor", body)
+
