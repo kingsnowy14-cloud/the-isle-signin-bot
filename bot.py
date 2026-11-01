@@ -1243,6 +1243,7 @@ class TicketPanelView(discord.ui.View):
                 label=label,
                 style=discord.ButtonStyle.primary,
                 custom_id=f"ticket:create:{panel_key}:{index}",
+                row=index // 4,
             )
             async def callback(interaction: discord.Interaction, i=index, text=label):
                 await interaction.response.send_modal(TicketCreateModal(self.panel_key, i, text))
