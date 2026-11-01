@@ -217,12 +217,20 @@ def record_module_changes():
 
     current = {}
     now_stamp = datetime.now(timezone.utc).isoformat()
-    for module_path in sorted(REPO_DIR.glob("*.py")):
+    source_suffixes = {".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".json", ".toml", ".yaml", ".yml", ".md", ".txt"}
+    excluded_dirs = {".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_cache"}
+    source_files = (
+        path for path in REPO_DIR.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in source_suffixes
+        and not any(part in excluded_dirs for part in path.relative_to(REPO_DIR).parts)
+    )
+    for module_path in sorted(source_files):
         try:
             digest = hashlib.sha256(module_path.read_bytes()).hexdigest()
         except OSError:
             continue
-        name = module_path.name
+        name = module_path.relative_to(REPO_DIR).as_posix()
         current[name] = digest
         previous = state.get(name)
         if previous != digest:
