@@ -113,7 +113,7 @@ def _generate(prompt, size):
         response = requests.post(
             f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell",
             headers={"Authorization": "Bearer " + api_token, "Content-Type": "application/json"},
-            json={"prompt": prompt, "width": int(size), "height": int(size)},
+            json={"prompt": prompt},
             timeout=180,
         )
     except requests.Timeout as exc:
