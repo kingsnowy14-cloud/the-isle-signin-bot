@@ -6,6 +6,7 @@ CF_API_TOKEN in the hosting environment. The token ledger is stored on DATA_DIR.
 import base64
 import binascii
 import html
+import io
 import json
 import os
 import re
@@ -156,8 +157,28 @@ def _generate(prompt, size):
         except (ValueError, binascii.Error) as exc:
             raise RuntimeError("Die Bildantwort von Cloudflare war ungültig.") from exc
 
-    if not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise RuntimeError("Cloudflare hat kein gültiges PNG-Bild geliefert.")
+    # Normalize supported image formats from Cloudflare into a valid PNG.
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            source.load()
+            normalized = source.convert("RGBA")
+            output = io.BytesIO()
+            normalized.save(output, format="PNG", optimize=True)
+            image_bytes = output.getvalue()
+    except Exception as exc:
+        content_type = (response.headers.get("content-type") or "unknown")[:80]
+        prefix = image_bytes[:16].hex() if isinstance(image_bytes, bytes) else "not-bytes"
+        print(
+            f"[IMAGE GEN] Invalid image payload: content_type={content_type}, "
+            f"bytes={len(image_bytes) if isinstance(image_bytes, bytes) else 'unknown'}, "
+            f"prefix={prefix}, error={type(exc).__name__}",
+            flush=True,
+        )
+        raise RuntimeError(
+            "Cloudflare hat keine lesbaren Bilddaten geliefert. "
+            "Antwortformat und Modellkonfiguration wurden in den Logs protokolliert."
+        ) from exc
     return image_bytes
 
 
