@@ -1102,7 +1102,9 @@ def _module_navigation():
         ("welcome", "👋 Welcome & Goodbye", "/welcome"),
         ("tickets", "🎟️ Support Tickets", "/tickets"),
         ("quick-support", "🆘 Quick Support", "/quick-support"),
-        ("ai", "🤖 AI Assistant", "/ai"),
+        ("__ai_category__", "🎨 AI & Creation", ""),
+        ("ai", "🤖 AI Assistant & Wissen", "/ai"),
+        ("image-generator", "🖼️ Bildgenerierung", "/image-generator"),
         ("verification", "🔐 Verification", "/verification"),
         ("reaction-roles", "🎭 Reaction Roles", "/reaction-roles"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
@@ -1143,6 +1145,9 @@ def _module_navigation():
     except Exception:
         modules = tuple(item for item in modules if item[0] != "custom-bot")
     for key, label, target in modules:
+        if key == "__ai_category__":
+            links.append('<div class="module-nav-group-title">' + html.escape(label) + '</div>')
+            continue
         href = "/guild/" + gid + (target if target.startswith("?") else target)
         current = (active == "starter" and key == "starter") or active == key
         links.append(
@@ -4878,22 +4883,18 @@ def guild_ai_knowledge(guild_id):
             abort(403, "KI-Assistent und KI-Wissen sind Premium-Funktionen. Verknüpfe Premium mit diesem Server.")
         if action == "save":
             ai_enabled = request.form.get("ai_enabled") == "on"
-            ai_mode = request.form.get("ai_mode", "ticket").strip()
             ai_channel_raw = request.form.get("ai_channel_id", "").strip()
-            valid_modes = {"ticket", "channel", "both"}
-            if ai_mode not in valid_modes:
-                abort(400, "Bitte wähle einen gültigen KI-Einsatzort.")
-            if ai_enabled and not guild_has_feature(cfg, "ticket"):
-                abort(403, "Der KI-Assistent ist eine Premium-Funktion. Verknüpfe zuerst Premium mit diesem Server.")
-            if ai_enabled and ai_mode in {"channel", "both"}:
-                valid_channel_ids = {str(channel.id) for channel in guild.text_channels}
-                if ai_channel_raw not in valid_channel_ids:
-                    abort(400, "Für den Kanal-Modus musst du einen gültigen Textkanal auswählen.")
-            elif ai_channel_raw and ai_channel_raw not in {str(channel.id) for channel in guild.text_channels}:
+            valid_channel_ids = {str(channel.id) for channel in guild.text_channels}
+            if ai_enabled and ai_channel_raw not in valid_channel_ids:
+                abort(400, "Bitte wähle einen gültigen Textkanal für den KI-Assistenten.")
+            if ai_channel_raw and ai_channel_raw not in valid_channel_ids:
                 abort(400, "Bitte wähle einen gültigen Textkanal.")
             cfg["ai_enabled_global"] = ai_enabled
-            cfg["ai_mode"] = "both" if ai_enabled and ai_channel_raw else ai_mode
+            cfg["ai_mode"] = "channel"
             cfg["ai_channel_id"] = int(ai_channel_raw) if ai_channel_raw else None
+            for ticket_panel in cfg.get("ticket_panels", {}).values():
+                if isinstance(ticket_panel, dict):
+                    ticket_panel["ai_support_enabled"] = False
             cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
             cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         entries = cfg.setdefault("ai_knowledge", [])
@@ -5023,9 +5024,8 @@ def guild_tickets(guild_id):
         category_raw = request.form.get("category_id", "").strip()
         role_raw = request.form.get("support_role_id", "").strip()
         priority_role_raw = request.form.get("priority_role_id", "").strip()
-        ai_support_enabled = request.form.get("ai_support_enabled") == "on"
-        if ai_support_enabled and not guild_has_feature(cfg, "ticket"):
-            abort(403, "Der KI-Ticketsupport ist eine Premium-Funktion.")
+        # AI is available only in the selected AI channel, never inside ticket panels.
+        ai_support_enabled = False
         if priority_role_raw and not guild_has_feature(cfg, "ticket"):
             abort(403, "Eine Prioritätsrolle ist eine Premium-Funktion.")
         try:
