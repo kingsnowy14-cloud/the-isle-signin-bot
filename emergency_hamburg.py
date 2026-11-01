@@ -91,7 +91,7 @@ def fetch_public_servers(max_pages=5, target_ids=None):
     return list(found.values())
 
 
-def fetch_public_servers_page(max_pages=5, cursor=None):
+def fetch_public_servers_page(max_pages=1, cursor=None):
     """Fetch one chunk of public servers and return the cursor for the next chunk."""
     found = {}
     next_cursor = str(cursor) if cursor else None
