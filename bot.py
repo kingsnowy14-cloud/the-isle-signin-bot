@@ -2698,6 +2698,36 @@ async def moderation_slowmode(interaction: discord.Interaction, sekunden: app_co
 
 # ----------------------------- WELCOME -----------------------------
 
+@bot.tree.command(name="welcome-test", description="Send a test welcome message to the configured welcome channel")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def welcome_test(interaction: discord.Interaction):
+    if interaction.guild is None:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild.id)
+    channel_id = cfg.get("welcome_channel")
+    if not str(channel_id or "").isdigit():
+        await interaction.response.send_message("No welcome channel is configured. Select one in the dashboard first.", ephemeral=True)
+        return
+    channel = interaction.guild.get_channel(int(channel_id))
+    if not isinstance(channel, discord.TextChannel):
+        try:
+            channel = await bot.fetch_channel(int(channel_id))
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[WELCOME TEST] Could not fetch channel {channel_id} in guild {interaction.guild.id}: {type(exc).__name__}: {exc}", flush=True)
+            channel = None
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("I cannot access the configured welcome text channel. Check that the channel still exists and that the bot can view it.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        await send_welcome_for_member(interaction.user, cfg, include_dm=False, force=True)
+        await interaction.followup.send(f"Test welcome sent to {channel.mention}. If it is not visible, check the bot's View Channel and Send Messages permissions.", ephemeral=True)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.followup.send(f"Could not send the test welcome: {type(exc).__name__}. Check channel permissions.", ephemeral=True)
+
+
 @bot.tree.command(name="welcome-channel", description="Set the channel for public welcome messages")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def welcome_set(interaction: discord.Interaction, channel: discord.TextChannel):
@@ -5559,6 +5589,73 @@ async def on_guild_remove(guild: discord.Guild):
     await notify_bot_server_change(guild, joined=False)
 
 
+async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm: bool = True, force: bool = False):
+    """Send configured welcome messages independently of invite tracking and security checks."""
+    should_welcome = force or (not member.bot) or cfg.get("welcome_bots_enabled", False)
+    try:
+        should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
+        # Optional private welcome message; disabled by default to avoid unsolicited DMs.
+        if should_welcome and include_dm and cfg.get("welcome_dm_enabled", False):
+            dm_template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
+            dm_text = (dm_template.replace("{mention}", member.mention)
+                       .replace("{user}", discord.utils.escape_markdown(member.display_name))
+                       .replace("{server}", discord.utils.escape_markdown(member.guild.name))
+                       .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
+            try:
+                await member.send(
+                    dm_text[:1900],
+                    allowed_mentions=discord.AllowedMentions(users=False, roles=False, everyone=False),
+                )
+                print(f"[WELCOME] Sent private welcome message to {member} ({member.id}) in guild {member.guild.id}.")
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[WELCOME] Could not DM member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
+        # Welcome messages for bots can be toggled per server with /welcome-bots.
+        welcome_channel_id = cfg.get("welcome_channel")
+        if should_welcome and welcome_channel_id:
+            welcome_channel = member.guild.get_channel(int(welcome_channel_id))
+            # The channel may not be in cache; fetch it as a fallback.
+            if welcome_channel is None:
+                try:
+                    welcome_channel = await bot.fetch_channel(int(welcome_channel_id))
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+                    print(f"[WELCOME] Could not find/access channel {welcome_channel_id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
+                    welcome_channel = None
+            if isinstance(welcome_channel, discord.TextChannel):
+                template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
+                if template == "Welcome {mention} to **{server}**! You are member **#{count}**.":
+                    template = bot_text(member.guild.id, template)
+                welcome_text = (template.replace("{mention}", member.mention)
+                                .replace("{user}", discord.utils.escape_markdown(member.display_name))
+                                .replace("{server}", discord.utils.escape_markdown(member.guild.name))
+                                .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
+                try:
+                    if cfg.get("welcome_embed", False):
+                        welcome_embed = discord.Embed(
+                            title="👋 Willkommen!",
+                            description=welcome_text[:4000],
+                            color=discord.Color.from_rgb(70, 195, 255),
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        welcome_embed.set_thumbnail(url=member.display_avatar.url)
+                        welcome_embed.set_footer(text=f"{member.guild.name} · Willkommen")
+                        await welcome_channel.send(embed=welcome_embed, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
+                    else:
+                        await welcome_channel.send(
+                            welcome_text[:1900],
+                            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                        )
+                    print(f"[WELCOME] Sent welcome for {member} ({member.id}) in #{welcome_channel.name} ({member.guild.id}).")
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(f"[WELCOME] Sending failed in guild {member.guild.id}, channel {welcome_channel_id}: {type(exc).__name__}: {exc}")
+            elif welcome_channel is not None:
+                print(f"[WELCOME] Configured channel {welcome_channel_id} is not a text channel (guild {member.guild.id}).")
+        elif should_welcome:
+            print(f"[WELCOME] No welcome channel configured for guild {member.guild.id}. Run /welcome-set in Discord.")
+
+    except Exception as exc:
+        print(f"[WELCOME] Unexpected welcome handler error in guild {member.guild.id} for member {member.id}: {type(exc).__name__}: {exc}", flush=True)
+
+
 @bot.event
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
@@ -5625,65 +5722,8 @@ async def on_member_join(member: discord.Member):
             await member.add_roles(unverified_role, reason="Neue Mitglieder müssen sich verifizieren")
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[VERIFY] Could not assign unverified role: {type(exc).__name__}: {exc}")
-    # Decide once, before either DM or channel welcome handling.
-    should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
-    # Optional private welcome message; disabled by default to avoid unsolicited DMs.
-    if should_welcome and cfg.get("welcome_dm_enabled", False):
-        dm_template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
-        dm_text = (dm_template.replace("{mention}", member.mention)
-                   .replace("{user}", discord.utils.escape_markdown(member.display_name))
-                   .replace("{server}", discord.utils.escape_markdown(member.guild.name))
-                   .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
-        try:
-            await member.send(
-                dm_text[:1900],
-                allowed_mentions=discord.AllowedMentions(users=False, roles=False, everyone=False),
-            )
-            print(f"[WELCOME] Sent private welcome message to {member} ({member.id}) in guild {member.guild.id}.")
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            print(f"[WELCOME] Could not DM member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
-    # Welcome messages for bots can be toggled per server with /welcome-bots.
-    welcome_channel_id = cfg.get("welcome_channel")
-    if should_welcome and welcome_channel_id:
-        welcome_channel = member.guild.get_channel(int(welcome_channel_id))
-        # The channel may not be in cache; fetch it as a fallback.
-        if welcome_channel is None:
-            try:
-                welcome_channel = await bot.fetch_channel(int(welcome_channel_id))
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
-                print(f"[WELCOME] Could not find/access channel {welcome_channel_id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
-                welcome_channel = None
-        if isinstance(welcome_channel, discord.TextChannel):
-            template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
-            if template == "Welcome {mention} to **{server}**! You are member **#{count}**.":
-                template = bot_text(member.guild.id, template)
-            welcome_text = (template.replace("{mention}", member.mention)
-                            .replace("{user}", discord.utils.escape_markdown(member.display_name))
-                            .replace("{server}", discord.utils.escape_markdown(member.guild.name))
-                            .replace("{count}", str(member.guild.member_count or len(member.guild.members))))
-            try:
-                if cfg.get("welcome_embed", False):
-                    welcome_embed = discord.Embed(
-                        title="👋 Willkommen!",
-                        description=welcome_text[:4000],
-                        color=discord.Color.from_rgb(70, 195, 255),
-                        timestamp=datetime.now(timezone.utc),
-                    )
-                    welcome_embed.set_thumbnail(url=member.display_avatar.url)
-                    welcome_embed.set_footer(text=f"{member.guild.name} · Willkommen")
-                    await welcome_channel.send(embed=welcome_embed, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
-                else:
-                    await welcome_channel.send(
-                        welcome_text[:1900],
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                    )
-                print(f"[WELCOME] Sent welcome for {member} ({member.id}) in #{welcome_channel.name} ({member.guild.id}).")
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                print(f"[WELCOME] Sending failed in guild {member.guild.id}, channel {welcome_channel_id}: {type(exc).__name__}: {exc}")
-        elif welcome_channel is not None:
-            print(f"[WELCOME] Configured channel {welcome_channel_id} is not a text channel (guild {member.guild.id}).")
-    elif should_welcome:
-        print(f"[WELCOME] No welcome channel configured for guild {member.guild.id}. Run /welcome-set in Discord.")
+    # Run welcome handling first so failures in invite tracking or security modules cannot suppress it.
+    await send_welcome_for_member(member, cfg)
     # Preserve the existing anti-raid behavior: bot joins do not count as member raids.
     if member.bot or not cfg.get("anti_raid_enabled", False):
         return
