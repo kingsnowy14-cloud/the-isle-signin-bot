@@ -1008,11 +1008,11 @@ nav:not(.module-nav) .nav-logout-button{{width:100%;min-height:39px;padding:8px 
  skeleton:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#f3f0df" stroke="#263044" stroke-width="1.5" d="M18 3a12 12 0 0 0-7 21v7h14v-7A12 12 0 0 0 18 3Z"/><circle cx="13" cy="15" r="3.5" fill="#202b3e"/><circle cx="23" cy="15" r="3.5" fill="#202b3e"/><path fill="#202b3e" d="m18 18-3 5h6zM12 27h12v2H12zm2 4h2v3h-2zm6 0h2v3h-2z"/></svg>',
  tree:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#ffd75e" stroke="#684b16" stroke-width="1" d="m18 2 2.3 5 5.4.6-4 3.7 1.1 5.3-4.8-2.7-4.8 2.7 1.1-5.3-4-3.7 5.4-.6z"/><path fill="#2fc47b" stroke="#135b45" stroke-width="1.3" d="m18 8-9 11h5l-7 8h8v7h6v-7h8l-7-8h5z"/><circle cx="13" cy="21" r="1.6" fill="#e94d5b"/><circle cx="23" cy="25" r="1.6" fill="#65baff"/><circle cx="18" cy="18" r="1.6" fill="#ffd75e"/></svg>'
  }};
+ const handArt='<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path d="M11 17V8a2.5 2.5 0 0 1 5 0v7-9a2.5 2.5 0 0 1 5 0v9-7a2.5 2.5 0 0 1 5 0v9-4a2.5 2.5 0 0 1 5 0v10c0 7-4 11-11 11h-2c-4 0-6-2-8-5l-5-7a2.8 2.8 0 0 1 4-4l2 2z" fill="#f4d7b5" stroke="#182338" stroke-width="1.8" stroke-linejoin="round"/></svg>';
  function apply(name){{
   const value=art[name]?name:'wolf',url='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(art[value])+'") 4 4, auto';
   let s=document.getElementById('iw-cursor-style');if(!s){{s=document.createElement('style');s.id='iw-cursor-style';document.head.appendChild(s);}}
-  const hand='<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path d="M11 17V8a2.5 2.5 0 0 1 5 0v7-9a2.5 2.5 0 0 1 5 0v9-7a2.5 2.5 0 0 1 5 0v9-4a2.5 2.5 0 0 1 5 0v10c0 7-4 11-11 11h-2c-4 0-6-2-8-5l-5-7a2.8 2.8 0 0 1 4-4l2 2z" fill="#f4d7b5" stroke="#182338" stroke-width="1.8" stroke-linejoin="round"/></svg>';
-  const handUrl='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(hand)+'") 10 4, pointer';
+  const handUrl='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(handArt)+'") 10 4, pointer';
   s.textContent='html body *{{cursor:'+url+' !important}} html body *:hover{{cursor:'+url+' !important}} html body button:hover,html body a:hover,html body [role="button"]:hover,html body input[type="submit"]:hover,html body input[type="button"]:hover{{cursor:'+handUrl+' !important}}';
   picker.value=value;
  }}
@@ -1026,7 +1026,7 @@ nav:not(.module-nav) .nav-logout-button{{width:100%;min-height:39px;padding:8px 
  followerStyle.textContent='#iw-animated-cursor{{position:fixed;left:0;top:0;width:36px;height:36px;z-index:100000;pointer-events:none;transform:translate(-4px,-4px);filter:drop-shadow(0 0 7px rgba(139,157,255,.55));animation:iwCursorFloat 1.25s ease-in-out infinite}}#iw-animated-cursor svg{{display:block;width:36px;height:36px}}@keyframes iwCursorFloat{{0%,100%{{margin-top:0;scale:1;filter:drop-shadow(0 0 5px rgba(139,157,255,.45))}}50%{{margin-top:-3px;scale:1.09;filter:drop-shadow(0 0 12px rgba(139,157,255,.9))}}}}html,html body,html body *{{cursor:none!important}}@media(prefers-reduced-motion:reduce){{#iw-animated-cursor{{animation:none}}}}';
  document.head.appendChild(followerStyle);document.body.appendChild(follower);
  let overInteractive=false;
- function updateFollower(){{follower.innerHTML=overInteractive?hand:art[picker.value]||art.wolf;}}
+ function updateFollower(){{follower.innerHTML=overInteractive?handArt:art[picker.value]||art.wolf;}}
  updateFollower();
  document.addEventListener('pointermove',function(event){{follower.style.left=event.clientX+'px';follower.style.top=event.clientY+'px';}},{{passive:true}});
  document.addEventListener('pointerover',function(event){{overInteractive=!!(event.target&&event.target.closest&&event.target.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'));updateFollower();}},{{passive:true}});
