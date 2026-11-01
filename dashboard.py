@@ -821,6 +821,7 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/ai">🤖 KI-Wissen</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium Servers</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
@@ -4685,6 +4686,71 @@ def guild_server_boost(guild_id):
         + '<p><a class="button secondary" href="/guild/' + gid + '">Zur Serververwaltung</a></p>'
     )
     return _render(guild.name + " · Server-Booster", body)
+
+
+@app.route("/guild/<guild_id>/ai", methods=["GET", "POST"])
+def guild_ai_knowledge(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    result_html = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
+        cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
+        action = request.form.get("action", "save")
+        entries = cfg.setdefault("ai_knowledge", [])
+        if not isinstance(entries, list):
+            entries = cfg["ai_knowledge"] = []
+        if action == "add":
+            value = request.form.get("knowledge_text", "").strip()
+            if not value:
+                abort(400, "Der Wissenseintrag darf nicht leer sein.")
+            entries.append({"text": value[:1000], "source": "Dashboard", "author_id": str(session.get("user_id", "")), "created_at": datetime.now(timezone.utc).isoformat()})
+            del entries[:-80]
+        elif action.startswith("delete:"):
+            try:
+                index = int(action.split(":", 1)[1])
+                if 0 <= index < len(entries):
+                    entries.pop(index)
+            except ValueError:
+                abort(400, "Ungültiger Wissenseintrag.")
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "KI-Wissen", session.get("user_id"), "KI-Einstellungen gespeichert")
+        return redirect(url_for("guild_ai_knowledge", guild_id=guild.id, saved="1"))
+    entries = cfg.get("ai_knowledge", [])
+    if not isinstance(entries, list):
+        entries = []
+    learning_checked = " checked" if cfg.get("ai_learning_enabled", False) else ""
+    custom = html.escape(str(cfg.get("ai_custom_instructions", "")), quote=True)
+    body = (
+        '<span class="pill">IRONWOLF · AI CONTROL</span><h1 style="margin-top:12px">🤖 KI-Einstellungen & Serverwissen</h1>'
+        '<p class="muted">Dieses Wissen gilt nur für diesen Discord-Server. Automatisches Lernen ist standardmäßig deaktiviert. Es werden nur Textnachrichten vertrauenswürdiger Staff-Mitglieder gespeichert; du kannst Einträge jederzeit prüfen und löschen.</p>'
+        + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
+        + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
+        + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
+        + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
+        + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
+        + '<button type="submit">KI-Einstellungen speichern</button></form></section>'
+        + '<section class="card"><h2>Wissen manuell hinzufügen</h2><form method="post">' + _csrf_field()
+        + '<input type="hidden" name="action" value="add"><label>Serverwissen / Regel / häufige Lösung</label><textarea name="knowledge_text" maxlength="1000" rows="4" required placeholder="Beispiel: Für die Whitelist muss zuerst ..."></textarea>'
+        + '<button type="submit">Wissen speichern</button></form></section>'
+        + '<section class="card"><h2>Gespeichertes Wissen (' + str(len(entries)) + '/80)</h2>'
+    )
+    if entries:
+        for index, item in enumerate(entries):
+            value = item.get("text", "") if isinstance(item, dict) else str(item)
+            source = item.get("source", "Dashboard") if isinstance(item, dict) else "Dashboard"
+            body += '<div class="notice"><strong>' + html.escape(str(source)) + '</strong><p>' + html.escape(str(value)) + '</p><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="delete:' + str(index) + '"><button class="secondary" type="submit">Eintrag löschen</button></form></div>'
+    else:
+        body += '<p class="muted">Noch keine Einträge vorhanden.</p>'
+    body += '</section><p><a class="button secondary" href="/guild/' + str(guild.id) + '">Zur Serververwaltung</a></p>'
+    return _page(guild.name + " · KI-Wissen", body)
 
 
 @app.route("/guild/<guild_id>/tickets", methods=["GET", "POST"])
