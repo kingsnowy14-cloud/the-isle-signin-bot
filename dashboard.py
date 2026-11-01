@@ -1338,7 +1338,7 @@ def _dashboard_language():
 
 
 @app.route("/language/<language>")
-def set_dashboard_language(language):
+def set_dashboard_language_path(language):
     """Persist the visitor's manually selected dashboard language."""
     language = str(language or "").lower()
     if language not in {"de", "en"}:
@@ -1664,7 +1664,10 @@ def set_dashboard_language():
     language = str(request.form.get("language", "auto")).lower()
     if language not in {"de", "en", "auto"}:
         abort(400, "Unsupported language.")
-    session["dashboard_language"] = language if language in {"de", "en"} else _dashboard_language()
+    if language == "auto":
+        session.pop("dashboard_language", None)
+    else:
+        session["dashboard_language"] = language
 
     # A server language choice controls the bot's default locale for that guild.
     referrer_path = urlparse(request.referrer or "").path
