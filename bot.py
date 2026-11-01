@@ -6816,7 +6816,7 @@ class ServerLogs(commands.Cog):
         db[str(interaction.guild_id)] = {"channel_id": kanal.id}
         write(SERVER_LOGS, db)
         await interaction.response.send_message(
-            f"Server logs will now be posted in {kanal.mention} This setting persists across restarts.",
+            f"Server logs will now be posted in {kanal.mention}. This setting persists across restarts.",
             ephemeral=True,
         )
         await self.log(
@@ -6865,7 +6865,7 @@ class ServerLogs(commands.Cog):
     async def on_message_delete(self, message):
         if message.guild is None or (message.author and message.author.bot):
             return
-        author = f"{message.author} · ID {message.author.id}" if message.author else "Unbekannt"
+        author = f"{message.author} · ID {message.author.id}" if message.author else "Unknown"
         content = discord.utils.escape_mentions(message.content or "[Text unavailable in cache]")
         actor = None
         if message.author:
@@ -6893,7 +6893,7 @@ class ServerLogs(commands.Cog):
         await self.log(
             guild, "Multiple messages deleted",
             f"Channel: {channel.mention} · ID {channel.id}\nMessage count: {len(messages)}",
-            discord.Color.red(), actor=actor, target=f"{len(messages)} Nachrichten in #{channel.name}",
+            discord.Color.red(), actor=actor, target=f"{len(messages)} messages in #{channel.name}",
         )
 
     @commands.Cog.listener()
@@ -6906,7 +6906,7 @@ class ServerLogs(commands.Cog):
             after.guild, "Message edited",
             f"Channel: {after.channel.mention} · ID {after.channel.id}\nAuthor: {after.author} · ID {after.author.id}\n"
             f"Message ID: {after.id}\nBefore: {old}\nAfter: {new}",
-            actor=after.author, target=f"Nachricht {after.id} in #{after.channel.name}",
+            actor=after.author, target=f"Message {after.id} in #{after.channel.name}",
         )
 
     @commands.Cog.listener()
@@ -6997,7 +6997,7 @@ class ServerLogs(commands.Cog):
             title = "Left voice channel"
             details = f"Member: {member.mention} · ID {member.id}\nChannel: {before.channel.name} · ID {before.channel.id}"
         else:
-            title = "Voice-Kanal gewechselt"
+            title = "Switched voice channels"
             details = f"Member: {member.mention} · ID {member.id}\nVon: {before.channel.name} · ID {before.channel.id}\nNach: {after.channel.name} · ID {after.channel.id}"
         await self.log(member.guild, title, details, actor=member, target=member)
 
