@@ -6357,16 +6357,7 @@ def guild_emergency_hamburg(guild_id):
     monitor = load_monitor_config().get(str(guild.id), monitor)
     all_servers = monitor.get("servers", [])
     connected_ids = {item.get("job_id") for item in all_servers}
-    server_filter = str(request.args.get("server_filter", "")).strip()[:100]
-    filter_query = server_filter.casefold()
-    servers = [
-        item for item in all_servers
-        if not filter_query or filter_query in " ".join((
-            str(item.get("name", "")), str(item.get("owner", "")),
-            str(item.get("private_server_id", "")), str(item.get("job_id", "")),
-            str(item.get("server_key", "")),
-        )).casefold()
-    ]
+    servers = all_servers
     server_options = []
     for item in available_servers:
         job_id = str(item.get("id", ""))
@@ -6421,8 +6412,7 @@ def guild_emergency_hamburg(guild_id):
             '<button class="danger secondary" type="submit">Disconnect</button></form></div>'
         )
     connected_html = "".join(connected_cards) if connected_cards else (
-        '<p class="muted">No matching connected servers found.</p>' if server_filter
-        else '<p class="muted">No private servers connected yet. Add your private server ID below.</p>'
+        '<p class="muted">No private servers connected yet. Add your private server ID below.</p>'
     )
     options_html = "".join(server_options) or '<option value="">Keine Server auf diesem Abschnitt gefunden</option>'
     if not server_options and not notice:
@@ -6446,15 +6436,18 @@ def guild_emergency_hamburg(guild_id):
         + notice +
         '<div class="grid"><div class="stat"><strong>' + str(len(all_servers)) + ' / ' + str(limit) +
         '</strong><small>Verbundene Roblox-Server · Planlimit</small></div><div class="stat"><strong>5 Min.</strong><small>Aktualisierungsintervall</small></div></div>'
-        '<h2>Connected private servers</h2>' +
-        ('<form method="get" class="row"><label style="flex:1">Find your server<input type="search" name="server_filter" value="' + html.escape(server_filter, quote=True) + '" placeholder="Server name, owner, private ID or Job ID"></label><button type="submit">Search</button>' +
-         ('<a class="button secondary" href="' + html.escape(url_for("guild_emergency_hamburg", guild_id=guild.id), quote=True) + '">Clear</a>' if server_filter else '') + '</form>' if all_servers else '') +
-        ('<p class="muted">' + str(len(servers)) + ' of ' + str(len(all_servers)) + ' servers shown</p>' if all_servers else '') + connected_html +
+        '<h2>Connected private servers</h2>' + connected_html +
         '<form method="post" class="card">' + _csrf_field() +
         '<input type="hidden" name="action" value="add_server">'
         '<input type="hidden" name="cursor" value="' + html.escape(page_cursor, quote=True) + '">'
         '<h2>＋ Connect private server by ID</h2>'
-        '<label>Private Emergency Hamburg server ID<input name="private_server_id" maxlength="128" pattern="[A-Za-z0-9_-]+" placeholder="ID from the in-game server getid command" required></label>'
+        '<div class="notice"><strong>So findest du deine Private Server ID:</strong><ol>'
+        '<li>Starte Roblox und tritt deinem eigenen Emergency-Hamburg-Privatserver bei.</li>'
+        '<li>Öffne im Spiel die Konsole mit <strong>F2</strong>.</li>'
+        '<li>Gib den Befehl <code>server getid</code> ein.</li>'
+        '<li>Kopiere die angezeigte Private Server ID und füge sie unten in das Feld ein.</li>'
+        '</ol><small>Wichtig: Verwende die ausgegebene Server-ID, nicht den Code aus deinem Roblox-Einladungslink.</small></div>'
+        '<label>Private Emergency Hamburg server ID<input name="private_server_id" maxlength="128" pattern="[A-Za-z0-9_-]+" placeholder="Hier die ID aus server getid einfügen" required></label>'
         '<label>Server name (optional)<input name="display_name" maxlength="80" placeholder="e.g. IronWolf Roleplay"></label>'
         '<label>Server owner (optional)<input name="owner_name" maxlength="80" placeholder="Roblox username"></label>'
         '<button type="submit"' + (' disabled' if len(servers) >= limit else '') + '>Connect private server</button>'
