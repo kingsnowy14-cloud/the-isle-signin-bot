@@ -1179,13 +1179,14 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
 
     embed = ticket_status_embed(ticket_meta, channel.id)
     await channel.send(embed=embed, view=TicketControlView())
-    # Send an immediate English welcome when the ticket opens; AI replies later
-    # follow the language used by the member in their messages.
+    # English onboarding hint is sent immediately after the ticket controls.
     staff_ping = f"{support_role.mention} " if support_role else ""
     await channel.send(
-        f"{staff_ping}👋 Welcome, {interaction.user.mention}! Thanks for contacting support. "
-        "Please describe your issue and include any relevant details. "
-        "IronWolf AI will try to help quickly, and our support team can step in if needed.",
+        f"{staff_ping}👋 **Welcome, {interaction.user.mention}!** Thanks for contacting support.\n"
+        "Please describe your issue and include any relevant details.\n\n"
+        "**Ticket access:** Use /add @user to invite another member, or /remove @user to remove someone.\n"
+        "**Closing:** Press the 🔒 Close Ticket button in the ticket information message when your request is resolved.\n"
+        "Our support team will assist you as soon as possible.",
         allowed_mentions=discord.AllowedMentions(
             users=[interaction.user],
             roles=[support_role] if support_role else [],
@@ -1327,9 +1328,18 @@ def ticket_status_embed(meta, channel_id=None):
     ticket_id = meta.get("ticket_number") or channel_id or "Unknown"
     owner_id = meta.get("owner_id")
     claimed_by = meta.get("claimed_by")
-    embed = discord.Embed(title="🎫 Ticket-Informationen", color=discord.Color.blurple())
-    embed.add_field(name="Kategorie", value=str(meta.get("label") or "Ticket")[:100], inline=True)
-    embed.add_field(name="Ticket-ID", value=str(ticket_id), inline=True)
+    embed = discord.Embed(
+        title="🎫 Ticket Information",
+        description=(
+            "**Ticket commands**\n"
+            "• /add @user — give another member access to this private ticket\n"
+            "• /remove @user — remove a member from this private ticket\n"
+            "• Use the Close Ticket button below when your request is resolved."
+        ),
+        color=discord.Color.blurple(),
+    )
+    embed.add_field(name="Category", value=str(meta.get("label") or "Ticket")[:100], inline=True)
+    embed.add_field(name="Ticket ID", value=str(ticket_id), inline=True)
     embed.add_field(name="Opened by", value=f"<@{owner_id}>" if owner_id else "Unknown", inline=True)
     embed.add_field(name="Claimed by", value=f"<@{claimed_by}>" if claimed_by else "Nobody", inline=True)
     return embed
@@ -1339,33 +1349,36 @@ class TicketControlView(discord.ui.View):
     def __init__(self, claimed: bool = False):
         super().__init__(timeout=None)
 
-        # Keep both actions visible at all times; callbacks validate the current state.
+        # Put the close action first so it is immediately visible at the top of the ticket.
+        close_button = discord.ui.Button(
+            label="Close Ticket",
+            style=discord.ButtonStyle.danger,
+            emoji="🔒",
+            custom_id="ticket:close",
+            row=0,
+        )
+        close_button.callback = self.close
+        self.add_item(close_button)
+
         claim_button = discord.ui.Button(
             label="Claim",
             style=discord.ButtonStyle.primary,
             emoji="🙋",
             custom_id="ticket:claim",
+            row=0,
         )
         claim_button.callback = self.claim
         self.add_item(claim_button)
 
         release_button = discord.ui.Button(
-            label="Freigeben",
+            label="Release",
             style=discord.ButtonStyle.secondary,
             emoji="🔓",
             custom_id="ticket:release",
+            row=0,
         )
         release_button.callback = self.release
         self.add_item(release_button)
-
-        close_button = discord.ui.Button(
-            label="Close ticket",
-            style=discord.ButtonStyle.danger,
-            emoji="🔒",
-            custom_id="ticket:close",
-        )
-        close_button.callback = self.close
-        self.add_item(close_button)
 
     async def claim(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
@@ -2183,6 +2196,69 @@ async def ticketcreat(
     await kanal.send(embed=embed, view=TicketPanelView(panel_key, labels))
     await interaction.response.send_message(f"Ticket panel posted in {kanal.mention}. Panel ID: `{panel_key}`. Configure it with /ticket-settings.", ephemeral=True)
 
+
+async def _ticket_member_command_context(interaction: discord.Interaction):
+    """Return ticket metadata only for recognized private ticket/support channels."""
+    channel = interaction.channel
+    if channel is None or interaction.guild is None:
+        return None
+    meta = data.setdefault("tickets", {}).get(str(channel.id))
+    if meta and str(meta.get("guild_id", interaction.guild.id)) == str(interaction.guild.id):
+        return meta
+    # Quick Support private threads are also supported by /add and /remove.
+    for request in data.setdefault("quick_support_requests", {}).values():
+        if str(request.get("thread_id") or "") == str(channel.id) and str(request.get("guild_id")) == str(interaction.guild.id):
+            return {"guild_id": interaction.guild.id, "owner_id": request.get("requester_id"), "support_role_id": guild_config(interaction.guild.id).get("support_role")}
+    return None
+
+
+async def _change_ticket_member(interaction: discord.Interaction, member: discord.Member, add: bool):
+    channel = interaction.channel
+    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+        await interaction.response.send_message("Use this command inside a private ticket channel or support thread.", ephemeral=True)
+        return
+    meta = await _ticket_member_command_context(interaction)
+    if not meta:
+        await interaction.response.send_message("This channel is not a registered ticket or Quick Support thread.", ephemeral=True)
+        return
+    if not is_support(interaction.user, meta, interaction.guild):
+        await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
+        return
+    if not add and str(meta.get('owner_id')) == str(member.id):
+        await interaction.response.send_message("The ticket owner cannot be removed from their own ticket.", ephemeral=True)
+        return
+    try:
+        if isinstance(channel, discord.Thread):
+            if add:
+                await channel.add_user(member)
+            else:
+                await channel.remove_user(member)
+        elif add:
+            await channel.set_permissions(member, view_channel=True, send_messages=True, read_message_history=True, reason=f"Added to ticket by {interaction.user}")
+        else:
+            await channel.set_permissions(member, overwrite=None, reason=f"Removed from ticket by {interaction.user}")
+    except discord.Forbidden:
+        await interaction.response.send_message("I do not have permission to change members in this ticket. Check Manage Channels / Manage Threads and thread membership permissions.", ephemeral=True)
+        return
+    except discord.HTTPException as exc:
+        await interaction.response.send_message(f"Discord could not update ticket access (HTTP {exc.status}).", ephemeral=True)
+        return
+    action = "Added" if add else "Removed"
+    await interaction.response.send_message(f"✅ {member.mention} has been {action.lower()} {"to" if add else "from"} this ticket.", ephemeral=False)
+
+
+@bot.tree.command(name="add", description="Add a member to the current private ticket")
+@app_commands.guild_only()
+@app_commands.describe(user="Member to add to this ticket")
+async def add_ticket_member(interaction: discord.Interaction, user: discord.Member):
+    await _change_ticket_member(interaction, user, True)
+
+
+@bot.tree.command(name="remove", description="Remove a member from the current private ticket")
+@app_commands.guild_only()
+@app_commands.describe(user="Member to remove from this ticket")
+async def remove_ticket_member(interaction: discord.Interaction, user: discord.Member):
+    await _change_ticket_member(interaction, user, False)
 
 @bot.tree.command(name="ticket-settings", description="Configure AI support and pre-ticket questions for a ticket panel")
 @app_commands.checks.has_permissions(manage_guild=True)
@@ -5199,8 +5275,9 @@ async def _generate_ticket_ai_reply(channel, message, meta, initial_reason=None,
         prompt = (
             "You are IronWolf, a helpful, reliable AI assistant for this Discord server. "
             + conversation_mode
-            + "Detect the language of the member's latest message and answer in that exact language. "
-            "This includes German, English, and other languages; do not default to English. "
+            + "LANGUAGE RULE (highest priority): Reply in the same language as the author's latest actual message, not the server's default language, not earlier messages, and not the language of this instruction. "
+            "If the latest message is German, answer in natural German; if English, answer in English; otherwise match the latest message's language. "
+            "Keep that language consistently unless the user explicitly asks for a translation or another language. "
             "Answer genuine questions directly and helpfully, using the recent conversation for context. "
             "Understand URLs and Discord links included in messages. Use the verified channel directory below to link relevant server channels. "
             "When mentioning a server channel in your answer, write its exact #channel-name token from the directory; the bot converts it into a clickable Discord channel link. "
@@ -5490,7 +5567,7 @@ async def on_message(message: discord.Message):
                         answer = await _generate_ticket_ai_reply(message.channel, message, None)
                     if answer:
                         await message.reply(
-                            f"🤖 **IronWolf AI**\n{discord.utils.escape_mentions(answer)}",
+                            f"🤖 **IronWolf AI**\n{answer}",
                             mention_author=False,
                             allowed_mentions=discord.AllowedMentions.none(),
                         )
