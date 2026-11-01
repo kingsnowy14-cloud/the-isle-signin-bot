@@ -203,7 +203,7 @@ class EmergencyHamburg(commands.Cog):
             ephemeral=True,
         )
 
-    async def update_guild(self, guild):
+    async def update_guild(self, guild, server_map=None, api_error=None):
         if guild is None:
             return False
         async with self._refresh_lock:
@@ -218,19 +218,20 @@ class EmergencyHamburg(commands.Cog):
             channel = guild.get_channel(int(channel_id))
             if not isinstance(channel, discord.TextChannel):
                 return False
-            target_ids = [item.get("job_id") for item in selected if item.get("job_id")]
-            error = None
-            try:
-                rows = await asyncio.to_thread(
-                    fetch_public_servers,
-                    MAX_PAGES_PER_REFRESH,
-                    target_ids,
-                )
-                server_map = {item["id"]: item for item in rows}
-            except Exception as exc:
-                server_map = {}
-                error = f"{type(exc).__name__}: {exc}"
-                print(f"[EH MONITOR] Roblox API error for guild {guild.id}: {error}", flush=True)
+            error = api_error
+            if server_map is None:
+                target_ids = [item.get("job_id") for item in selected if item.get("job_id")]
+                try:
+                    rows = await asyncio.to_thread(
+                        fetch_public_servers,
+                        MAX_PAGES_PER_REFRESH,
+                        target_ids,
+                    )
+                    server_map = {item["id"]: item for item in rows}
+                except Exception as exc:
+                    server_map = {}
+                    error = f"{type(exc).__name__}: {exc}"
+                    print(f"[EH MONITOR] Roblox API error for guild {guild.id}: {error}", flush=True)
             embed = build_status_embed(guild, settings, server_map, error=error)
             message = None
             message_id = settings.get("message_id")
@@ -259,9 +260,33 @@ class EmergencyHamburg(commands.Cog):
 
     @tasks.loop(seconds=REFRESH_SECONDS)
     async def refresh_loop(self):
-        for guild in list(self.bot.guilds):
+        guilds = list(self.bot.guilds)
+        settings = load_monitor_config()
+        target_ids = set()
+        for guild in guilds:
+            guild_settings = settings.get(str(guild.id), {})
+            if guild_settings.get("enabled", True):
+                target_ids.update(
+                    str(item.get("job_id"))
+                    for item in guild_settings.get("servers", [])
+                    if item.get("job_id")
+                )
+        server_map = {}
+        api_error = None
+        if target_ids:
             try:
-                await self.update_guild(guild)
+                rows = await asyncio.to_thread(
+                    fetch_public_servers,
+                    MAX_PAGES_PER_REFRESH,
+                    target_ids,
+                )
+                server_map = {item["id"]: item for item in rows}
+            except Exception as exc:
+                api_error = f"{type(exc).__name__}: {exc}"
+                print(f"[EH MONITOR] Shared Roblox API refresh failed: {api_error}", flush=True)
+        for guild in guilds:
+            try:
+                await self.update_guild(guild, server_map=server_map, api_error=api_error)
             except Exception as exc:
                 print(f"[EH MONITOR] Unexpected refresh error for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
