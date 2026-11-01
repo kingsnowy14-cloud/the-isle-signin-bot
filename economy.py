@@ -88,7 +88,7 @@ class ShopItemSelect(discord.ui.Select):
 
 class ShopBuyButton(discord.ui.Button):
     def __init__(self, parent_view):
-        super().__init__(label="Jetzt kaufen", style=discord.ButtonStyle.success, emoji="🛍️")
+        super().__init__(label="Buy now", style=discord.ButtonStyle.success, emoji="🛍️")
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
@@ -113,7 +113,7 @@ class ShopBuyButton(discord.ui.Button):
         u["items"].append(name)
         save()
         await interaction.response.send_message(
-            f"🛍️ You purchased **{name}** for **{money(price)}** gekauft. Neuer Balance: **{money(u['bank'])}**.",
+            f"🛍️ You purchased **{name}** for **{money(price)}**. New balance: **{money(u['bank'])}**.",
             ephemeral=True
         )
 
@@ -122,7 +122,7 @@ class ShopView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Artikel kaufen", style=discord.ButtonStyle.success, emoji="🛒", custom_id="ironwolf:shop:buy")
+    @discord.ui.button(label="Buy item", style=discord.ButtonStyle.success, emoji="🛒", custom_id="ironwolf:shop:buy")
     async def open_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True)
