@@ -3698,7 +3698,24 @@ def guild_custom_bot(guild_id):
     success = ""
     if request.args.get("saved") == "1":
         update_notes = profile.get("last_discord_update", [])
-        success = '<div class="notice"><strong>Profile saved.</strong><br>' + '<br>'.join(html.escape(str(note)) for note in update_notes) + '</div>'
+        retry_seconds = 0
+        for note in update_notes:
+            match = re.search(r"wait approximately (\d+) seconds", str(note), re.IGNORECASE)
+            if match:
+                retry_seconds = max(retry_seconds, int(match.group(1)))
+        countdown_html = ""
+        if retry_seconds:
+            countdown_html = (
+                '<p style="margin:10px 0 0"><strong>Discord rate-limit countdown:</strong> '
+                '<span id="cb-rate-countdown" data-seconds="' + str(retry_seconds) + '">'
+                + str(retry_seconds) + ' seconds</span>. You can try saving again when it reaches zero.</p>'
+                '<script>(function(){var el=document.getElementById("cb-rate-countdown");if(!el)return;'
+                'var left=parseInt(el.getAttribute("data-seconds"),10)||0;'
+                'function tick(){if(left<=0){el.textContent="0 seconds — you can try again";return;}'
+                'var m=Math.floor(left/60),s=left%60;el.textContent=(m?m+" min ":"")+s+" sec";left--;'
+                'window.setTimeout(tick,1000);}tick();})();</script>'
+            )
+        success = '<div class="notice"><strong>Profile saved.</strong><br>' + '<br>'.join(html.escape(str(note)) for note in update_notes) + countdown_html + '</div>'
     body = (
         '<style>'
         '.cb-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:18px;align-items:start}'
