@@ -29,7 +29,7 @@ from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
-from emergency_hamburg import load_monitor_config, save_monitor_config, fetch_public_servers, server_limit_for_guild
+from emergency_hamburg import load_monitor_config, save_monitor_config, fetch_public_servers_page, server_limit_for_guild
 
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
@@ -6212,13 +6212,17 @@ def guild_emergency_hamburg(guild_id):
     limit = server_limit_for_guild(cfg)
     notice = ""
     available_servers = []
+    next_server_cursor = None
+    page_cursor = request.args.get("cursor", "") if request.method == "GET" else request.form.get("cursor", "")
+    if page_cursor and len(page_cursor) > 2048:
+        abort(400, "Ungültiger Roblox-Seiten-Cursor.")
     try:
-        available_servers = fetch_public_servers(max_pages=5)
+        available_servers, next_server_cursor = fetch_public_servers_page(max_pages=5, cursor=page_cursor or None)
     except Exception as exc:
         notice = (
-            '<p class="notice">Roblox-Serverliste konnte gerade nicht geladen werden: ' +
+            '<p class="notice">Roblox-API-Fehler beim Laden der Serverliste: ' +
             html.escape(str(exc)[:240]) +
-            '. Bereits gespeicherte Verbindungen bleiben erhalten.</p>'
+            '. Bitte später erneut versuchen. Bereits gespeicherte Verbindungen bleiben erhalten.</p>'
         )
 
     if request.method == "POST":
@@ -6338,7 +6342,14 @@ def guild_emergency_hamburg(guild_id):
             '<button class="danger secondary" type="submit">Trennen</button></form></div>'
         )
     connected_html = "".join(connected_cards) if connected_cards else '<p class="muted">Noch keine Roblox-Server verbunden. Wähle unten einen öffentlichen Server aus.</p>'
-    options_html = "".join(server_options) or '<option value="">Keine weiteren Server in der aktuellen API-Seite gefunden</option>'
+    options_html = "".join(server_options) or '<option value="">Keine Server auf diesem Abschnitt gefunden</option>'
+    if not server_options and not notice:
+        notice += '<p class="muted">Auf diesem Abschnitt wurden keine auswählbaren Server gefunden. Nutze „Weitere Server laden“, falls Roblox noch eine nächste Seite bereitstellt.</p>'
+    next_page_html = (
+        '<p><a class="button secondary" href="' + html.escape(url_for("guild_emergency_hamburg", guild_id=guild.id, cursor=next_server_cursor), quote=True) + '">Weitere Server laden →</a></p>'
+        if next_server_cursor else
+        '<p class="muted">Roblox meldet für diesen Abschnitt keine weitere API-Seite.</p>'
+    )
     roles_html = "".join(role_options) or '<option disabled>Keine auswählbaren Rollen vorhanden</option>'
     channels_html = "".join(channel_options) or '<option value="">Kein Textkanal verfügbar</option>'
     enabled_checked = " checked" if monitor.get("enabled", True) else ""
@@ -6356,11 +6367,12 @@ def guild_emergency_hamburg(guild_id):
         '<h2>Verbundene Roblox-Server</h2>' + connected_html +
         '<form method="post" class="card">' + _csrf_field() +
         '<input type="hidden" name="action" value="add_server">'
+        '<input type="hidden" name="cursor" value="' + html.escape(page_cursor, quote=True) + '">'
         '<h2>＋ Öffentlichen Server verbinden</h2>'
         '<label>Server aus der öffentlichen Liste<select name="job_id" required>' + options_html + '</select></label>'
         '<label>Eigener Anzeigename (optional)<input name="display_name" maxlength="80" placeholder="z. B. Polizei Roleplay"></label>'
         '<button type="submit"' + (' disabled' if len(servers) >= limit or not server_options else '') + '>Roblox-Server hinzufügen</button>'
-        '<p class="muted">Es werden nur Server angeboten, die Roblox aktuell über die öffentliche Serverliste zurückliefert. Falls ein Server nicht erscheint, kann er über diese Oberfläche derzeit nicht ausgewählt werden.</p></form></section>'
+        '<p class="muted">Die Liste lädt bis zu 5 Roblox-API-Seiten pro Abschnitt. Mit „Weitere Server laden“ kannst du den nächsten Abschnitt abrufen. Roblox kann Ergebnisse begrenzen oder vorübergehend keine weiteren Seiten liefern.</p>' + next_page_html + '</form></section>'
         '<section class="card"><h2>⚙️ Statusnachricht & Berechtigungen</h2>'
         '<form method="post">' + _csrf_field() +
         '<input type="hidden" name="action" value="save_settings">'
