@@ -1379,9 +1379,9 @@ class TicketControlView(discord.ui.View):
                         label = "Staff" if is_support(item.author, meta, interaction.guild) else "Member"
                         transcript.append(f"{label}: {text[:500]}")
                 if transcript:
-                    entries = cfg.setdefault("ai_knowledge", [])
+                    entries = cfg.setdefault("ai_ticket_knowledge", [])
                     if not isinstance(entries, list):
-                        entries = cfg["ai_knowledge"] = []
+                        entries = cfg["ai_ticket_knowledge"] = []
                     knowledge = "Resolved ticket conversation (category: " + str(meta.get("label") or "Support")[:80] + "):\n" + "\n".join(transcript)
                     entries.append({
                         "text": knowledge[:7000],
@@ -5009,10 +5009,17 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         guild_id = getattr(getattr(channel, "guild", None), "id", None)
         cfg = guild_config(guild_id) if guild_id else {}
         saved_knowledge = cfg.get("ai_knowledge", [])
+        ticket_knowledge = cfg.get("ai_ticket_knowledge", []) if meta is not None else []
         knowledge_text = "\n".join(
             str(item.get("text", ""))[:1800] if isinstance(item, dict) else str(item)[:1800]
             for item in saved_knowledge[-12:]
         ) if isinstance(saved_knowledge, list) else ""
+        if isinstance(ticket_knowledge, list) and ticket_knowledge:
+            ticket_context_text = "\n".join(
+                str(item.get("text", ""))[:1800] if isinstance(item, dict) else str(item)[:1800]
+                for item in ticket_knowledge[-6:]
+            )
+            knowledge_text += ("\n\nPRIVATE TICKET CONTEXT:\n" if knowledge_text else "PRIVATE TICKET CONTEXT:\n") + ticket_context_text
         custom_instructions = str(cfg.get("ai_custom_instructions", "")).strip()[:2000]
         prompt = (
             "You are IronWolf, a fast, precise, friendly first-line support assistant for this Discord server. "
@@ -5117,10 +5124,10 @@ async def on_message(message: discord.Message):
             if is_staff and cfg.get("ai_learning_enabled", False):
                 learned_text = (message.content or "").strip()
                 if learned_text and len(learned_text) >= 12 and not message.attachments:
-                    entries = cfg.setdefault("ai_knowledge", [])
+                    entries = cfg.setdefault("ai_ticket_knowledge", [])
                     if not isinstance(entries, list):
-                        entries = cfg["ai_knowledge"] = []
-                    # Keep only a small, bounded, server-local memory; dashboard admins can review/delete it.
+                        entries = cfg["ai_ticket_knowledge"] = []
+                    # Private ticket context is kept separately from dashboard-managed server knowledge.
                     if not any(isinstance(item, dict) and item.get("message_id") == str(message.id) for item in entries):
                         entries.append({
                             "text": learned_text[:700],
