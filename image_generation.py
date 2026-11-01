@@ -109,26 +109,55 @@ def _generate(prompt, size):
     api_token = (os.getenv("CF_API_TOKEN") or "").strip()
     if not account_id or not api_token:
         raise RuntimeError("Bild-KI ist noch nicht eingerichtet. Bitte CF_ACCOUNT_ID und CF_API_TOKEN in Railway setzen.")
-    response = requests.post(
-        f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell",
-        headers={"Authorization": "Bearer " + api_token, "Content-Type": "application/json"},
-        json={"prompt": prompt, "width": int(size), "height": int(size)},
-        timeout=120,
-    )
-    if response.status_code in (401, 403):
-        raise RuntimeError("Cloudflare hat den API-Schlüssel abgelehnt. Prüfe CF_API_TOKEN und die Workers AI-Berechtigung.")
-    response.raise_for_status()
-    payload = response.json()
-    result = payload.get("result") or {}
-    raw = result.get("image")
-    if not isinstance(raw, str) or not raw:
-        raise RuntimeError("Der Bildanbieter hat kein Bild zurückgegeben.")
     try:
-        image_bytes = base64.b64decode(raw, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise RuntimeError("Die Bildantwort des Anbieters war ungültig.") from exc
-    if not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise RuntimeError("Der Anbieter hat kein gültiges PNG-Bild geliefert.")
+        response = requests.post(
+            f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/black-forest-labs/flux-1-schnell",
+            headers={"Authorization": "Bearer " + api_token, "Content-Type": "application/json"},
+            json={"prompt": prompt, "width": int(size), "height": int(size)},
+            timeout=180,
+        )
+    except requests.Timeout as exc:
+        raise RuntimeError("Die Bildgenerierung hat zu lange gedauert. Bitte versuche es erneut.") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError("Cloudflare ist nicht erreichbar. Prüfe die Railway-Netzwerkverbindung und versuche es erneut.") from exc
+
+    if response.status_code in (401, 403):
+        raise RuntimeError("Cloudflare lehnt den API-Schlüssel ab (401/403). Prüfe CF_API_TOKEN und die Berechtigung „Workers AI – Read“.")
+    if response.status_code == 404:
+        raise RuntimeError("Cloudflare findet das Workers-AI-Modell oder Konto nicht (404). Prüfe CF_ACCOUNT_ID und den Modell-Endpunkt.")
+    if response.status_code == 429:
+        raise RuntimeError("Das Cloudflare-Kontingent oder Rate-Limit ist erreicht. Bitte später erneut versuchen.")
+    if not response.ok:
+        detail = (response.text or "")[:500].replace("\\n", " ")
+        print(f"[IMAGE GEN] Cloudflare HTTP {response.status_code}: {detail}", flush=True)
+        raise RuntimeError(f"Cloudflare-Fehler HTTP {response.status_code}. Prüfe API-Token, Account-ID und Workers-AI-Kontingent.")
+
+    content_type = (response.headers.get("content-type") or "").lower()
+    if "image/" in content_type or response.content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        image_bytes = response.content
+    else:
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            detail = (response.text or "")[:300]
+            print(f"[IMAGE GEN] Unexpected response ({content_type}): {detail}", flush=True)
+            raise RuntimeError("Cloudflare hat kein Bildformat zurückgegeben. Prüfe Modell und Workers-AI-Konfiguration.") from exc
+        if payload.get("success") is False:
+            errors = payload.get("errors") or []
+            detail = "; ".join(str(item.get("message", item)) for item in errors)[:400]
+            print(f"[IMAGE GEN] Cloudflare API error: {detail}", flush=True)
+            raise RuntimeError("Cloudflare meldet einen Fehler: " + (detail or "unbekannter API-Fehler"))
+        result = payload.get("result") or {}
+        raw = result.get("image")
+        if not isinstance(raw, str) or not raw:
+            raise RuntimeError("Cloudflare hat erfolgreich geantwortet, aber kein Bild geliefert.")
+        try:
+            image_bytes = base64.b64decode(raw, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise RuntimeError("Die Bildantwort von Cloudflare war ungültig.") from exc
+
+    if not image_bytes.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        raise RuntimeError("Cloudflare hat kein gültiges PNG-Bild geliefert.")
     return image_bytes
 
 
@@ -168,11 +197,12 @@ def image_generator(guild_id):
                     abort(409, "Dein Token-Guthaben hat sich geändert. Bitte versuche es erneut.")
                 image_url = url_for("image_generation.image_file", filename=filename)
                 message = f"Bild erfolgreich erstellt. Abgezogen: {cost} Tokens."
-            except requests.RequestException as exc:
-                message = "Der Bildanbieter ist momentan nicht erreichbar. Es wurden keine Tokens abgezogen."
-                print(f"[IMAGE GEN] Provider request failed: {type(exc).__name__}", flush=True)
             except RuntimeError as exc:
                 message = str(exc)
+                print(f"[IMAGE GEN] {type(exc).__name__}: {exc}", flush=True)
+            except requests.RequestException as exc:
+                message = "Die Verbindung zum Bildanbieter ist fehlgeschlagen. Es wurden keine Tokens abgezogen. Bitte Railway-Logs prüfen."
+                print(f"[IMAGE GEN] Provider request failed: {type(exc).__name__}: {exc}", flush=True)
     server_left, personal_left, premium = _balances(guild.id, user_id)
     total = server_left + personal_left
     premium_line = f'<div class="dashboard-metric"><strong>{personal_left:,}</strong><span>Persönliche Premium-Tokens · zusätzlich</span></div>' if premium else ""
