@@ -5005,7 +5005,13 @@ async def on_message(message: discord.Message):
         activity_now = datetime.now(timezone.utc).isoformat()
         stats["last_message_at"] = activity_now
         stats["last_activity_at"] = activity_now
-        earned_xp, reached_level = add_message_xp(guild.id, message.author.id)
+        xp_enabled = bool(cfg.get("xp_enabled", True))
+        xp_min = int(cfg.get("xp_min", 5) or 0)
+        xp_max = int(cfg.get("xp_max", 15) or 0)
+        # The XP module is disabled by the dashboard toggle or by setting either XP amount to 0.
+        reached_level = None
+        if xp_enabled and xp_min > 0 and xp_max > 0:
+            earned_xp, reached_level = add_message_xp(guild.id, message.author.id)
         save_json(DATA_FILE, data)
 
         if reached_level:
