@@ -1326,21 +1326,51 @@ def _translate_dashboard(value, language):
         value = value.replace(source, translations[source])
     return value
 
+def _dashboard_language():
+    """Resolve the saved language, falling back to the browser's preferred locale."""
+    saved = session.get("dashboard_language")
+    if saved in {"de", "en"}:
+        return saved
+    preferred = request.accept_languages.best_match(["de", "en"])
+    language = preferred or "en"
+    session["dashboard_language"] = language
+    return language
+
+
+@app.route("/language/<language>")
+def set_dashboard_language(language):
+    """Persist the visitor's manually selected dashboard language."""
+    language = str(language or "").lower()
+    if language not in {"de", "en"}:
+        abort(400, "Unsupported language.")
+    session["dashboard_language"] = language
+    destination = request.args.get("next") or request.referrer or url_for("index")
+    parsed = urlparse(destination)
+    if parsed.netloc and parsed.netloc != request.host:
+        destination = url_for("index")
+    elif not destination.startswith("/"):
+        destination = url_for("index")
+    return redirect(destination)
+
+
 def _render(title, body, status=200):
-    language = "en"
-    if language not in {"en", "de"}:
-        language = "en"
+    language = _dashboard_language()
     body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
     title = _translate_dashboard(title, language)
-    selected_en = " selected" if language == "en" else ""
-    language_control = '<p class="muted language-switcher">🌐 Dashboard language: English (fixed)</p>'
+    current_path = html.escape(request.path + (("?" + request.query_string.decode("utf-8", "ignore")) if request.query_string else ""), quote=True)
+    language_control = (
+        '<div class="language-switcher" role="group" aria-label="Dashboard language">'
+        '<span>🌐 Language / Sprache:</span> '
+        '<a href="/language/de?next=' + current_path + '" lang="de" hreflang="de"' + (' aria-current="true"' if language == "de" else '') + '>🇩🇪 Deutsch</a> · '
+        '<a href="/language/en?next=' + current_path + '" lang="en" hreflang="en"' + (' aria-current="true"' if language == "en" else '') + '>🇬🇧 English</a></div>'
+    )
     body = language_control + body
     rendered_page = _page(title, body)
-    # Translate the complete rendered document, including the global navigation
-    # and page chrome, not only the page-specific content.
     rendered_page = _translate_dashboard(rendered_page, language)
-    rendered_page = rendered_page.replace('<html lang="en">', f'<html lang="{language}">', 1)
+    rendered_page = re.sub(r'<html lang="[^"]*">', f'<html lang="{language}">', rendered_page, count=1)
     response = make_response(rendered_page, status)
+    response.headers["Content-Language"] = language
+    response.headers["Vary"] = "Accept-Language, Cookie"
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
