@@ -140,15 +140,21 @@ def build_status_embed(guild, configured, server_map, error=None):
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
+    custom_message = str(configured.get("status_message", "") or "").strip()
+    if custom_message:
+        embed.description = (embed.description + "\n\n" + custom_message)[:4096]
     if not selected:
-        embed.description = "Noch keine Roblox-Server im Dashboard verbunden."
+        embed.description = "Noch keine Roblox-Server im Dashboard verbunden." + (("\n\n" + custom_message) if custom_message else "")
     for item in selected[:20]:
         job_id = str(item.get("job_id", ""))
-        stats = server_map.get(job_id)
-        name = str(item.get("name") or ("Server " + job_id[:8]))[:100]
+        server_key = str(item.get("server_key") or job_id)
+        stats = server_map.get(job_id) if job_id else None
+        name = str(item.get("name") or ("Server " + (job_id or server_key)[:8]))[:100]
         owner = str(item.get("owner") or "").strip()[:80]
         if stats is None:
-            value = "🔴 **Offline / nicht in der öffentlichen Liste gefunden**"
+            value = ("🔗 **Join-Link gespeichert · Live-Spielerdaten nicht verfügbar**"
+                     if item.get("join_link") and not job_id
+                     else "🔴 **Offline / nicht in der öffentlichen Liste gefunden**")
         else:
             playing = int(stats.get("playing", 0) or 0)
             maximum = int(stats.get("maxPlayers", 0) or 0)
@@ -179,7 +185,10 @@ def build_status_embed(guild, configured, server_map, error=None):
             value = "\n".join(parts)
         if owner and stats is None:
             value += f"\nBesitzer: {owner}"
-        embed.add_field(name=name, value=value, inline=False)
+        if item.get("join_link"):
+            join_link = str(item.get("join_link"))[:500]
+            value += f"\n[Roblox-Server beitreten]({join_link})"
+        embed.add_field(name=name, value=value[:1024], inline=False)
     if selected:
         embed.add_field(
             name="Zusammenfassung",
