@@ -4805,13 +4805,17 @@ async def _generate_ticket_ai_reply(channel, message, meta):
     if not api_key:
         return None
     try:
-        history = []
-        async for item in channel.history(limit=8, oldest_first=True):
+        recent_messages = []
+        async for item in channel.history(limit=8):
             if item.author.bot and item.author.id != bot.user.id:
                 continue
             content = (item.content or "").strip()
             if content:
-                history.append({"role": "model" if item.author.bot else "user", "parts": [{"text": content[:1200]}]})
+                recent_messages.append(item)
+        history = [
+            {"role": "model" if item.author.bot else "user", "parts": [{"text": (item.content or "").strip()[:1200]}]}
+            for item in reversed(recent_messages)
+        ]
         if not history or history[-1]["role"] != "user":
             return None
         prompt = (
@@ -4847,6 +4851,7 @@ async def _generate_ticket_ai_reply(channel, message, meta):
 
 
 _ticket_ai_last_reply = {}
+_ticket_quick_support_last_ping = {}
 
 
 async def on_message(message: discord.Message):
@@ -4863,9 +4868,8 @@ async def on_message(message: discord.Message):
             is_staff = is_support(message.author, ticket_meta, guild)
             if not is_staff and panel.get("quick_support_enabled", False) and staff_role:
                 now = time.monotonic()
-                if now - float(ticket_meta.get("_quick_support_last_ping_mono", 0) or 0) >= 300:
-                    ticket_meta["_quick_support_last_ping_mono"] = now
-                    save_json(DATA_FILE, data)
+                if now - _ticket_quick_support_last_ping.get(message.channel.id, 0) >= 300:
+                    _ticket_quick_support_last_ping[message.channel.id] = now
                     try:
                         await message.channel.send(
                             f"🔔 {staff_role.mention} — ein Mitglied wartet auf Unterstützung.",
