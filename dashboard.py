@@ -4774,6 +4774,9 @@ def guild_tickets(guild_id):
         category = guild.get_channel(category_id) if category_id else None
         support_role = guild.get_role(support_role_id) if support_role_id else None
         priority_role = guild.get_role(priority_role_id) if priority_role_id else None
+        effective_staff_role = support_role or (guild.get_role(int(cfg.get("support_role"))) if str(cfg.get("support_role") or "").isdigit() else None)
+        if quick_support_enabled and effective_staff_role is None:
+            abort(400, "Quick Support benötigt eine gültige Support-/Staff-Rolle. Wähle sie zuerst aus.")
         if priority_role_id and (priority_role is None or priority_role.is_default() or priority_role.managed):
             abort(400, "Bitte wähle eine gültige, normale Discord-Prioritätsrolle.")
         if not title:
