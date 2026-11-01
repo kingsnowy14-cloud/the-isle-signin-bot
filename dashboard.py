@@ -822,6 +822,7 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/ai">🤖 KI-Wissen</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/image-generator">🎨 KI-Bildgenerator</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium Servers</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
@@ -1236,6 +1237,12 @@ def _render(title, body, status=200):
     if language not in {"en", "de"}:
         language = "en"
     body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
+    guild_match = re.match(r"^/guild/(\\d+)", request.path)
+    if guild_match and _bot:
+        active_guild = _bot.get_guild(int(guild_match.group(1)))
+        if active_guild and active_guild.icon:
+            cursor_url = html.escape(active_guild.icon.url, quote=True)
+            body += '<style>*,*::before,*::after{cursor:url("' + cursor_url + '") 16 16,auto!important}</style>'
     title = _translate_dashboard(title, language)
     selected_en = " selected" if language == "en" else ""
     language_control = '<p class="muted language-switcher">🌐 Dashboard language: English (fixed)</p>'
@@ -5690,6 +5697,13 @@ def start_dashboard(bot, config, save_json, guild_config):
     except Exception as exc:
         print(f"[DASHBOARD] Voice support settings route could not be registered: {type(exc).__name__}: {exc}", flush=True)
     app.secret_key = _env("DASHBOARD_SECRET_KEY") or app.secret_key
+    try:
+        import image_generation
+        app.view_functions["dashboard_render"] = _render
+        image_generation.register(app, _authorized_guild, _csrf_ok, _csrf_field)
+        print("[DASHBOARD] AI image generator routes registered.", flush=True)
+    except Exception as exc:
+        print(f"[DASHBOARD] AI image generator route registration failed: {type(exc).__name__}: {exc}", flush=True)
     if not _env("DASHBOARD_SECRET_KEY"):
         print("[DASHBOARD] WARNING: DASHBOARD_SECRET_KEY is not set; sessions will reset on restart.", flush=True)
     port = int(os.getenv("PORT", "8080"))
