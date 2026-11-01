@@ -2595,8 +2595,8 @@ def guild_page(guild_id):
                         "automod_window_seconds": (3, 30, 8),
                         "automod_timeout_minutes": (1, 60, 2),
                         "xp_cooldown_seconds": (10, 600, 60),
-                        "xp_min": (1, 100, 5),
-                        "xp_max": (1, 100, 15),
+                        "xp_min": (0, 100, 5),
+                        "xp_max": (0, 100, 15),
                     }
                     for key, (minimum, maximum, default) in numeric_settings.items():
                         try:
