@@ -3650,10 +3650,10 @@ def guild_custom_bot(guild_id):
         + '<label>Publish profile card in Discord</label><select name="profile_channel_id">' + channel_options + '</select>'
         + '<label>Upload avatar from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp">'
         + '<label>Or use an avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
-        + ('<label><input type="checkbox" name="remove_avatar"> Remove uploaded avatar</label>' if avatar_file else '')
+        + ('<label><input type="checkbox" name="remove_avatar"> Remove uploaded avatar</label>' if avatar_file or avatar_url else '')
         + '<label>Upload banner from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="banner_file" accept="image/png,image/jpeg,image/gif,image/webp">'
         + '<label>Or use a banner image URL (HTTPS)</label><input type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
-        + ('<label><input type="checkbox" name="remove_banner"> Remove uploaded banner</label>' if banner_file else '')
+        + ('<label><input type="checkbox" name="remove_banner"> Remove uploaded banner</label>' if banner_file or banner_url else '')
         + '<label>Server profile bio (max. 190 characters)</label><textarea name="description" maxlength="190" rows="4" placeholder="Describe this server’s IronWolf setup...">' + html.escape(description) + '</textarea>'
         + '<p class="muted">Uploaded images are private to this server dashboard. Maximum file size: 5 MB per image. Discord bio limit: 190 characters.</p>'
         + '<button type="submit">Save Custom Bot Profile</button></form></section>'
