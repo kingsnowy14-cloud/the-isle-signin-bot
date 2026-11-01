@@ -5290,12 +5290,14 @@ class QuickSupportThreadView(discord.ui.View):
             return
 
         cfg = guild_config(guild.id)
-        staff_role_id = cfg.get("support_role") or cfg.get("quick_support_role_id")
-        staff_role = guild.get_role(int(staff_role_id)) if str(staff_role_id or "").isdigit() else None
+        configured_staff_role_ids = {
+            int(value) for value in (cfg.get("support_role"), cfg.get("quick_support_role_id"))
+            if str(value or "").isdigit()
+        }
         member_role_ids = {role.id for role in getattr(interaction.user, "roles", [])}
         is_staff = (
             interaction.user.guild_permissions.administrator
-            or (staff_role is not None and staff_role.id in member_role_ids)
+            or bool(configured_staff_role_ids & member_role_ids)
         )
         if not is_staff:
             await interaction.response.send_message("Nur das Support-Team kann diesen Thread erstellen.", ephemeral=True)
@@ -5480,6 +5482,41 @@ async def on_message(message: discord.Message):
                             print(f"[TICKET AI] Missing permission to reply in ticket channel {message.channel.id}.", flush=True)
                         except discord.HTTPException as send_error:
                             print(f"[TICKET AI] Could not send reply in ticket channel {message.channel.id}: {send_error}", flush=True)
+
+        # Public AI mode: answer in the exact channel selected in the dashboard.
+        # This is separate from ticket AI and never runs in the Quick Support channel.
+        ai_mode = str(cfg.get("ai_mode", "ticket") or "ticket").lower()
+        ai_channel_id = cfg.get("ai_channel_id")
+        is_selected_ai_channel = (
+            ai_mode in {"channel", "both"}
+            and str(ai_channel_id or "").isdigit()
+            and int(ai_channel_id) == message.channel.id
+        )
+        if (
+            is_selected_ai_channel
+            and not is_quick_support_channel
+            and not ticket_meta
+            and cfg.get("ai_enabled_global", True)
+            and guild_has_feature(cfg, "ticket")
+        ):
+            now = time.monotonic()
+            if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 5:
+                _ticket_ai_last_reply[message.channel.id] = now
+                try:
+                    async with message.channel.typing():
+                        answer = await _generate_ticket_ai_reply(message.channel, message, None)
+                    if answer:
+                        await message.reply(
+                            f"🤖 **IronWolf AI**\n{discord.utils.escape_mentions(answer)}",
+                            mention_author=False,
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
+                except discord.Forbidden:
+                    print(f"[CHANNEL AI] Missing permission to reply in selected AI channel {message.channel.id}.", flush=True)
+                except discord.HTTPException as send_error:
+                    print(f"[CHANNEL AI] Could not send reply in selected AI channel {message.channel.id}: {send_error}", flush=True)
+                except Exception as ai_error:
+                    print(f"[CHANNEL AI] Unexpected error in selected AI channel {message.channel.id}: {type(ai_error).__name__}: {ai_error}", flush=True)
 
         # Ping protection applies to configured protected roles or members.
         if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:
