@@ -4984,8 +4984,8 @@ def guild_tickets(guild_id):
         submitted_labels = [request.form.get(f"button{i}", "").strip() for i in range(1, 11)]
         if not any(submitted_labels):
             abort(400, "Mindestens ein Button-Label ist erforderlich.")
-        if not guild_has_feature(cfg, "ticket") and sum(bool(label) for label in submitted_labels) > 1:
-            abort(403, "Mehrere Ticket-Buttons sind Premium. Im Free-Plan ist ein Button pro Panel verfügbar.")
+        if not guild_has_feature(cfg, "ticket") and sum(bool(label) for label in submitted_labels) > 2:
+            abort(403, "Im Free-Plan sind bis zu zwei Ticket-Buttons pro Panel erlaubt.")
         if panel_key == "__new__" and not guild_has_feature(cfg, "ticket") and panels:
             abort(403, "Mehrere Ticket-Panels sind Premium. Im Free-Plan kannst du ein Panel mit einem Button verwenden.")
         if panel_key == "__new__":
@@ -5035,7 +5035,7 @@ def guild_tickets(guild_id):
             abort(400, "Der Titel darf nicht leer sein.")
         if not labels:
             abort(400, "Mindestens ein Button-Label ist erforderlich.")
-        if not guild_has_feature(cfg, "ticket") and len(labels) > 1:
+        if not guild_has_feature(cfg, "ticket") and len(labels) > 2:
             abort(403, "Mehrere Ticket-Optionen sind Premium. Im Free-Plan ist eine Option pro Panel verfügbar.")
         display_mode = request.form.get("display_mode", "buttons").strip().lower()
         if display_mode not in {"buttons", "select"}:
@@ -5190,7 +5190,7 @@ def guild_tickets(guild_id):
     body = ticket_metrics_html + (
         f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
         '<p class="muted">Bearbeite Titel, Description, Anfragearten, Ticket-Kategorie und Support role. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
-        '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support role, Claim/Freigeben und Schließen. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
+        '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support role, Claim/Freigeben und Schließen sowie bis zu zwei Anfrage-Buttons pro Panel. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
     body += (
@@ -5201,9 +5201,9 @@ def guild_tickets(guild_id):
         + '<label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket">'
         + '<label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea>'
         + '<label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">'
-        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80">' for i in range(2, 11)) + ''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><p class="muted">Zusätzliche Anfrage-Buttons und Dropdown-Optionen sind Premium.</p><input disabled placeholder="Button 2 (Premium)"></div>')
+        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80">' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80">' for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>')
         + (('<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Dropdown / mehrere Buttons</option></select></div>')
-        + '<p class="muted">Im Free-Plan ist eine Anfrageart als Button verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p>'
+        + '<p class="muted">Im Free-Plan sind bis zu zwei Anfrage-Buttons pro Panel verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p>'
         + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
         + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select>'
         + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select>'
@@ -5223,7 +5223,7 @@ def guild_tickets(guild_id):
         for i in range(1, 11):
             value = labels[i-1] if len(labels) >= i else ""
             option_description = option_descriptions[i-1] if len(option_descriptions) >= i else ""
-            if i > 1 and not guild_has_feature(cfg, "ticket"):
+            if i > 2 and not guild_has_feature(cfg, "ticket"):
                 button_fields += '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong>'
                 button_fields += f'<label>Button {i} (Premium)</label><input disabled type="text" value="{html.escape(str(value), quote=True)}">'
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description (Premium)</label><input disabled type="text" value="{html.escape(str(option_description), quote=True)}"></div></div>'
