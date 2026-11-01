@@ -136,24 +136,24 @@ class SecuritySuite(commands.Cog):
         if me is None:
             return False, "Could not load the bot member."
         if manage_roles and not me.guild_permissions.manage_roles:
-            return False, "Dem Bot fehlt **Rollen verwalten** (für Kanalrechte/Rollenänderungen)."
+            return False, "The bot is missing **Manage Roles** (required for channel permissions and role changes)."
         if manage_messages and not me.guild_permissions.manage_messages:
             return False, "Dem Bot fehlt **Nachrichten verwalten**."
         return True, ""
 
-    @app_commands.command(name="secure-log-setup", description="Setzt den zentralen Sicherheits-Logkanal")
+    @app_commands.command(name="secure-log-setup", description="Sets the central security log channel")
     @app_commands.guild_only()
     @is_admin()
-    async def log_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel):
+    async def log_setup(self, interaction: discord.Interaction, channel: discord.TextChannel):
         me = bot_member(interaction.guild)
         perms = kanal.permissions_for(me) if me else None
         if not perms or not perms.view_channel or not perms.send_messages:
-            await interaction.response.send_message("Der Bot benötigt im Logkanal die Rechte **Kanal ansehen** und **Nachrichten senden**.", ephemeral=True)
+            await interaction.response.send_message("The bot needs **View Channel** and **Send Messages** permissions in the log channel.", ephemeral=True)
             return
         cfg = guild_state(interaction.guild_id)
         cfg["log_channel_id"] = kanal.id
         save_guild_state(interaction.guild_id, cfg)
-        await interaction.response.send_message(f"🛡️ Sicherheitslogs werden in {kanal.mention} gespeichert.", ephemeral=True)
+        await interaction.response.send_message(f"🛡️ Security logs will be posted in {kanal.mention} gespeichert.", ephemeral=True)
 
     @app_commands.command(name="secure-lockdown", description="Sperrt Textkanäle für @everyone und merkt vorherige Rechte")
     @app_commands.guild_only()
@@ -258,11 +258,11 @@ class SecuritySuite(commands.Cog):
                 findings.append("Dem Bot fehlt Audit-Log ansehen; vorhandene Anti-Nuke-Erkennung kann eingeschränkt sein.")
         cfg = guild_state(guild.id)
         if not cfg.get("log_channel_id") or not guild.get_channel(cfg["log_channel_id"]):
-            findings.append("Kein gültiger Sicherheits-Logkanal konfiguriert (/secure-log-setup).")
+            findings.append("No valid security log channel is configured (/secure-log-setup).")
         if not cfg.get("verify_channel_id") or not cfg.get("verified_role_id"):
             findings.append("Verifizierung noch nicht konfiguriert (/secure-verify-setup).")
         if not cfg.get("scam_enabled"):
-            findings.append("Link-/Scam-Filter ist deaktiviert (/secure-scam-setup).")
+            findings.append("The link/scam filter is disabled (/secure-scam-setup).")
         embed = discord.Embed(title="🛡️ IronWolf Sicherheitsprüfung", color=discord.Color.orange() if findings else discord.Color.green(), timestamp=datetime.now(timezone.utc))
         embed.description = "\n".join(f"• {x}" for x in findings[:20]) if findings else "Keine der geprüften Fehlkonfigurationen gefunden. Dies ist keine vollständige Sicherheitsgarantie."
         embed.add_field(name="Rollen geprüft", value=str(len(guild.roles)))
@@ -273,7 +273,7 @@ class SecuritySuite(commands.Cog):
     @app_commands.command(name="secure-verify-setup", description="Konfiguriert Verifizierung und veröffentlicht einen Button")
     @app_commands.guild_only()
     @is_admin()
-    async def verify_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel, verified_rolle: discord.Role, unverified_rolle: discord.Role = None):
+    async def verify_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel, verified_role: discord.Role, unverified_role: discord.Role = None):
         guild = interaction.guild
         me = bot_member(guild)
         if not me or not me.guild_permissions.manage_roles:
@@ -294,15 +294,15 @@ class SecuritySuite(commands.Cog):
         cfg["verified_role_id"] = verified_rolle.id
         cfg["unverified_role_id"] = unverified_rolle.id if unverified_rolle else None
         save_guild_state(guild.id, cfg)
-        embed = discord.Embed(title="🛡️ Mitglieder-Verifizierung", description="Klicke auf **Jetzt verifizieren**, um die Verifizierungsrolle zu erhalten. Wenn du Probleme hast, kontaktiere das Team.", color=discord.Color.blurple())
+        embed = discord.Embed(title="🛡️ Member verification", description="Click **Verify now** to receive the verification role. If you have any issues, contact the team.", color=discord.Color.blurple())
         try:
             await kanal.send(embed=embed, view=VerifyButton())
         except discord.HTTPException:
-            await interaction.response.send_message("Konfiguration gespeichert, aber das Panel konnte nicht gesendet werden. Kanalrechte prüfen.", ephemeral=True)
+            await interaction.response.send_message("Configuration saved, but the panel could not be sent. Check the channel permissions.", ephemeral=True)
             return
-        await interaction.response.send_message(f"Verifizierung eingerichtet in {kanal.mention}.", ephemeral=True)
+        await interaction.response.send_message(f"Verification configured in {kanal.mention}.", ephemeral=True)
 
-    @app_commands.command(name="secure-scam-setup", description="Aktiviert Linkfilter und verwaltet gesperrte Domains")
+    @app_commands.command(name="secure-scam-setup", description="Enabled Link filter und verwaltet gesperrte Domains")
     @app_commands.guild_only()
     @is_admin()
     async def scam_setup(self, interaction: discord.Interaction, aktiv: bool, domains: str = ""):
@@ -312,14 +312,14 @@ class SecuritySuite(commands.Cog):
             domain = item.strip().lower().removeprefix("https://").removeprefix("http://").split("/")[0].strip(".")
             if domain:
                 if not re.fullmatch(r"[a-z0-9.-]{1,253}", domain) or ".." in domain:
-                    await interaction.response.send_message(f"Ungültige Domain: {item.strip()[:80]}", ephemeral=True)
+                    await interaction.response.send_message(f"Invalid domain: {item.strip()[:80]}", ephemeral=True)
                     return
                 parsed.append(domain)
         cfg["blocked_domains"] = sorted(set(parsed))
         cfg["scam_enabled"] = aktiv
         save_guild_state(interaction.guild_id, cfg)
         await interaction.response.send_message(
-            f"Linkfilter {'aktiviert' if aktiv else 'deaktiviert'}. Gesperrte Domains: {len(parsed)}. "
+            f"Link filter {'enabled' if aktiv else 'deenabled'}. Gesperrte Domains: {len(parsed)}. "
             "Discord-Einladungen werden bei aktivem Filter ebenfalls entfernt; Links sind für Administratoren und Mitglieder mit Nachrichten verwalten ausgenommen.",
             ephemeral=True
         )
@@ -332,9 +332,9 @@ class SecuritySuite(commands.Cog):
         cfg["alt_min_days"] = mindestalter_tage
         cfg["alt_alerts_enabled"] = aktiv
         save_guild_state(interaction.guild_id, cfg)
-        await interaction.response.send_message(f"Alt-Account-Warnungen {'aktiviert' if aktiv else 'deaktiviert'}; Warnschwelle: {mindestalter_tage} Tage. Junge Accounts werden nur markiert, nicht automatisch gekickt oder gebannt.", ephemeral=True)
+        await interaction.response.send_message(f"Alternate-account warnings {'enabled' if aktiv else 'deenabled'}; Warnschwelle: {mindestalter_tage} days. New accounts are flagged only; they are not automatically kicked or banned.", ephemeral=True)
 
-    @app_commands.command(name="secure-backup", description="Erstellt eine JSON-Sicherung der Serverstruktur und Berechtigungen")
+    @app_commands.command(name="secure-backup", description="Creates a JSON backup of the server structure and permissions")
     @app_commands.guild_only()
     @is_admin()
     async def backup(self, interaction: discord.Interaction):
@@ -374,7 +374,7 @@ class SecuritySuite(commands.Cog):
                 old.unlink()
             except OSError:
                 pass
-        await interaction.response.send_message(f"✅ Backup erstellt: **{path.name}** · {len(record['roles'])} Rollen · {len(record['channels'])} Kanäle. Gespeichert im DATA_DIR des Bots; es wurde nichts am Server verändert.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Backup created: **{path.name}** · {len(record['roles'])} roles · {len(record['channels'])} channels. Saved in the bot's DATA_DIR; no server changes were made.", ephemeral=True)
         await send_log(guild, f"💾 Backup erstellt von {interaction.user} ({interaction.user.id}): {path.name}")
 
     @app_commands.command(name="secure-backup-list", description="Listet die letzten Server-Backups")
@@ -437,13 +437,13 @@ class SecuritySuite(commands.Cog):
             return
         try:
             await message.delete()
-            await send_log(message.guild, f"🚫 Linkfilter: Nachricht von {message.author} ({message.author.id}) in #{message.channel} entfernt. Inhalt wurde nicht in Logs kopiert.")
+            await send_log(message.guild, f"🚫 Link filter: Nachricht von {message.author} ({message.author.id}) in #{message.channel} entfernt. Inhalt wurde nicht in Logs kopiert.")
             try:
-                await message.author.send(f"Dein Link in **{message.guild.name}** wurde durch den konfigurierten Linkfilter entfernt.")
+                await message.author.send(f"Your link in **{message.guild.name}** wurde durch den konfigurierten Link filter entfernt.")
             except discord.HTTPException:
                 pass
         except discord.Forbidden:
-            await send_log(message.guild, f"⚠️ Linkfilter erkannte einen gesperrten Link von {message.author} ({message.author.id}), konnte ihn aber nicht löschen. Dem Bot fehlt Nachrichten verwalten.")
+            await send_log(message.guild, f"⚠️ Link filter erkannte einen gesperrten Link von {message.author} ({message.author.id}), konnte ihn aber nicht löschen. Dem Bot fehlt Nachrichten verwalten.")
         except discord.HTTPException:
             pass
 
