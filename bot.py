@@ -4798,7 +4798,6 @@ async def honeypot_publish(interaction: discord.Interaction):
         await interaction.response.send_message("Die Nachricht konnte nicht gesendet werden. Bitte Kanalrechte prüfen.", ephemeral=True)
 
 
-@bot.event
 async def _generate_ticket_ai_reply(channel, message, meta):
     """Use Gemini's free API tier to draft a short answer for a Premium ticket."""
     api_key = os.getenv("GEMINI_API_KEY")
@@ -4854,6 +4853,7 @@ _ticket_ai_last_reply = {}
 _ticket_quick_support_last_ping = {}
 
 
+@bot.event
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
     if message.guild and not message.author.bot:
