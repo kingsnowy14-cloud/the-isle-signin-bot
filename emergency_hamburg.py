@@ -136,17 +136,16 @@ def build_status_embed(guild, configured, server_map, error=None):
     online = 0
     embed = discord.Embed(
         title="🚨 EMERGENCY HAMBURG",
-        description="**LIVE-SERVERÜBERSICHT**  ·  Öffentliche Roblox-Server\n"
-                    "Automatischer Statusbericht für diesen Discord-Server.",
+        description="**PRIVATE SERVER MONITOR**\nLive status and connection details for your selected server.",
         color=discord.Color.dark_teal(),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_author(name="IRONWOLF  /  SERVER MONITOR")
+    embed.set_author(name="IRONWOLF  •  EMERGENCY HAMBURG MONITOR")
     custom_message = str(configured.get("status_message", "") or "").strip()
     if custom_message:
-        embed.add_field(name="📢 Mitteilung", value=custom_message[:1024], inline=False)
+        embed.add_field(name="📢 SERVER MESSAGE", value=custom_message[:1024], inline=False)
     if not selected:
-        embed.description += "\n\nNoch keine Roblox-Server im Dashboard verbunden."
+        embed.description += "\n\nNo server connected yet. Add a private server ID in the IronWolf dashboard."
     for item in selected[:20]:
         job_id = str(item.get("job_id", ""))
         private_server_id = str(item.get("private_server_id", "")).strip()
@@ -155,10 +154,10 @@ def build_status_embed(guild, configured, server_map, error=None):
         name = str(item.get("name") or ("Privater Server " + (private_server_id or server_key)[:8]))[:100]
         owner = str(item.get("owner") or "").strip()[:80]
         if private_server_id:
-            value = ("🟡 **PRIVATE SERVER-ID GESPEICHERT**\n"
-                     "Die ID ist hinterlegt. Roblox stellt für diese private Server-ID hier keine öffentliche Live-Abfrage bereit.")
+            value = ("🟡 **PRIVATE SERVER ID SAVED**\n"
+                     "Roblox does not provide public live telemetry for this private server ID.")
         elif stats is None:
-            value = "🔴 **OFFLINE / NICHT GEFUNDEN**\nNicht in der öffentlichen Roblox-Serverliste gefunden."
+            value = "🔴 **OFFLINE / NOT FOUND**\nNot found in the public Roblox server list."
         else:
             playing = int(stats.get("playing", 0) or 0)
             maximum = int(stats.get("maxPlayers", 0) or 0)
@@ -175,33 +174,33 @@ def build_status_embed(guild, configured, server_map, error=None):
             status_label = ("🟡 LETZTER STATUS" if error else "🟢 ONLINE") if is_online else "🔴 OFFLINE"
             filled = min(10, round((playing / maximum) * 10)) if maximum > 0 else 0
             bar = "▰" * filled + "▱" * (10 - filled)
-            parts = [f"**{status_label}**", f"👥 **{playing} / {maximum} Spieler**", f"`{bar}`"]
+            parts = [f"**{status_label.replace('LETZTER STATUS', 'LAST KNOWN STATUS').replace('ONLINE', 'ONLINE').replace('OFFLINE', 'OFFLINE')}**", f"👥 **{playing} / {maximum} players**", f"`{bar}`"]
             if owner:
-                parts.append(f"👑 Besitzer: **{owner}**")
+                parts.append(f"👑 Owner: **{owner}**")
             if stats.get("ping") is not None:
                 try:
-                    parts.append(f"Ping: {round(float(stats['ping']))} ms")
+                    parts.append(f"📶 Ping: {round(float(stats['ping']))} ms")
                 except (TypeError, ValueError):
                     pass
             if stats.get("fps") is not None:
                 try:
-                    parts.append(f"FPS: {round(float(stats['fps']))}")
+                    parts.append(f"⚡ FPS: {round(float(stats['fps']))}")
                 except (TypeError, ValueError):
                     pass
             value = "\n".join(parts)
         if owner and stats is None:
-            value += f"\nBesitzer: {owner}"
+            value += f"\n👑 Owner: {owner}"
         if item.get("join_link"):
             join_link = str(item.get("join_link"))[:500]
             value += f"\n[Roblox-Server beitreten]({join_link})"
-        embed.add_field(name=f"🖥️  {name}", value=value[:1024], inline=False)
+        embed.add_field(name=f"🖥️ SERVER: {name}", value=value[:1024], inline=False)
     if selected:
-        embed.add_field(name="🟢 ONLINE", value=f"**{online} / {len(selected)}**", inline=True)
-        embed.add_field(name="👥 SPIELER GESAMT", value=f"**{total_players}**", inline=True)
-        embed.add_field(name="🎮 PLÄTZE", value=f"**{total_players} / {total_slots}**" if total_slots else "**—**", inline=True)
+        embed.add_field(name="🟢 ONLINE SERVERS", value=f"**{online} / {len(selected)}**", inline=True)
+        embed.add_field(name="👥 TOTAL PLAYERS", value=f"**{total_players}**", inline=True)
+        embed.add_field(name="🎮 PLAYER SLOTS", value=f"**{total_players} / {total_slots}**" if total_slots else "**—**", inline=True)
     if error:
-        embed.add_field(name="API-Hinweis", value="Die letzte Aktualisierung war nicht vollständig. Vorhandene Werte können veraltet sein.\n" + str(error)[:500], inline=False)
-    embed.set_footer(text="IRONWOLF  •  Aktualisierung alle 5 Minuten  •  /eh-refresh für Sofort-Update")
+        embed.add_field(name="⚠️ API NOTICE", value="The latest refresh was incomplete. Displayed values may be outdated.\n" + str(error)[:500], inline=False)
+    embed.set_footer(text="IRONWOLF  •  Updates every 5 minutes  •  /eh-refresh to update now")
     return embed
 
 
