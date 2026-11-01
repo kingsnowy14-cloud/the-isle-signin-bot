@@ -5029,12 +5029,12 @@ async def _generate_ticket_ai_reply(channel, message, meta):
             "contents": history,
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 180, "candidateCount": 1},
         }
-        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-3.8-flash").strip()
+        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite").strip()
         configured_model = configured_model.removeprefix("models/").strip("/")
         # Async HTTP avoids blocking the Discord event loop while Gemini generates.
         import aiohttp
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{configured_model}:generateContent"
-        timeout = aiohttp.ClientTimeout(total=35, connect=8, sock_read=30)
+        timeout = aiohttp.ClientTimeout(total=22, connect=6, sock_read=18)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, params={"key": api_key}, json=payload, headers={"Content-Type": "application/json"}) as response:
                 response_text = await response.text()
