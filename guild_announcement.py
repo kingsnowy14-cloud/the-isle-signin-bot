@@ -9,6 +9,7 @@ import discord
 from storage import data_path
 
 EXCLUDED_GUILD_IDS = {1561027077984227371}
+CHANNEL_OVERRIDES = {1558833054653489253: 1558836931905716386}
 LEDGER_PATH = data_path("ironwolf_mainserver_announcement_v1.json")
 _LOCK = asyncio.Lock()
 
@@ -59,6 +60,8 @@ def _announcement_channel(guild, bot_member):
 
     text_channels = list(guild.text_channels)
     preferred_names = {"general", "chat", "willkommen", "welcome", "community"}
+    excluded_names = {"warnings", "warning", "mod-log", "mod-logs", "logs", "audit-log", "audit-logs", "staff", "moderation"}
+    text_channels = [channel for channel in text_channels if channel.name.casefold() not in excluded_names]
     text_channels.sort(key=lambda channel: (
         0 if channel.name.casefold() in preferred_names else 1,
         channel.position,
@@ -86,17 +89,40 @@ async def send_mainserver_announcement(bot):
                 skipped_count += 1
                 continue
 
-            # Update the original one-time post in place; never send a second copy.
+            # Update in place unless an explicit channel override relocates the post.
             if guild_key in sent:
                 record = sent[guild_key]
+                override_id = CHANNEL_OVERRIDES.get(guild.id)
                 try:
-                    channel = guild.get_channel(int(record["channel_id"])) or await guild.fetch_channel(int(record["channel_id"]))
-                    message = await channel.fetch_message(int(record["message_id"]))
-                    await message.edit(
-                        content=ANNOUNCEMENT,
-                        allowed_mentions=discord.AllowedMentions.none(),
-                    )
-                    print(f"[MAINSERVER ANNOUNCEMENT] Updated existing message in guild {guild.id} ({guild.name}); message {record['message_id']}.", flush=True)
+                    if override_id and int(record["channel_id"]) != override_id:
+                        target = guild.get_channel(override_id) or await guild.fetch_channel(override_id)
+                        if not isinstance(target, discord.TextChannel) or target.guild.id != guild.id:
+                            raise ValueError("configured override is not a text channel in this guild")
+                        bot_member = guild.get_member(bot.user.id) if bot.user else None
+                        if bot_member is None:
+                            bot_member = await guild.fetch_member(bot.user.id)
+                        perms = target.permissions_for(bot_member)
+                        if not (perms.view_channel and perms.send_messages):
+                            raise ValueError("bot lacks permission to view or send in override channel")
+                        new_message = await target.send(ANNOUNCEMENT, allowed_mentions=discord.AllowedMentions.none())
+                        try:
+                            old_channel = guild.get_channel(int(record["channel_id"])) or await guild.fetch_channel(int(record["channel_id"]))
+                            old_message = await old_channel.fetch_message(int(record["message_id"]))
+                            await old_message.delete()
+                        except (discord.Forbidden, discord.NotFound, discord.HTTPException) as delete_exc:
+                            print(f"[MAINSERVER ANNOUNCEMENT] Relocated in guild {guild.id}, but could not remove old post: {type(delete_exc).__name__}: {delete_exc}", flush=True)
+                        sent[guild_key] = {
+                            "channel_id": target.id,
+                            "message_id": new_message.id,
+                            "sent_at": new_message.created_at.isoformat(),
+                        }
+                        _write_ledger(ledger)
+                        print(f"[MAINSERVER ANNOUNCEMENT] Relocated post in guild {guild.id} ({guild.name}) to #{target.name}; message {new_message.id}.", flush=True)
+                    else:
+                        channel = guild.get_channel(int(record["channel_id"])) or await guild.fetch_channel(int(record["channel_id"]))
+                        message = await channel.fetch_message(int(record["message_id"]))
+                        await message.edit(content=ANNOUNCEMENT, allowed_mentions=discord.AllowedMentions.none())
+                        print(f"[MAINSERVER ANNOUNCEMENT] Updated existing message in guild {guild.id} ({guild.name}); message {record['message_id']}.", flush=True)
                 except (discord.Forbidden, discord.NotFound, discord.HTTPException, KeyError, TypeError, ValueError) as exc:
                     print(f"[MAINSERVER ANNOUNCEMENT] Could not update existing message in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
                 skipped_count += 1
