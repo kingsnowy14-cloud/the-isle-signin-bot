@@ -159,13 +159,13 @@ def image_generator(guild_id):
         else:
             try:
                 image_bytes = _generate(prompt, size)
-                # Charge only after successful generation. This is an internal token price,
-                # shown before generation and identical to the amount deducted afterwards.
-                if not _charge(guild.id, user_id, cost):
-                    abort(409, "Dein Token-Guthaben hat sich geändert. Bitte versuche es erneut.")
                 filename = secrets.token_urlsafe(24) + ".png"
                 target = _OUTPUT_DIR / filename
                 target.write_bytes(image_bytes)
+                # Charge only after successful generation and durable image storage.
+                if not _charge(guild.id, user_id, cost):
+                    target.unlink(missing_ok=True)
+                    abort(409, "Dein Token-Guthaben hat sich geändert. Bitte versuche es erneut.")
                 image_url = url_for("image_generation.image_file", filename=filename)
                 message = f"Bild erfolgreich erstellt. Abgezogen: {cost} Tokens."
             except requests.RequestException as exc:
