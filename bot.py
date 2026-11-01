@@ -5020,9 +5020,9 @@ async def _generate_ticket_ai_reply(channel, message, meta):
             "contents": history,
             "generationConfig": {"temperature": 0.25, "maxOutputTokens": 350},
         }
-        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
+        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-3.8-flash").strip()
         configured_model = configured_model.removeprefix("models/").strip("/")
-        models_to_try = list(dict.fromkeys([configured_model, "gemini-2.5-flash", "gemini-2.0-flash"]))
+        models_to_try = list(dict.fromkeys(["gemini-3.8-flash", configured_model, "gemini-2.5-flash"]))
         result = None
         last_error = None
         for model_name in models_to_try:
