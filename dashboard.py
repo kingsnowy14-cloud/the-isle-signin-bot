@@ -6408,7 +6408,11 @@ def guild_emergency_hamburg(guild_id):
             '<input type="hidden" name="job_id" value="' + html.escape(server_key, quote=True) + '">'
             '<button class="danger secondary" type="submit">Trennen</button></form></div>'
         )
-    connected_html = "".join(connected_cards) if connected_cards else '<p class="muted">Noch keine Roblox-Server verbunden. Wähle unten einen öffentlichen Server aus.</p>'
+    connected_html = "".join(connected_cards) if connected_cards else '<p class="muted">No private servers connected yet. Add your private server ID below.</p>'
+    if connected_cards:
+        connected_html = connected_html.replace('<div class="row">', '<div class="row" data-eh-server="')
+        # Rebuild cards below with searchable text via a lightweight wrapper around each card.
+        connected_html = "".join('<div data-eh-server="' + html.escape((str(item.get("name","")) + " " + str(item.get("owner","")) + " " + str(item.get("private_server_id",""))).lower(), quote=True) + '">' + card + '</div>' for item, card in zip(servers, connected_cards))
     options_html = "".join(server_options) or '<option value="">Keine Server auf diesem Abschnitt gefunden</option>'
     if not server_options and not notice:
         notice += '<p class="muted">Auf diesem Abschnitt wurden keine auswählbaren Server gefunden. Nutze „Weitere Server laden“, falls Roblox noch eine nächste Seite bereitstellt.</p>'
@@ -6427,40 +6431,40 @@ def guild_emergency_hamburg(guild_id):
     )
     body = (
         '<section class="card"><h1>🚨 Emergency Hamburg · Roblox Monitor</h1>'
-        '<p>Verbinde private Emergency-Hamburg-Server über ihre private Server-ID. Jede Discord-Guild besitzt eine vollständig getrennte Auswahl und Statusnachricht.</p>'
+        '<p>Connect your private Emergency Hamburg server using its private server ID. Each Discord server has its own isolated monitor and status message.</p>'
         + notice +
         '<div class="grid"><div class="stat"><strong>' + str(len(servers)) + ' / ' + str(limit) +
         '</strong><small>Verbundene Roblox-Server · Planlimit</small></div><div class="stat"><strong>5 Min.</strong><small>Aktualisierungsintervall</small></div></div>'
-        '<h2>Verbundene Roblox-Server</h2>' + connected_html +
+        '<h2>Connected private servers</h2>' + (('<label>Filter connected servers<input id="eh-server-filter" type="search" placeholder="Search by server name, owner or ID"></label>') if connected_cards else '') + connected_html +
         '<form method="post" class="card">' + _csrf_field() +
         '<input type="hidden" name="action" value="add_server">'
         '<input type="hidden" name="cursor" value="' + html.escape(page_cursor, quote=True) + '">'
-        '<h2>＋ Privaten Server per ID verbinden</h2>'
-        '<label>Private Emergency-Hamburg-Server-ID<input name="private_server_id" maxlength="128" pattern="[A-Za-z0-9_-]+" placeholder="ID aus dem Spiel (server getid)" required></label>'
-        '<label>Servername (optional)<input name="display_name" maxlength="80" placeholder="z. B. IronWolf Roleplay"></label>'
-        '<label>Serverbesitzer (optional)<input name="owner_name" maxlength="80" placeholder="Roblox-Name des Besitzers"></label>'
-        '<button type="submit"' + (' disabled' if len(servers) >= limit else '') + '>Privaten Server verbinden</button>'
-        '<p class="muted">Es wird ausschließlich die private Server-ID gespeichert. Eine vollständige globale Suche aller privaten Server ist nicht verfügbar. Die ID allein liefert keine Live-Spielerzahlen, Teamverteilung oder Paketinformationen.</p></form></section>'
+        '<h2>＋ Connect private server by ID</h2>'
+        '<label>Private Emergency Hamburg server ID<input name="private_server_id" maxlength="128" pattern="[A-Za-z0-9_-]+" placeholder="ID from the in-game server getid command" required></label>'
+        '<label>Server name (optional)<input name="display_name" maxlength="80" placeholder="e.g. IronWolf Roleplay"></label>'
+        '<label>Server owner (optional)<input name="owner_name" maxlength="80" placeholder="Roblox username"></label>'
+        '<button type="submit"' + (' disabled' if len(servers) >= limit else '') + '>Connect private server</button>'
+        '<p class="muted">Only the private server ID is stored. Roblox does not expose a complete public directory of all private servers, so a global private-server finder or filters for language and packages cannot be populated reliably. The ID alone does not provide live player counts, team breakdowns or package information.</p></form></section>'
         '<section class="card"><h2>⚙️ Statusnachricht & Berechtigungen</h2>'
         '<form method="post">' + _csrf_field() +
         '<input type="hidden" name="action" value="save_settings">'
-        '<label>Statuskanal<select name="channel_id" required>' + channels_html + '</select></label>'
+        '<label>Status channel<select name="channel_id" required>' + channels_html + '</select></label>'
         '<label>Rollen mit Zugriff auf /eh-status und /eh-refresh <small>Administrator und Serverbesitzer haben immer Zugriff.</small>'
         '<select name="allowed_role_ids" multiple size="6">' + roles_html + '</select></label>'
         '<label>Online ab mindestens Spielern<input type="number" name="online_min_players" min="0" max="1000" value="' + str(int(monitor.get("online_min_players", 1) or 0)) + '" required></label>'
         '<label>Offline bei höchstens Spielern<input type="number" name="offline_max_players" min="0" max="1000" value="' + str(int(monitor.get("offline_max_players", 0) or 0)) + '" required></label>'
-        '<label>Eigene Nachricht im Status-Embed (optional)<textarea name="status_message" maxlength="1000" rows="4" placeholder="z. B. Willkommen! Serverregeln beachten.">' + html.escape(str(monitor.get("status_message", "") or "")) + '</textarea></label>'
+        '<label>Custom message in status embed (optional)<textarea name="status_message" maxlength="1000" rows="4" placeholder="z. B. Willkommen! Serverregeln beachten.">' + html.escape(str(monitor.get("status_message", "") or "")) + '</textarea></label>'
         '<p class="muted">Zwischen beiden Werten bleibt der vorherige Status bestehen. Beispiel: Online ab 5, Offline bei 1 oder weniger. So wechselt der Status bei schwankender Spielerzahl nicht ständig.</p>'
-        '<label><input type="checkbox" name="enabled" value="on"' + enabled_checked + '> Automatische Statusnachricht aktivieren</label>'
+        '<label><input type="checkbox" name="enabled" value="on"' + enabled_checked + '> Enable automatic status message</label>'
         '<button type="submit">💾 Einstellungen speichern & sofort aktualisieren</button></form>'
         + status_message +
         '<form method="post">' + _csrf_field() +
         '<input type="hidden" name="action" value="reset_message">'
         '<button class="secondary" type="submit">Statusnachricht neu erstellen</button></form></section>'
-        '<section class="card"><h2>ℹ️ Daten & Grenzen</h2>'
-        '<ul><li>Private Server-IDs identifizieren einen privaten Server, stellen aber keine Live-Telemetrie-Schnittstelle dar.</li>'
-        '<li>Roblox stellt keine vollständige öffentliche Liste aller privaten Emergency-Hamburg-Server mit Sprache, Namen und aktivierten Paketen bereit.</li>'
-        '<li>Spielerzahlen, Teammitglieder, Online-Status und Paketangaben können nur angezeigt werden, wenn eine offizielle Datenquelle diese Werte bereitstellt.</li></ul>'
+        '<section class="card"><h2>ℹ️ Data availability & limitations</h2>'
+        '<ul><li>Private server IDs identify a private server, but are not a live telemetry interface.</li>'
+        '<li>Roblox does not provide a complete public directory of all private Emergency Hamburg servers with language, names and enabled packages.</li>'
+        '<li>Player counts, team membership, online status and package details can only be displayed when an official data source provides those values.</li></ul>'
         '</section>'
     )
     return _page("Emergency Hamburg Monitor", body)
