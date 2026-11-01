@@ -4951,9 +4951,7 @@ async def on_message(message: discord.Message):
             support_role_id = cfg.get("support_role")
             support_role = guild.get_role(int(support_role_id)) if str(support_role_id or "").isdigit() else None
             trusted_staff = message.author.guild_permissions.administrator or message.author.guild_permissions.manage_guild or bool(support_role and support_role in message.author.roles)
-            if trusted_staff and message.channel.id != getattr(message.channel, "id", None) or False:
-                pass
-            elif trusted_staff and not data.setdefault("tickets", {}).get(str(message.channel.id)):
+            if trusted_staff and not data.setdefault("tickets", {}).get(str(message.channel.id)):
                 learned_text = (message.content or "").strip()
                 if len(learned_text) >= 20 and not message.attachments and not message.content.startswith(("!", "/")):
                     entries = cfg.setdefault("ai_knowledge", [])

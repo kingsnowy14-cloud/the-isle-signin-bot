@@ -4701,9 +4701,10 @@ def guild_ai_knowledge(guild_id):
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
-        cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
-        cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         action = request.form.get("action", "save")
+        if action == "save":
+            cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
+            cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         entries = cfg.setdefault("ai_knowledge", [])
         if not isinstance(entries, list):
             entries = cfg["ai_knowledge"] = []
