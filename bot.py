@@ -1349,6 +1349,34 @@ class TicketControlView(discord.ui.View):
             return
 
         previous_claimer = meta.get("claimed_by")
+        # Capture the resolved conversation before releasing the ticket so the AI
+        # can reuse the support team's explanation in future replies.
+        try:
+            cfg = guild_config(interaction.guild_id)
+            if cfg.get("ai_learning_enabled", False):
+                transcript = []
+                async for item in interaction.channel.history(limit=60, oldest_first=True):
+                    if item.author.bot and item.author.id != bot.user.id:
+                        continue
+                    text = (item.content or "").strip()
+                    if text:
+                        label = "Staff" if is_support(item.author, meta, interaction.guild) else "Member"
+                        transcript.append(f"{label}: {text[:500]}")
+                if transcript:
+                    entries = cfg.setdefault("ai_knowledge", [])
+                    if not isinstance(entries, list):
+                        entries = cfg["ai_knowledge"] = []
+                    knowledge = "Resolved ticket conversation (category: " + str(meta.get("label") or "Support")[:80] + "):\n" + "\n".join(transcript)
+                    entries.append({
+                        "text": knowledge[:7000],
+                        "source": f"Resolved ticket #{meta.get('ticket_number') or interaction.channel.name}",
+                        "author_id": str(interaction.user.id),
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    del entries[:-80]
+                    save_json(CONFIG_FILE, config)
+        except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
+            print(f"[TICKET AI] Could not learn from released ticket {interaction.channel_id}: {type(exc).__name__}: {exc}", flush=True)
         meta["claimed_by"] = None
         save_json(DATA_FILE, data)
         try:
@@ -4923,8 +4951,8 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         cfg = guild_config(guild_id) if guild_id else {}
         saved_knowledge = cfg.get("ai_knowledge", [])
         knowledge_text = "\\n".join(
-            str(item.get("text", ""))[:700] if isinstance(item, dict) else str(item)[:700]
-            for item in saved_knowledge[-40:]
+            str(item.get("text", ""))[:1800] if isinstance(item, dict) else str(item)[:1800]
+            for item in saved_knowledge[-12:]
         ) if isinstance(saved_knowledge, list) else ""
         custom_instructions = str(cfg.get("ai_custom_instructions", "")).strip()[:2000]
         prompt = (
@@ -5043,6 +5071,7 @@ async def on_message(message: discord.Message):
                 not is_staff and cfg.get("ai_enabled_global", True)
                 and cfg.get("ai_mode", "ticket") in {"ticket", "both"}
                 and panel.get("ai_support_enabled", False)
+                and not ticket_meta.get("claimed_by")
                 and guild_has_feature(cfg, "ticket") and os.getenv("GEMINI_API_KEY")
             ):
                 now = time.monotonic()
