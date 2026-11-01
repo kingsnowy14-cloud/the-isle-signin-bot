@@ -6355,8 +6355,18 @@ def guild_emergency_hamburg(guild_id):
         abort(400, "Unbekannte Aktion.")
 
     monitor = load_monitor_config().get(str(guild.id), monitor)
-    servers = monitor.get("servers", [])
-    connected_ids = {item.get("job_id") for item in servers}
+    all_servers = monitor.get("servers", [])
+    connected_ids = {item.get("job_id") for item in all_servers}
+    server_filter = str(request.args.get("server_filter", "")).strip()[:100]
+    filter_query = server_filter.casefold()
+    servers = [
+        item for item in all_servers
+        if not filter_query or filter_query in " ".join((
+            str(item.get("name", "")), str(item.get("owner", "")),
+            str(item.get("private_server_id", "")), str(item.get("job_id", "")),
+            str(item.get("server_key", "")),
+        )).casefold()
+    ]
     server_options = []
     for item in available_servers:
         job_id = str(item.get("id", ""))
@@ -6399,20 +6409,21 @@ def guild_emergency_hamburg(guild_id):
         job_id = str(item.get("job_id", ""))
         private_server_id = str(item.get("private_server_id", ""))
         server_key = str(item.get("server_key") or private_server_id or job_id)
-        name = html.escape(str(item.get("name") or ("Emergency Hamburg · " + (private_server_id or job_id or "Privatserver")[:8])))
+        raw_name = str(item.get("name") or ("Emergency Hamburg · " + (private_server_id or job_id or "Privatserver")[:8]))
+        owner = str(item.get("owner", ""))
         detail = ("Private Server-ID: " + private_server_id) if private_server_id else ("Job ID: " + job_id)
         connected_cards.append(
-            '<div class="row"><div><strong>' + name + '</strong><br><small>' +
-            html.escape(detail) + '</small></div><form method="post">' + _csrf_field() +
+            '<div class="row"><div><strong>' + html.escape(raw_name) + '</strong><br><small>' +
+            html.escape(("Owner: " + owner + " · ") if owner else "") + html.escape(detail) +
+            '</small></div><form method="post">' + _csrf_field() +
             '<input type="hidden" name="action" value="remove_server">'
             '<input type="hidden" name="job_id" value="' + html.escape(server_key, quote=True) + '">'
-            '<button class="danger secondary" type="submit">Trennen</button></form></div>'
+            '<button class="danger secondary" type="submit">Disconnect</button></form></div>'
         )
-    connected_html = "".join(connected_cards) if connected_cards else '<p class="muted">No private servers connected yet. Add your private server ID below.</p>'
-    if connected_cards:
-        connected_html = connected_html.replace('<div class="row">', '<div class="row" data-eh-server="')
-        # Rebuild cards below with searchable text via a lightweight wrapper around each card.
-        connected_html = "".join('<div data-eh-server="' + html.escape((str(item.get("name","")) + " " + str(item.get("owner","")) + " " + str(item.get("private_server_id",""))).lower(), quote=True) + '">' + card + '</div>' for item, card in zip(servers, connected_cards))
+    connected_html = "".join(connected_cards) if connected_cards else (
+        '<p class="muted">No matching connected servers found.</p>' if server_filter
+        else '<p class="muted">No private servers connected yet. Add your private server ID below.</p>'
+    )
     options_html = "".join(server_options) or '<option value="">Keine Server auf diesem Abschnitt gefunden</option>'
     if not server_options and not notice:
         notice += '<p class="muted">No selectable public servers found on this page. Use “Load more servers” if Roblox provides another page.</p>'
@@ -6433,9 +6444,12 @@ def guild_emergency_hamburg(guild_id):
         '<section class="card"><h1>🚨 Emergency Hamburg · Roblox Monitor</h1>'
         '<p>Connect your private Emergency Hamburg server using its private server ID. Each Discord server has its own isolated monitor and status message.</p>'
         + notice +
-        '<div class="grid"><div class="stat"><strong>' + str(len(servers)) + ' / ' + str(limit) +
+        '<div class="grid"><div class="stat"><strong>' + str(len(all_servers)) + ' / ' + str(limit) +
         '</strong><small>Verbundene Roblox-Server · Planlimit</small></div><div class="stat"><strong>5 Min.</strong><small>Aktualisierungsintervall</small></div></div>'
-        '<h2>Connected private servers</h2>' + (('<label>Filter connected servers<input id="eh-server-filter" type="search" placeholder="Search by server name, owner or ID"></label>') if connected_cards else '') + connected_html +
+        '<h2>Connected private servers</h2>' +
+        ('<form method="get" class="row"><label style="flex:1">Find your server<input type="search" name="server_filter" value="' + html.escape(server_filter, quote=True) + '" placeholder="Server name, owner, private ID or Job ID"></label><button type="submit">Search</button>' +
+         ('<a class="button secondary" href="' + html.escape(url_for("guild_emergency_hamburg", guild_id=guild.id), quote=True) + '">Clear</a>' if server_filter else '') + '</form>' if all_servers else '') +
+        ('<p class="muted">' + str(len(servers)) + ' of ' + str(len(all_servers)) + ' servers shown</p>' if all_servers else '') + connected_html +
         '<form method="post" class="card">' + _csrf_field() +
         '<input type="hidden" name="action" value="add_server">'
         '<input type="hidden" name="cursor" value="' + html.escape(page_cursor, quote=True) + '">'
