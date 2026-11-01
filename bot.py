@@ -4970,7 +4970,7 @@ async def _generate_ticket_ai_reply(channel, message, meta):
     try:
         recent_messages = []
         try:
-            async for item in channel.history(limit=8, oldest_first=False):
+            async for item in channel.history(limit=20, oldest_first=False):
                 if item.author.bot and item.author.id != bot.user.id:
                     continue
                 if (item.content or "").strip():
@@ -6965,6 +6965,9 @@ class ServerLogs(commands.Cog):
     async def on_message_delete(self, message):
         if message.guild is None or (message.author and message.author.bot):
             return
+        # Ticket conversation content is private support context, not a dashboard/server log.
+        if str(message.channel.id) in data.setdefault("tickets", {}):
+            return
         author = f"{message.author} · ID {message.author.id}" if message.author else "Unknown"
         content = discord.utils.escape_mentions(message.content or "[Text unavailable in cache]")
         actor = None
@@ -6989,6 +6992,9 @@ class ServerLogs(commands.Cog):
         if guild is None:
             return
         channel = messages[0].channel
+        # Never copy ticket conversation activity into the dashboard/server logs.
+        if str(channel.id) in data.setdefault("tickets", {}):
+            return
         actor = await self.audit_actor(guild, discord.AuditLogAction.message_bulk_delete, channel_id=channel.id)
         await self.log(
             guild, "Multiple messages deleted",
@@ -6999,6 +7005,9 @@ class ServerLogs(commands.Cog):
     @commands.Cog.listener()
     async def on_message_edit(self, before, after):
         if after.guild is None or (after.author and after.author.bot) or before.content == after.content:
+            return
+        # Ticket conversation content is private support context, not a dashboard/server log.
+        if str(after.channel.id) in data.setdefault("tickets", {}):
             return
         old = discord.utils.escape_mentions(before.content or "[empty/unavailable]")
         new = discord.utils.escape_mentions(after.content or "[empty/unavailable]")
