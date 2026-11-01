@@ -133,7 +133,7 @@ def _generate(prompt, size):
         raise RuntimeError(f"Cloudflare-Fehler HTTP {response.status_code}. Prüfe API-Token, Account-ID und Workers-AI-Kontingent.")
 
     content_type = (response.headers.get("content-type") or "").lower()
-    if "image/" in content_type or response.content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if "image/" in content_type or response.content.startswith(b"\x89PNG\r\n\x1a\n"):
         image_bytes = response.content
     else:
         try:
@@ -156,7 +156,7 @@ def _generate(prompt, size):
         except (ValueError, binascii.Error) as exc:
             raise RuntimeError("Die Bildantwort von Cloudflare war ungültig.") from exc
 
-    if not image_bytes.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         raise RuntimeError("Cloudflare hat kein gültiges PNG-Bild geliefert.")
     return image_bytes
 
