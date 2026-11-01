@@ -12,26 +12,26 @@ EXCLUDED_GUILD_IDS = {1561027077984227371}
 LEDGER_PATH = data_path("ironwolf_mainserver_announcement_v1.json")
 _LOCK = asyncio.Lock()
 
-ANNOUNCEMENT = """# 🐺 Willkommen bei IronWolf – Unser neuer Discord-Mainserver!
+ANNOUNCEMENT = """# 🐺 Einmalige Information von IronWolf – Neuer Discord-Mainserver
 
-Hallo liebe IronWolf-Nutzer,
+Hallo liebe IronWolf-Community,
 
-wir freuen uns, euch mitzuteilen, dass IronWolf ab sofort einen neuen **Discord-Mainserver** hat! Ihr seid herzlich eingeladen, unserem neuen Server beizutreten und Teil unserer Community zu werden.
+keine Sorge: **Diese Nachricht ist eine einmalige Ankündigung und kein Raid, kein Nuke und keine Spam-Aktion.** Unser IronWolf-Bot sendet diese Information pro Server nur ein einziges Mal.
 
-👉 **Hier geht’s zum neuen Discord-Mainserver:**
+Wir möchten euch lediglich darüber informieren, dass IronWolf ab sofort einen neuen **Discord-Mainserver** hat. Ihr seid herzlich eingeladen, unserer Community beizutreten:
+
+👉 **Neuer Discord-Mainserver:**  
 https://discord.gg/KDKs5WPgaC
 
 **💬 Hilfe, Support & Bugs**
 
-Solltet ihr Fragen oder Probleme mit IronWolf haben oder Fehler (Bugs) entdecken, zögert bitte nicht, uns Bescheid zu geben. Erstellt bei Bedarf einfach ein Ticket – unser Team hilft euch gerne weiter!
+Bei Fragen, Problemen oder gefundenen Fehlern könnt ihr jederzeit ein Ticket auf unserem Mainserver erstellen. Unser Team hilft euch gerne weiter.
 
-**🤝 Unser Angebot für andere Server**
+**🤝 Zusammenarbeit mit anderen Servern**
 
-Ihr betreibt selbst einen Discord-Server? Dann haben wir ein Angebot für euch:
+Ihr betreibt selbst einen Discord-Server? Gerne könnt ihr unseren IronWolf-Servertext in einem eigenen Kanal oder Forum veröffentlichen. Im Gegenzug stellen wir euren Server ebenfalls in unserem Forum-Kanal vor.
 
-Veröffentlicht unseren IronWolf-Servertext in einem eigenen Kanal oder Forum auf eurem Server. Im Gegenzug stellen wir euren Server ebenfalls in unserem Forum-Kanal vor!
-
-Wir freuen uns auf euren Besuch und auf eine gute Zusammenarbeit!
+Vielen Dank für euer Verständnis und eure Unterstützung!
 
 **Euer IronWolf-Team 🐺**"""
 
@@ -82,7 +82,23 @@ async def send_mainserver_announcement(bot):
 
         for guild in list(bot.guilds):
             guild_key = str(guild.id)
-            if guild.id in EXCLUDED_GUILD_IDS or guild_key in sent:
+            if guild.id in EXCLUDED_GUILD_IDS:
+                skipped_count += 1
+                continue
+
+            # Update the original one-time post in place; never send a second copy.
+            if guild_key in sent:
+                record = sent[guild_key]
+                try:
+                    channel = guild.get_channel(int(record["channel_id"])) or await guild.fetch_channel(int(record["channel_id"]))
+                    message = await channel.fetch_message(int(record["message_id"]))
+                    await message.edit(
+                        content=ANNOUNCEMENT,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                    print(f"[MAINSERVER ANNOUNCEMENT] Updated existing message in guild {guild.id} ({guild.name}); message {record['message_id']}.", flush=True)
+                except (discord.Forbidden, discord.NotFound, discord.HTTPException, KeyError, TypeError, ValueError) as exc:
+                    print(f"[MAINSERVER ANNOUNCEMENT] Could not update existing message in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
                 skipped_count += 1
                 continue
 
