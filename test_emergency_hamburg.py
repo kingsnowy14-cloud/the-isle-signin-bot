@@ -67,6 +67,22 @@ class EmergencyHamburgTests(unittest.TestCase):
         )
         self.assertIn("🔴 Offline", offline_embed.fields[0].value)
 
+    def test_join_link_and_optional_status_message_are_in_embed(self):
+        guild = Mock()
+        settings = {
+            "servers": [{
+                "job_id": "",
+                "server_key": "link-abc",
+                "name": "Privatserver",
+                "join_link": "https://www.roblox.com/share?code=abc&type=Server",
+            }],
+            "status_message": "Bitte Regeln beachten!",
+        }
+        embed = emergency_hamburg.build_status_embed(guild, settings, {})
+        self.assertIn("Bitte Regeln beachten!", embed.description)
+        self.assertIn("Live-Spielerdaten nicht verfügbar", embed.fields[0].value)
+        self.assertIn("Roblox-Server beitreten", embed.fields[0].value)
+
     def test_server_owner_is_displayed(self):
         guild = Mock()
         settings = {"servers": [{"job_id": "job-1", "name": "Testserver", "owner": "RobloxOwner"}]}
