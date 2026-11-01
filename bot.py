@@ -1179,11 +1179,16 @@ class TicketCreateModal(discord.ui.Modal):
         await channel.send(embed=embed, view=TicketControlView())
         # Send an immediate English welcome when the ticket opens; AI replies later
         # follow the language used by the member in their messages.
+        staff_ping = f"{support_role.mention} " if support_role else ""
         await channel.send(
-            f"👋 Welcome, {interaction.user.mention}! Thanks for contacting support. "
+            f"{staff_ping}👋 Welcome, {interaction.user.mention}! Thanks for contacting support. "
             "Please describe your issue and include any relevant details. "
             "IronWolf AI will try to help quickly, and our support team can step in if needed.",
-            allowed_mentions=discord.AllowedMentions(users=[interaction.user], roles=False, everyone=False),
+            allowed_mentions=discord.AllowedMentions(
+                users=[interaction.user],
+                roles=[support_role] if support_role else [],
+                everyone=False,
+            ),
         )
         _ticket_creations_in_progress.discard(creation_key)
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
