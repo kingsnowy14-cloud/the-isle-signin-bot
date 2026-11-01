@@ -26,7 +26,6 @@ from datetime import datetime, timezone, timedelta
 from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
-from ai_support import is_question_message
 
 # Install:
 # discord.py>=2.4.0,<3.0.0
@@ -5237,7 +5236,7 @@ async def _generate_ticket_ai_reply(channel, message, meta, initial_reason=None,
             "contents": history,
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": 180, "candidateCount": 1},
         }
-        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite").strip()
+        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
         configured_model = configured_model.removeprefix("models/").strip("/")
         # Async HTTP avoids blocking the Discord event loop while Gemini generates.
         import aiohttp
@@ -5364,42 +5363,8 @@ async def on_message(message: discord.Message):
                         except discord.HTTPException as send_error:
                             print(f"[TICKET AI] Could not send reply in ticket channel {message.channel.id}: {send_error}", flush=True)
 
-        # Public AI can answer questions throughout the server, not only in the
-        # configured AI channel. Tickets remain isolated and are handled above.
-        ai_mode = cfg.get("ai_mode", "ticket")
-        ai_channel_id = cfg.get("ai_channel_id")
-        is_ticket_channel = bool(ticket_meta and str(ticket_meta.get("guild_id", guild.id)) == str(guild.id))
-        configured_ai_channel = (
-            ai_mode in {"channel", "both"}
-            and str(message.channel.id) == str(ai_channel_id or "")
-        )
-        automatic_public_question = (
-            cfg.get("ai_auto_reply_all_channels", True)
-            and is_question_message(message.content or "", has_attachments=bool(message.attachments))
-        )
-        if (
-            not is_ticket_channel and cfg.get("ai_enabled_global", True)
-            and (configured_ai_channel or automatic_public_question)
-            and guild_has_feature(cfg, "ticket")
-            and not message.author.bot
-            and not (message.content or "").lstrip().startswith(("!", ".", "/"))
-        ):
-            now = time.monotonic()
-            if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 5:
-                _ticket_ai_last_reply[message.channel.id] = now
-                async with message.channel.typing():
-                    answer = await _generate_ticket_ai_reply(message.channel, message, None)
-                if answer:
-                    try:
-                        await message.reply(
-                            f"🤖 **AI Assistant**\n{discord.utils.escape_mentions(answer)}",
-                            mention_author=False,
-                            allowed_mentions=discord.AllowedMentions.none(),
-                        )
-                    except (discord.Forbidden, discord.HTTPException):
-                        pass
-
-        # Delete pings to configured protected roles or members.
+        # Public AI can answer questions th        # AI is intentionally ticket-only; no automatic replies in public channels.
+ted roles or members.
         if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:
             protected_role_ids = {int(value) for value in cfg.get("ping_protected_role_ids", []) if str(value).isdigit()}
             protected_member_ids = {int(value) for value in cfg.get("ping_protected_member_ids", []) if str(value).isdigit()}
