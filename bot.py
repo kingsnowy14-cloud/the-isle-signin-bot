@@ -28,6 +28,8 @@ from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 
+# Emergency Hamburg public Roblox server monitor.
+
 # Install:
 # discord.py>=2.4.0,<3.0.0
 # Set your bot token as the DISCORD_TOKEN environment variable.
@@ -8505,6 +8507,15 @@ async def on_ready():
             print("IronWolf security suite loaded.")
         except Exception as exc:
             print(f"Could not load IronWolf security suite: {type(exc).__name__}: {exc}")
+
+    # Load the opt-in Emergency Hamburg monitor before slash-command sync.
+    if not getattr(bot, "_emergency_hamburg_loaded", False):
+        try:
+            await bot.load_extension("emergency_hamburg")
+            bot._emergency_hamburg_loaded = True
+            print("Emergency Hamburg monitor loaded.")
+        except Exception as exc:
+            print(f"Could not load Emergency Hamburg monitor: {type(exc).__name__}: {exc}", flush=True)
 
     # Discord allows at most 100 global application commands. The economy
     # extension currently registers 15 slash commands, so reserve that capacity
