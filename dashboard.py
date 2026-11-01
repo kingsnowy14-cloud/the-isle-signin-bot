@@ -1019,8 +1019,7 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
  function apply(name){{
   const value=art[name]?name:'wolf';
   picker.value=value;
-  // The DOM follower is the only visible pointer; native CSS cursors stay hidden.
-  follower.innerHTML=art[value];
+  // The DOM follower is updated after initialization and on selection changes.
  }}
  let saved='wolf';try{{saved=localStorage.getItem('ironwolf-cursor')||'wolf';}}catch(e){{}}
  apply(saved);
@@ -1041,7 +1040,7 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
  document.addEventListener('mousemove',moveCursor,{{passive:true}});
  document.addEventListener('pointerover',function(event){{setInteractiveState(event.target);}},{{passive:true}});
  document.addEventListener('pointerout',function(event){{setInteractiveState(event.relatedTarget);}},{{passive:true}});
- picker.addEventListener('change',function(){{apply(this.value);try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
+ picker.addEventListener('change',function(){{apply(this.value);follower.innerHTML=art[picker.value]||art.wolf;try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
  // Lightweight sparkle trail; capped and disabled for reduced-motion preferences.
  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
  const touch=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
