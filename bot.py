@@ -1092,6 +1092,7 @@ class TicketCreateModal(discord.ui.Modal):
             "ticket_number": ticket_number,
             "support_role_id": support_role_id,
             "priority_role_id": priority_role.id if priority_role else None,
+            "panel_key": self.panel_key,
         }
         data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
         save_json(DATA_FILE, data)
@@ -4798,11 +4799,98 @@ async def honeypot_publish(interaction: discord.Interaction):
 
 
 @bot.event
+async def _generate_ticket_ai_reply(channel, message, meta):
+    """Use Gemini's free API tier to draft a short answer for a Premium ticket."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        history = []
+        async for item in channel.history(limit=8, oldest_first=True):
+            if item.author.bot and item.author.id != bot.user.id:
+                continue
+            content = (item.content or "").strip()
+            if content:
+                history.append({"role": "model" if item.author.bot else "user", "parts": [{"text": content[:1200]}]})
+        if not history or history[-1]["role"] != "user":
+            return None
+        prompt = (
+            "Du bist der freundliche, vorsichtige KI-Erstsupport eines Discord-Servers. "
+            "Hilf bei der Frage anhand des Gesprächs. Erfinde keine Serverregeln, versprich keine Aktionen "
+            "und behaupte nicht, ein Mensch zu sein. Wenn du etwas nicht sicher weißt oder Staff-Zugriff nötig ist, "
+            "sage klar, dass das Support-Team übernehmen muss. Antworte auf Deutsch, kurz und hilfreich. "
+            "Fordere niemals Passwörter, Tokens oder andere Geheimnisse an."
+        )
+        payload = {
+            "system_instruction": {"parts": [{"text": prompt}]},
+            "contents": history,
+            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 350},
+        }
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        request = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        def send_request():
+            with urllib.request.urlopen(request, timeout=18) as response:
+                return json.loads(response.read().decode("utf-8"))
+        result = await asyncio.to_thread(send_request)
+        candidates = result.get("candidates", [])
+        parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+        answer = "\n".join(str(part.get("text", "")) for part in parts).strip()
+        return answer[:1800] if answer else None
+    except Exception as exc:
+        print(f"[TICKET AI] Gemini request failed: {type(exc).__name__}: {exc}", flush=True)
+        return None
+
+
+_ticket_ai_last_reply = {}
+
+
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
     if message.guild and not message.author.bot:
         guild = message.guild
         cfg = guild_config(guild.id)
+
+        ticket_meta = data.setdefault("tickets", {}).get(str(message.channel.id))
+        if ticket_meta and str(ticket_meta.get("guild_id", guild.id)) == str(guild.id):
+            panel = cfg.get("ticket_panels", {}).get(str(ticket_meta.get("panel_key") or ""), {})
+            staff_role_id = ticket_meta.get("support_role_id") or cfg.get("support_role")
+            staff_role = guild.get_role(int(staff_role_id)) if str(staff_role_id or "").isdigit() else None
+            is_staff = is_support(message.author, ticket_meta, guild)
+            if not is_staff and panel.get("quick_support_enabled", False) and staff_role:
+                now = time.monotonic()
+                if now - float(ticket_meta.get("_quick_support_last_ping_mono", 0) or 0) >= 300:
+                    ticket_meta["_quick_support_last_ping_mono"] = now
+                    save_json(DATA_FILE, data)
+                    try:
+                        await message.channel.send(
+                            f"🔔 {staff_role.mention} — ein Mitglied wartet auf Unterstützung.",
+                            allowed_mentions=discord.AllowedMentions(roles=[staff_role], users=False, everyone=False),
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+            if (
+                not is_staff and panel.get("ai_support_enabled", False)
+                and guild_has_feature(cfg, "ticket") and os.getenv("GEMINI_API_KEY")
+            ):
+                now = time.monotonic()
+                if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 25:
+                    _ticket_ai_last_reply[message.channel.id] = now
+                    async with message.channel.typing():
+                        answer = await _generate_ticket_ai_reply(message.channel, message, ticket_meta)
+                    if answer:
+                        try:
+                            await message.reply(
+                                f"🤖 **KI-Erstsupport** (automatische Antwort)\n{discord.utils.escape_mentions(answer)}",
+                                mention_author=False,
+                                allowed_mentions=discord.AllowedMentions.none(),
+                            )
+                        except (discord.Forbidden, discord.HTTPException):
+                            pass
 
         # Delete pings to configured protected roles or members.
         if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:
