@@ -4951,8 +4951,8 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         cfg = guild_config(guild_id) if guild_id else {}
         saved_knowledge = cfg.get("ai_knowledge", [])
         knowledge_text = "\\n".join(
-            str(item.get("text", ""))[:700] if isinstance(item, dict) else str(item)[:700]
-            for item in saved_knowledge[-40:]
+            str(item.get("text", ""))[:1800] if isinstance(item, dict) else str(item)[:1800]
+            for item in saved_knowledge[-12:]
         ) if isinstance(saved_knowledge, list) else ""
         custom_instructions = str(cfg.get("ai_custom_instructions", "")).strip()[:2000]
         prompt = (
