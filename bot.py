@@ -8560,6 +8560,7 @@ async def on_ready():
     try:
         from dashboard import _GamingAccountVerifyView
         bot.add_view(_GamingAccountVerifyView(["fortnite", "steam", "roblox"]))
+        print("[GAMING VERIFY] Persistent Steam/Roblox buttons registered.", flush=True)
     except Exception as exc:
         print(f"[GAMING VERIFY] Could not restore provider buttons: {type(exc).__name__}: {exc}", flush=True)
 
