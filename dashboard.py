@@ -1240,6 +1240,7 @@ def _render(title, body, status=200):
     # Translate the complete rendered document, including the global navigation
     # and page chrome, not only the page-specific content.
     rendered_page = _translate_dashboard(rendered_page, language)
+    rendered_page = rendered_page.replace('<html lang="en">', f'<html lang="{language}">', 1)
     response = make_response(rendered_page, status)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -1535,6 +1536,18 @@ def set_dashboard_language():
     if language not in {"en", "de"}:
         abort(400, "Please select English or German.")
     session["dashboard_language"] = language
+
+    # When the language is changed from a server page, keep that server's bot
+    # language in sync so dashboard and bot responses use the same selection.
+    referrer_path = urlparse(request.referrer or "").path
+    guild_match = re.match(r"^/guild/(\\d+)(?:/|$)", referrer_path)
+    if guild_match and _guild_config and _config is not None and _save_json:
+        guild_id = int(guild_match.group(1))
+        _authorized_guild(guild_id)
+        guild_cfg = _guild_config(guild_id)
+        guild_cfg["bot_language"] = language
+        _save_json(data_path("config.json"), _config)
+
     return redirect(request.referrer or url_for("index"))
 
 
