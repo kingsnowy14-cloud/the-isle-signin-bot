@@ -5019,7 +5019,10 @@ async def _generate_ticket_ai_reply(channel, message, meta):
             item for item in all_knowledge
             if isinstance(item, dict) and item.get("source") != "Dashboard"
         ] if isinstance(all_knowledge, list) and meta is not None else []
-        ticket_knowledge = (cfg.get("ai_ticket_knowledge", []) if meta is not None else []) + legacy_ticket_knowledge
+        ticket_knowledge = cfg.get("ai_ticket_knowledge", []) if meta is not None else []
+        if not isinstance(ticket_knowledge, list):
+            ticket_knowledge = []
+        ticket_knowledge = ticket_knowledge + legacy_ticket_knowledge
         knowledge_text = "\n".join(
             str(item.get("text", ""))[:1800]
             for item in saved_knowledge[-12:]
