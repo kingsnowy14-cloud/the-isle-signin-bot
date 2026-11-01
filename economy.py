@@ -47,7 +47,7 @@ class BankView(discord.ui.View):
             return
         u = user(interaction.guild_id, interaction.user.id)
         await interaction.response.send_message(
-            f"🏦 Bankkonto: **{money(u['bank'])}**\n💶 Bargeld: **{money(u['cash'])}**",
+            f"🏦 Bank account: **{money(u['bank'])}**\n💶 Cash: **{money(u['cash'])}**",
             ephemeral=True
         )
 
@@ -113,7 +113,7 @@ class ShopBuyButton(discord.ui.Button):
         u["items"].append(name)
         save()
         await interaction.response.send_message(
-            f"🛍️ You purchased **{name}** for **{money(price)}** gekauft. Neuer Kontostand: **{money(u['bank'])}**.",
+            f"🛍️ You purchased **{name}** for **{money(price)}** gekauft. Neuer Balance: **{money(u['bank'])}**.",
             ephemeral=True
         )
 
@@ -170,7 +170,7 @@ class Economy(commands.Cog):
         u["work_at"] = time.time(); save()
         extra = f" Steuer: {money(tax)}." if tax else ""
         extra += f" Wegen des Banklimits nicht gutgeschrieben: {money(capped)}." if capped else ""
-        await ctx.reply(f"🛠️ You purchased {money(actual)} earned and was deposited directly into your bank account.{extra}\nKontostand: **{money(u['bank'])}**", mention_author=False)
+        await ctx.reply(f"🛠️ You earned {money(actual)} and it was deposited directly into your bank account.{extra}\nBalance: **{money(u['bank'])}**", mention_author=False)
 
     @commands.command(name="crime")
     @commands.guild_only()
@@ -183,7 +183,7 @@ class Economy(commands.Cog):
         if random.random() < 0.60:
             gross = random.randint(200, 650)
             actual, tax, capped = credit(g, u, gross)
-            result = f"💸 Heist successful! {money(actual)} wurden deinem Bankkonto gutgeschrieben."
+            result = f"💸 Heist successful! {money(actual)} was deposited into your bank account."
             if tax: result += f" Steuer: {money(tax)}."
             if capped: result += f" Wegen des Banklimits nicht gutgeschrieben: {money(capped)}."
         else:
@@ -191,7 +191,7 @@ class Economy(commands.Cog):
             lost = min(u["bank"], loss); u["bank"] -= lost
             result = f"🚔 You were caught and lost {money(lost)} verloren."
         save()
-        await ctx.reply(f"{result}\n🏦 Kontostand: **{money(u['bank'])}**", mention_author=False)
+        await ctx.reply(f"{result}\n🏦 Balance: **{money(u['bank'])}**", mention_author=False)
 
     @commands.command(name="pay")
     @commands.guild_only()
@@ -202,7 +202,7 @@ class Economy(commands.Cog):
             await ctx.reply("Choose another member and an amount greater than 0.", mention_author=False); return
         sender, receiver = user(ctx.guild.id, ctx.author.id), user(ctx.guild.id, member.id)
         if sender["bank"] < amount:
-            await ctx.reply("You purchased nicht genug Geld auf deinem Bankkonto.", mention_author=False); return
+            await ctx.reply("You do not have enough money in your bank account.", mention_author=False); return
         sender["bank"] -= amount; receiver["bank"] += amount; save()
         await ctx.reply(f"💸 {ctx.author.mention} hat {member.mention} **{money(amount)}** überwiesen.", mention_author=False)
 
@@ -211,7 +211,7 @@ class Economy(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True); return
         g, u = guild(interaction.guild_id), user(interaction.guild_id, interaction.user.id)
-        e = discord.Embed(title="🏦 IronWolf Bank", description="Öffentliche Bankübersicht. Nutze /konto für deinen privaten Kontostand.", color=discord.Color.blurple())
+        e = discord.Embed(title="🏦 IronWolf Bank", description="Public bank overview. Use /account for your private balance.", color=discord.Color.blurple())
         e.add_field(name="Zinsen", value=f"{g['bank_interest']:.2f} %", inline=True)
         e.add_field(name="Steuern", value=f"{'AN' if g['tax_enabled'] else 'AUS'} · {g['tax_percent']:.1f} %", inline=True)
         e.add_field(name="Banklimit", value=money(g["bank_limit"]), inline=True)
@@ -222,7 +222,7 @@ class Economy(commands.Cog):
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True); return
         u = user(interaction.guild_id, interaction.user.id)
-        await interaction.response.send_message(f"🏦 Bankkonto: **{money(u['bank'])}**\n💶 Bargeld: **{money(u['cash'])}**", ephemeral=True)
+        await interaction.response.send_message(f"🏦 Bank account: **{money(u['bank'])}**\n💶 Cash: **{money(u['cash'])}**", ephemeral=True)
 
     @app_commands.command(name="bank-zinsen", description="Bankzinssatz einstellen (Admin)")
     @admin()
@@ -281,7 +281,7 @@ class Economy(commands.Cog):
         if not item:
             await interaction.response.send_message("Item not found. Use /shop.", ephemeral=True); return
         if u["bank"] < item["price"]:
-            await interaction.response.send_message("You purchased nicht genug Geld auf dem Bankkonto.", ephemeral=True); return
+            await interaction.response.send_message("You do not have enough money in your bank account.", ephemeral=True); return
         u["bank"] -= item["price"]; u["items"].append(name.lower()); save()
         await interaction.response.send_message(f"🛍️ **{name}** for **{money(item['price'])}** gekauft.", ephemeral=True)
 
