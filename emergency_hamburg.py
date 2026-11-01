@@ -280,17 +280,20 @@ class EmergencyHamburg(commands.Cog):
             error = api_error
             if server_map is None and not shared_refresh:
                 target_ids = [item.get("job_id") for item in selected if item.get("job_id")]
-                try:
-                    rows = await asyncio.to_thread(
-                        fetch_public_servers,
-                        MAX_PAGES_PER_REFRESH,
-                        target_ids,
-                    )
-                    server_map = {item["id"]: item for item in rows}
-                except Exception as exc:
-                    server_map = None
-                    error = f"{type(exc).__name__}: {exc}"
-                    print(f"[EH MONITOR] Roblox API error for guild {guild.id}: {error}", flush=True)
+                if not target_ids:
+                    server_map = {}
+                else:
+                    try:
+                        rows = await asyncio.to_thread(
+                            fetch_public_servers,
+                            MAX_PAGES_PER_REFRESH,
+                            target_ids,
+                        )
+                        server_map = {item["id"]: item for item in rows}
+                    except Exception as exc:
+                        server_map = None
+                        error = f"{type(exc).__name__}: {exc}"
+                        print(f"[EH MONITOR] Roblox API error for guild {guild.id}: {error}", flush=True)
             if server_map is None:
                 server_map = settings.get("last_server_data", {})
             else:
