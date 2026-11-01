@@ -4708,43 +4708,74 @@ def guild_quick_support(guild_id):
     if response:
         return response
     cfg = _guild_config(guild.id)
-    panels = cfg.setdefault("ticket_panels", {})
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
-        cfg["quick_support_enabled_global"] = request.form.get("quick_support_enabled") == "on"
+        enabled = request.form.get("quick_support_enabled") == "on"
+        channel_raw = request.form.get("quick_support_channel_id", "").strip()
+        role_raw = request.form.get("quick_support_role_id", "").strip()
+        try:
+            channel_id = int(channel_raw) if channel_raw else None
+            role_id = int(role_raw) if role_raw else None
+        except ValueError:
+            abort(400, "Ungültige Kanal- oder Rollen-ID.")
+        channel = guild.get_channel(channel_id) if channel_id else None
+        role = guild.get_role(role_id) if role_id else None
+        if enabled and not isinstance(channel, discord.TextChannel):
+            abort(400, "Bitte wähle einen gültigen Quick-Support-Textkanal.")
+        if enabled and (role is None or role.is_default() or role.managed):
+            abort(400, "Bitte wähle eine gültige Support-Rolle für Quick Support.")
+        if channel_id and not isinstance(channel, discord.TextChannel):
+            abort(400, "Bitte wähle einen gültigen Textkanal.")
+        if role_id and (role is None or role.is_default() or role.managed):
+            abort(400, "Bitte wähle eine gültige Support-Rolle.")
+        cfg["quick_support_enabled_global"] = enabled
+        cfg["quick_support_channel_id"] = channel.id if channel else None
+        cfg["quick_support_role_id"] = role.id if role else None
         _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Quick Support", session.get("user_id"), "Globale Einstellung gespeichert")
+        _audit_dashboard_change(guild.id, "Quick Support", session.get("user_id"), "Eigenständiger Support-Kanal und Support-Rolle gespeichert")
         return redirect(url_for("guild_quick_support", guild_id=guild.id, saved="1"))
     enabled = cfg.get("quick_support_enabled_global", True)
-    rows = []
-    for key, panel in panels.items():
-        if not isinstance(panel, dict):
-            continue
-        role_id = panel.get("support_role_id") or cfg.get("support_role")
-        role = guild.get_role(int(role_id)) if str(role_id or "").isdigit() else None
-        rows.append(
-            '<div class="notice"><strong>' + html.escape(str(panel.get("title", "Ticket-Panel"))) + '</strong>'
-            + '<p class="muted">Panel ' + html.escape(str(key)) + ' · Support-Rolle: '
-            + (html.escape(role.name) if role else 'Nicht eingerichtet')
-            + ' · Panel-Schalter: ' + ('Aktiv' if panel.get("quick_support_enabled", False) else 'Aus')
-            + '</p></div>'
-        )
+    channel_id = cfg.get("quick_support_channel_id")
+    role_id = cfg.get("quick_support_role_id")
+    channels = sorted(
+        [(channel.id, "#" + channel.name) for channel in guild.text_channels],
+        key=lambda item: item[1].lower(),
+    )
+    roles = sorted(
+        [(role.id, "@" + role.name) for role in guild.roles if not role.is_default() and not role.managed],
+        key=lambda item: item[1].lower(),
+    )
+    def _quick_support_options(items, current, empty_label):
+        out = [f'<option value="">{empty_label}</option>']
+        for item_id, name in items:
+            selected = " selected" if str(item_id) == str(current or "") else ""
+            out.append(f'<option value="{item_id}"{selected}>{html.escape(name)}</option>')
+        return "".join(out)
+    channel_options = _quick_support_options(channels, channel_id, "— Quick-Support-Kanal auswählen —")
+    role_options = _quick_support_options(roles, role_id, "— Support-Rolle auswählen —")
+    selected_channel = guild.get_channel(int(channel_id)) if str(channel_id or "").isdigit() else None
+    selected_role = guild.get_role(int(role_id)) if str(role_id or "").isdigit() else None
     body = (
         '<span class="pill">IRONWOLF · QUICK SUPPORT</span><h1 style="margin-top:12px">🆘 Quick Support</h1>'
-        '<p class="muted">Zentrale Steuerung für automatische Support-Pings in Ticket-Kanälen. Die Funktion pingt das konfigurierte Support-Team bei einer neuen Mitgliedernachricht höchstens alle fünf Minuten pro Ticket.</p>'
+        '<p class="muted">Quick Support ist ein eigenständiger Support-Kanal und unabhängig vom Ticket-Modul. Mitglieder schreiben direkt in den ausgewählten Kanal; die ausgewählte Support-Rolle wird benachrichtigt.</p>'
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
-        + '<section class="card"><h2>Modulsteuerung</h2><form method="post">' + _csrf_field()
+        + '<section class="card"><h2>Eigenständigen Support-Kanal konfigurieren</h2><form method="post">' + _csrf_field()
         + '<label class="check"><input type="checkbox" name="quick_support_enabled" value="on"'
-        + (' checked' if enabled else '') + '> Quick Support serverweit aktivieren</label>'
-        + '<p class="muted">Ist der Schalter aus, werden keine automatischen Quick-Support-Pings gesendet. Zusätzlich muss Quick Support im jeweiligen Ticket-Panel aktiviert sein.</p>'
+        + (' checked' if enabled else '') + '> Quick Support aktivieren</label>'
+        + '<label>Quick-Support-Kanal</label><select name="quick_support_channel_id">' + channel_options + '</select>'
+        + '<label>Support-Rolle</label><select name="quick_support_role_id">' + role_options + '</select>'
+        + '<p class="muted">Wenn ein Mitglied im ausgewählten Kanal schreibt, wird die Support-Rolle höchstens einmal alle fünf Minuten pro Mitglied benachrichtigt. Ticket-Panels und Ticket-Einstellungen werden dafür nicht verwendet.</p>'
         + '<button type="submit">Einstellungen speichern</button></form></section>'
-        + '<section class="card"><h2>Ticket-Panels</h2>'
-        + (''.join(rows) if rows else '<p class="muted">Noch keine Ticket-Panels vorhanden. Erstelle zuerst ein Panel im Ticket-Modul.</p>')
-        + '<p><a class="button secondary" href="/guild/' + str(guild.id) + '/tickets">Ticket-Panels verwalten →</a></p></section>'
+        + '<section class="card"><h2>Aktuelle Konfiguration</h2><p><strong>Kanal:</strong> '
+        + (html.escape("#" + selected_channel.name) if isinstance(selected_channel, discord.TextChannel) else 'Nicht ausgewählt')
+        + '<br><strong>Support-Rolle:</strong> '
+        + (html.escape("@" + selected_role.name) if selected_role else 'Nicht ausgewählt')
+        + '<br><strong>Status:</strong> ' + ('Aktiv' if enabled else 'Deaktiviert')
+        + '</p></section>'
     )
     return _render(guild.name + " · Quick Support", body)
 
@@ -4908,7 +4939,6 @@ def guild_tickets(guild_id):
         role_raw = request.form.get("support_role_id", "").strip()
         priority_role_raw = request.form.get("priority_role_id", "").strip()
         ai_support_enabled = request.form.get("ai_support_enabled") == "on"
-        quick_support_enabled = request.form.get("quick_support_enabled") == "on"
         if ai_support_enabled and not guild_has_feature(cfg, "ticket"):
             abort(403, "Der KI-Ticketsupport ist eine Premium-Funktion.")
         if priority_role_raw and not guild_has_feature(cfg, "ticket"):
@@ -4924,9 +4954,6 @@ def guild_tickets(guild_id):
         category = guild.get_channel(category_id) if category_id else None
         support_role = guild.get_role(support_role_id) if support_role_id else None
         priority_role = guild.get_role(priority_role_id) if priority_role_id else None
-        effective_staff_role = support_role or (guild.get_role(int(cfg.get("support_role"))) if str(cfg.get("support_role") or "").isdigit() else None)
-        if quick_support_enabled and effective_staff_role is None:
-            abort(400, "Quick Support benötigt eine gültige Support-/Staff-Rolle. Wähle sie zuerst aus.")
         if priority_role_id and (priority_role is None or priority_role.is_default() or priority_role.managed):
             abort(400, "Bitte wähle eine gültige, normale Discord-Prioritätsrolle.")
         if not title:
@@ -4957,7 +4984,6 @@ def guild_tickets(guild_id):
             "support_role_id": support_role.id if support_role else None,
             "priority_role_id": priority_role.id if priority_role else None,
             "ai_support_enabled": ai_support_enabled,
-            "quick_support_enabled": quick_support_enabled,
         })
         if guild_has_feature(cfg, "branding"):
             import re
@@ -5108,7 +5134,6 @@ def guild_tickets(guild_id):
         + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select>'
         + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select>'
         + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>'
-        + '<label class="check"><input type="checkbox" name="quick_support_enabled" value="on"> Quick Support aktivieren <small>Ping die Support-Rolle bei einer neuen Nachricht, höchstens alle 5 Minuten.</small></label>'
         + (('<label class="check"><input type="checkbox" name="ai_support_enabled" value="on"> 🤖 KI-Ticketsupport aktivieren <small>Premium · optional.</small></label>') if guild_has_feature(cfg, "ticket") else '<p class="muted">🔒 KI-Ticketsupport ist nur mit Premium verfügbar.</p>')
         + (('<label>Premium-Prioritätsrolle</label><select name="priority_role_id">' + options(roles, None, "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<p class="muted">🔒 Eine zusätzliche Prioritätsrolle ist nur mit Premium verfügbar.</p>')
         + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
@@ -5136,7 +5161,6 @@ def guild_tickets(guild_id):
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support role (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support role verwenden —") + '</select>'
-            + '<label class="check"><input type="checkbox" name="quick_support_enabled" value="on"' + (' checked' if panel.get("quick_support_enabled", False) else '') + '> Quick Support aktivieren <small>Ping die Support-Rolle automatisch, wenn ein Mitglied ohne Staff-Rechte im Ticket schreibt (höchstens alle 5 Minuten).</small></label>'
             + (('<label class="check"><input type="checkbox" name="ai_support_enabled" value="on"' + (' checked' if panel.get("ai_support_enabled", False) else '') + '> 🤖 KI-Ticketsupport aktivieren <small>Premium · optional, standardmäßig aus. Benötigt GEMINI_API_KEY mit kostenlosem Gemini-Kontingent.</small></label>') if guild_has_feature(cfg, "ticket") else '<p class="muted">🔒 KI-Ticketsupport ist nur mit Premium verfügbar.</p>')
             + (('<label>✨ Premium-Prioritätsrolle (wird im Ticket erwähnt und erhält Zugriff)</label><select name="priority_role_id">' + options(roles, panel.get("priority_role_id"), "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<p class="muted">🔒 Eine zusätzliche Prioritätsrolle ist nur mit Premium verfügbar.</p>')
             + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
