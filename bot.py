@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 import urllib.request
+import urllib.error
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
 from premium import guild_has_feature, account_plan, expired_grants, mark_expiry_dm_sent, grant_server_boost_premium
@@ -5021,27 +5022,49 @@ async def _generate_ticket_ai_reply(channel, message, meta):
             "contents": history,
             "generationConfig": {"temperature": 0.25, "maxOutputTokens": 350},
         }
-        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        request = urllib.request.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        def send_request():
-            with urllib.request.urlopen(request, timeout=25) as response:
-                return json.loads(response.read().decode("utf-8"))
-        result = await asyncio.to_thread(send_request)
+        configured_model = (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
+        configured_model = configured_model.removeprefix("models/").strip("/")
+        models_to_try = list(dict.fromkeys([configured_model, "gemini-2.5-flash", "gemini-2.0-flash"]))
+        result = None
+        last_error = None
+        for model_name in models_to_try:
+            request = urllib.request.Request(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            def send_request(req=request):
+                with urllib.request.urlopen(req, timeout=25) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            try:
+                result = await asyncio.to_thread(send_request)
+                break
+            except urllib.error.HTTPError as http_error:
+                error_body = http_error.read().decode("utf-8", errors="replace")[:700]
+                last_error = f"HTTP {http_error.code}: {error_body}"
+                print(f"[TICKET AI] Gemini model {model_name} failed: {last_error}", flush=True)
+                # A missing/unsupported model can fall back; quota/auth errors cannot.
+                if http_error.code not in {400, 404}:
+                    raise
+            except Exception as request_error:
+                last_error = f"{type(request_error).__name__}: {request_error}"
+                print(f"[TICKET AI] Gemini model {model_name} request failed: {last_error}", flush=True)
+                raise
+        if result is None:
+            print(f"[TICKET AI] No configured Gemini model worked: {last_error}", flush=True)
+            return "I'm temporarily unable to generate an AI reply. Please contact the support team; the bot administrator needs to check the Gemini model configuration."
         candidates = result.get("candidates", [])
         parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
         answer = "\n".join(str(part.get("text", "")) for part in parts).strip()
         if not answer:
-            print(f"[TICKET AI] Gemini returned no text. Response keys: {list(result.keys())}", flush=True)
-            return None
+            feedback = result.get("promptFeedback", {})
+            print(f"[TICKET AI] Gemini returned no text. Prompt feedback: {feedback}", flush=True)
+            return "I couldn't generate a reliable answer for that message. Please add a little more detail or wait for a support team member."
         return answer[:1800]
     except Exception as exc:
         print(f"[TICKET AI] Gemini request failed: {type(exc).__name__}: {exc}", flush=True)
-        return None
+        return "I'm temporarily unable to generate an AI reply. Please contact the support team; the bot administrator needs to check the AI service configuration."
 
 _ticket_ai_last_reply = {}
 _ticket_quick_support_last_ping = {}
@@ -5119,11 +5142,9 @@ async def on_message(message: discord.Message):
                         })
                         del entries[:-80]
                         save_json(CONFIG_FILE, config)
-            if (
-                not is_staff and cfg.get("ai_enabled_global", True)
-                and cfg.get("ai_mode", "ticket") in {"ticket", "both"}
-                and guild_has_feature(cfg, "ticket")
-            ):
+            # Ticket AI is independent from the optional public-channel mode.
+            # The global AI switch and the server's ticket entitlement remain authoritative.
+            if not is_staff and cfg.get("ai_enabled_global", True) and guild_has_feature(cfg, "ticket"):
                 now = time.monotonic()
                 if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 25:
                     _ticket_ai_last_reply[message.channel.id] = now
@@ -5136,8 +5157,10 @@ async def on_message(message: discord.Message):
                                 mention_author=False,
                                 allowed_mentions=discord.AllowedMentions.none(),
                             )
-                        except (discord.Forbidden, discord.HTTPException):
-                            pass
+                        except discord.Forbidden:
+                            print(f"[TICKET AI] Missing permission to reply in ticket channel {message.channel.id}.", flush=True)
+                        except discord.HTTPException as send_error:
+                            print(f"[TICKET AI] Could not send reply in ticket channel {message.channel.id}: {send_error}", flush=True)
 
         # Optional Premium AI assistant in one configured public text channel.
         # Ticket channels are handled separately above to avoid duplicate answers.
