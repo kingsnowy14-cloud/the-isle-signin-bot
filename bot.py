@@ -4951,6 +4951,29 @@ async def on_message(message: discord.Message):
         guild = message.guild
         cfg = guild_config(guild.id)
 
+        # Standalone Quick Support: independent from ticket panels and ticket settings.
+        quick_channel_id = cfg.get("quick_support_channel_id")
+        quick_role_id = cfg.get("quick_support_role_id")
+        if (
+            cfg.get("quick_support_enabled_global", True)
+            and str(quick_channel_id or "").isdigit()
+            and int(quick_channel_id) == message.channel.id
+            and str(quick_role_id or "").isdigit()
+        ):
+            quick_role = guild.get_role(int(quick_role_id))
+            if quick_role and not quick_role.is_default() and not quick_role.managed:
+                ping_key = (message.channel.id, message.author.id)
+                now = time.monotonic()
+                if now - _ticket_quick_support_last_ping.get(ping_key, 0) >= 300:
+                    _ticket_quick_support_last_ping[ping_key] = now
+                    try:
+                        await message.channel.send(
+                            f"🆘 {quick_role.mention} — {message.author.mention} benötigt Unterstützung.",
+                            allowed_mentions=discord.AllowedMentions(roles=[quick_role], users=False, everyone=False),
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+
         ticket_meta = data.setdefault("tickets", {}).get(str(message.channel.id))
         if ticket_meta and str(ticket_meta.get("guild_id", guild.id)) == str(guild.id):
             panel = cfg.get("ticket_panels", {}).get(str(ticket_meta.get("panel_key") or ""), {})
@@ -4974,17 +4997,6 @@ async def on_message(message: discord.Message):
                         })
                         del entries[:-80]
                         save_json(CONFIG_FILE, config)
-            if not is_staff and cfg.get("quick_support_enabled_global", True) and panel.get("quick_support_enabled", False) and staff_role:
-                now = time.monotonic()
-                if now - _ticket_quick_support_last_ping.get(message.channel.id, 0) >= 300:
-                    _ticket_quick_support_last_ping[message.channel.id] = now
-                    try:
-                        await message.channel.send(
-                            f"🔔 {staff_role.mention} — ein Mitglied wartet auf Unterstützung.",
-                            allowed_mentions=discord.AllowedMentions(roles=[staff_role], users=False, everyone=False),
-                        )
-                    except (discord.Forbidden, discord.HTTPException):
-                        pass
             if (
                 not is_staff and cfg.get("ai_enabled_global", True)
                 and cfg.get("ai_mode", "ticket") in {"ticket", "both"}
