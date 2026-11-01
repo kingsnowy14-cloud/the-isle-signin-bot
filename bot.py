@@ -539,13 +539,16 @@ def guild_config(guild_id):
     else:
         changed = False
     changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
+    if cfg.get("bot_language") != "en":
+        cfg["bot_language"] = "en"
+        changed = True
     if changed:
         save_json(CONFIG_FILE, config)
         print(f"[CONFIG] Merged missing defaults for guild {gid}; existing settings were preserved.", flush=True)
     return cfg
 
 
-SUPPORTED_BOT_LANGUAGES = {"en", "de"}
+SUPPORTED_BOT_LANGUAGES = {"en"}
 BOT_TRANSLATIONS = {
     "de": {
         "This command has been disabled for this server in the web dashboard.": "Dieser Befehl wurde für diesen Server im Dashboard deaktiviert.",
@@ -586,11 +589,13 @@ BOT_TRANSLATIONS = {
 }
 
 def server_language(guild_id):
-    """Return the language selected for this Discord server; English is the default."""
-    if guild_id is None:
-        return "en"
-    language = guild_config(guild_id).get("bot_language", "en")
-    return language if language in SUPPORTED_BOT_LANGUAGES else "en"
+    """Return the globally enforced bot language: English on every server."""
+    if guild_id is not None:
+        cfg = guild_config(guild_id)
+        if cfg.get("bot_language") != "en":
+            cfg["bot_language"] = "en"
+            save_json(CONFIG_FILE, config)
+    return "en"
 
 def bot_text(guild_id, text):
     """Translate catalogued common bot messages; unknown text remains unchanged."""
@@ -607,7 +612,7 @@ def migrate_all_guild_configs():
             cfg = config[guild_id]
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
-        if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
+        if cfg.get("bot_language") != "en":
             cfg["bot_language"] = "en"
             changed = True
     # Ensure newly joined servers get a complete default config too.
