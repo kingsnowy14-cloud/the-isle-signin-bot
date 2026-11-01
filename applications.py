@@ -39,7 +39,7 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
     motivation = discord.ui.TextInput(label="Why would you like to join?", placeholder="Your motivation and strengths", style=discord.TextStyle.paragraph, max_length=1000)
 
     def __init__(self, cog, guild_id):
-        super().__init__(title="IronWolf – Application" if guild_id == 1561027077984227371 else "IronWolf – Fraktionsbewerbung", timeout=300)
+        super().__init__(title="IronWolf – Application", timeout=300)
         self.cog, self.guild_id = cog, guild_id
         if guild_id == 1561027077984227371:
             self.rp_name.label, self.rp_name.placeholder = "RP Name", "First and last name"
@@ -70,7 +70,7 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
         }
         RECORDS["applications"][app_id] = row
         save_records()
-        english = self.guild_id == 1561027077984227371
+        english = True
         embed = discord.Embed(title="📨 New Application" if english else "📨 Neue Fraktionsbewerbung", description=("Applicant: <@{}>\nStatus: ⏳ Pending" if english else "Bewerber: <@{}>\nStatus: ⏳ Offen").format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         embed.add_field(name="RP Name" if english else "RP-Name", value=safe_text(row["rp_name"], 200), inline=True)
         embed.add_field(name="Roblox Username" if english else "Roblox Username", value=safe_text(row["roblox_name"], 200), inline=True)
@@ -149,7 +149,7 @@ class ApplicationPanelView(discord.ui.View):
 
 class ApplicationStartButton(discord.ui.Button):
     def __init__(self, cog, guild_id, button_label=None, panel_id=None):
-        default_label = "Application start" if guild_id == 1561027077984227371 else "Jetzt bewerben"
+        default_label = "Start application"
         label = str(button_label or default_label).strip()[:80] or default_label
         super().__init__(label=label, emoji="📝", style=discord.ButtonStyle.success, custom_id="ironwolf:application:start:{}:{}".format(guild_id, panel_id or "default"))
         self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
@@ -177,7 +177,7 @@ class ApplicationDecisionButton(discord.ui.Button):
         super().__init__(label=("Accept" if decision == "approve" else "Reject") if english else ("Annehmen" if decision == "approve" else "Ablehnen"), emoji="✅" if decision == "approve" else "❌", style=discord.ButtonStyle.success if decision == "approve" else discord.ButtonStyle.danger, custom_id="ironwolf:application:{}:{}".format(decision, app_id))
 
     async def callback(self, interaction):
-        english = interaction.guild_id == 1561027077984227371
+        english = True
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message("Only server team members can review applications." if english else "Nur Teammitglieder auf dem Server können Bewerbungen bearbeiten.", ephemeral=True)
             return
@@ -227,7 +227,7 @@ class Applications(commands.Cog):
         settings = guild_settings(guild_id)
         panels = settings.setdefault("panels", {})
         panel_id = str(int(datetime.now(timezone.utc).timestamp() * 1000))
-        default_button_label = "Application start" if guild_id == 1561027077984227371 else "Bewerben"
+        default_button_label = "Start application"
         label = str(button_label or default_button_label).strip()[:80] or default_button_label
         panel = {
             "panel_id": panel_id, "panel_name": str(panel_name)[:80], "title": str(title)[:256],
