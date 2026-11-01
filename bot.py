@@ -1065,135 +1065,160 @@ class RegistrationView(discord.ui.View):
 # Prevent duplicate ticket channels when a modal is submitted twice in quick succession.
 _ticket_creations_in_progress = set()
 
+async def _create_ticket_from_interaction(interaction: discord.Interaction, panel_key: str, button_label: str, reason: str = ""):
+    # Acknowledge the modal submission immediately so Discord does not time out
+    # while the channel is being created and ticket data is being saved.
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    guild = interaction.guild
+    if guild is None:
+        await interaction.followup.send("Use this inside a server.", ephemeral=True)
+        return
+    # Limit ticket creation per user across all ticket panels in this server.
+    creation_key = (guild.id, interaction.user.id)
+    if creation_key in _ticket_creations_in_progress:
+        await interaction.followup.send("Your ticket is already being created. Please wait a moment.", ephemeral=True)
+        return
+    _ticket_creations_in_progress.add(creation_key)
+
+    cfg = guild_config(guild.id)
+    panel = cfg.get("ticket_panels", {}).get(panel_key)
+    if not panel:
+        _ticket_creations_in_progress.discard(creation_key)
+        await interaction.followup.send("This ticket panel is no longer configured.", ephemeral=True)
+        return
+    # Count only tickets that are still open (their channels still exist).
+    user_open_tickets = 0
+    for ticket_channel_id, ticket_meta in data.get("tickets", {}).items():
+        if str(ticket_meta.get("owner_id")) != str(interaction.user.id):
+            continue
+        ticket_channel = guild.get_channel(int(ticket_channel_id))
+        if ticket_channel is not None:
+            user_open_tickets += 1
+
+    if user_open_tickets >= 5:
+        _ticket_creations_in_progress.discard(creation_key)
+        await interaction.followup.send(
+            "You can have a maximum of 5 open tickets at a time. Please close an existing ticket first.",
+            ephemeral=True,
+        )
+        return
+
+    category_id = panel.get("category_id") or cfg.get("ticket_category")
+    category = guild.get_channel(category_id) if category_id else None
+    if category_id and not isinstance(category, discord.CategoryChannel):
+        category = None
+
+    cfg["ticket_counter"] = int(cfg.get("ticket_counter", 0)) + 1
+    ticket_number = cfg["ticket_counter"]
+    safe_name = "".join(c.lower() if c.isalnum() else "-" for c in interaction.user.name).strip("-")
+    channel_name = f"ticket-{ticket_number:04d}-{safe_name[:30] or 'user'}"
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+        guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True),
+    }
+    support_role_id = panel.get("support_role_id") or cfg.get("support_role")
+    support_role = guild.get_role(support_role_id) if support_role_id else None
+    if support_role:
+        overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+    priority_role_id = panel.get("priority_role_id") if guild_has_feature(cfg, "ticket") else None
+    priority_role = guild.get_role(int(priority_role_id)) if priority_role_id else None
+    if priority_role and not priority_role.is_default() and not priority_role.managed:
+        overwrites[priority_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+    else:
+        priority_role = None
+    try:
+        channel = await guild.create_text_channel(
+            channel_name, category=category, overwrites=overwrites or {},
+            topic=f"Ticket owner ID: {interaction.user.id} | Ticket number: {ticket_number}"
+        )
+    except discord.Forbidden:
+        _ticket_creations_in_progress.discard(creation_key)
+        await interaction.followup.send(
+            "I don't have permission to create ticket channels. Check Manage Channels permission.",
+            ephemeral=True
+        )
+        return
+    except discord.HTTPException as exc:
+        _ticket_creations_in_progress.discard(creation_key)
+        await interaction.followup.send(
+            f"Discord could not create the ticket channel (HTTP {exc.status}). Please try again or check the bot's permissions.",
+            ephemeral=True
+        )
+        return
+
+    ticket_meta = {
+        "guild_id": guild.id,
+        "owner_id": interaction.user.id,
+        "claimed_by": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "reason": str(reason),
+        "label": button_label,
+        "ticket_number": ticket_number,
+        "support_role_id": support_role_id,
+        "priority_role_id": priority_role.id if priority_role else None,
+        "panel_key": panel_key,
+    }
+    data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
+    save_json(DATA_FILE, data)
+
+    embed = ticket_status_embed(ticket_meta, channel.id)
+    await channel.send(embed=embed, view=TicketControlView())
+    # Send an immediate English welcome when the ticket opens; AI replies later
+    # follow the language used by the member in their messages.
+    staff_ping = f"{support_role.mention} " if support_role else ""
+    await channel.send(
+        f"{staff_ping}👋 Welcome, {interaction.user.mention}! Thanks for contacting support. "
+        "Please describe your issue and include any relevant details. "
+        "IronWolf AI will try to help quickly, and our support team can step in if needed.",
+        allowed_mentions=discord.AllowedMentions(
+            users=[interaction.user],
+            roles=[support_role] if support_role else [],
+            everyone=False,
+        ),
+    )
+    _ticket_creations_in_progress.discard(creation_key)
+    await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
+
+
 class TicketCreateModal(discord.ui.Modal):
-    def __init__(self, panel_key: str, button_index: int, button_label: str):
+    def __init__(self, panel_key: str, button_index: int, button_label: str, reason_required: bool = True):
         super().__init__(title=f"Create ticket: {button_label[:35]}")
         self.panel_key = panel_key
         self.button_index = button_index
         self.button_label = button_label
         self.reason = discord.ui.TextInput(
             label="How can we help?",
-            placeholder="Describe your issue",
+            placeholder="Describe your issue (optional)" if not reason_required else "Describe your issue",
             style=discord.TextStyle.paragraph,
             max_length=1000,
-            required=True,
+            required=reason_required,
         )
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Acknowledge the modal submission immediately so Discord does not time out
-        # while the channel is being created and ticket data is being saved.
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        guild = interaction.guild
-        if guild is None:
-            await interaction.followup.send("Use this inside a server.", ephemeral=True)
-            return
-        # Limit ticket creation per user across all ticket panels in this server.
-        creation_key = (guild.id, interaction.user.id)
-        if creation_key in _ticket_creations_in_progress:
-            await interaction.followup.send("Your ticket is already being created. Please wait a moment.", ephemeral=True)
-            return
-        _ticket_creations_in_progress.add(creation_key)
-
-        cfg = guild_config(guild.id)
-        panel = cfg.get("ticket_panels", {}).get(self.panel_key)
-        if not panel:
-            _ticket_creations_in_progress.discard(creation_key)
-            await interaction.followup.send("This ticket panel is no longer configured.", ephemeral=True)
-            return
-        # Count only tickets that are still open (their channels still exist).
-        user_open_tickets = 0
-        for ticket_channel_id, ticket_meta in data.get("tickets", {}).items():
-            if str(ticket_meta.get("owner_id")) != str(interaction.user.id):
-                continue
-            ticket_channel = guild.get_channel(int(ticket_channel_id))
-            if ticket_channel is not None:
-                user_open_tickets += 1
-
-        if user_open_tickets >= 5:
-            _ticket_creations_in_progress.discard(creation_key)
-            await interaction.followup.send(
-                "You can have a maximum of 5 open tickets at a time. Please close an existing ticket first.",
-                ephemeral=True,
-            )
-            return
-
-        category_id = panel.get("category_id") or cfg.get("ticket_category")
-        category = guild.get_channel(category_id) if category_id else None
-        if category_id and not isinstance(category, discord.CategoryChannel):
-            category = None
-
-        cfg["ticket_counter"] = int(cfg.get("ticket_counter", 0)) + 1
-        ticket_number = cfg["ticket_counter"]
-        safe_name = "".join(c.lower() if c.isalnum() else "-" for c in interaction.user.name).strip("-")
-        channel_name = f"ticket-{ticket_number:04d}-{safe_name[:30] or 'user'}"
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True),
-        }
-        support_role_id = panel.get("support_role_id") or cfg.get("support_role")
-        support_role = guild.get_role(support_role_id) if support_role_id else None
-        if support_role:
-            overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-        priority_role_id = panel.get("priority_role_id") if guild_has_feature(cfg, "ticket") else None
-        priority_role = guild.get_role(int(priority_role_id)) if priority_role_id else None
-        if priority_role and not priority_role.is_default() and not priority_role.managed:
-            overwrites[priority_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-        else:
-            priority_role = None
-        try:
-            channel = await guild.create_text_channel(
-                channel_name, category=category, overwrites=overwrites or {},
-                topic=f"Ticket owner ID: {interaction.user.id} | Ticket number: {ticket_number}"
-            )
-        except discord.Forbidden:
-            _ticket_creations_in_progress.discard(creation_key)
-            await interaction.followup.send(
-                "I don't have permission to create ticket channels. Check Manage Channels permission.",
-                ephemeral=True
-            )
-            return
-        except discord.HTTPException as exc:
-            _ticket_creations_in_progress.discard(creation_key)
-            await interaction.followup.send(
-                f"Discord could not create the ticket channel (HTTP {exc.status}). Please try again or check the bot's permissions.",
-                ephemeral=True
-            )
-            return
-
-        ticket_meta = {
-            "guild_id": guild.id,
-            "owner_id": interaction.user.id,
-            "claimed_by": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "reason": str(self.reason.value),
-            "label": self.button_label,
-            "ticket_number": ticket_number,
-            "support_role_id": support_role_id,
-            "priority_role_id": priority_role.id if priority_role else None,
-            "panel_key": self.panel_key,
-        }
-        data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
-        save_json(DATA_FILE, data)
-
-        embed = ticket_status_embed(ticket_meta, channel.id)
-        await channel.send(embed=embed, view=TicketControlView())
-        # Send an immediate English welcome when the ticket opens; AI replies later
-        # follow the language used by the member in their messages.
-        staff_ping = f"{support_role.mention} " if support_role else ""
-        await channel.send(
-            f"{staff_ping}👋 Welcome, {interaction.user.mention}! Thanks for contacting support. "
-            "Please describe your issue and include any relevant details. "
-            "IronWolf AI will try to help quickly, and our support team can step in if needed.",
-            allowed_mentions=discord.AllowedMentions(
-                users=[interaction.user],
-                roles=[support_role] if support_role else [],
-                everyone=False,
-            ),
+        await _create_ticket_from_interaction(
+            interaction, self.panel_key, self.button_label, str(self.reason.value or "").strip()
         )
-        _ticket_creations_in_progress.discard(creation_key)
-        await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
+
+
+async def _open_ticket_flow(interaction: discord.Interaction, panel_key: str, button_index: int, button_label: str):
+    cfg = guild_config(interaction.guild_id) if interaction.guild_id else {}
+    panel = cfg.get("ticket_panels", {}).get(panel_key, {})
+    if not panel:
+        await interaction.response.send_message("This ticket panel is no longer configured.", ephemeral=True)
+        return
+    if panel.get("ask_before_open", True):
+        await interaction.response.send_modal(
+            TicketCreateModal(
+                panel_key, button_index, button_label,
+                reason_required=bool(panel.get("reason_required", True)),
+            )
+        )
+    else:
+        await _create_ticket_from_interaction(interaction, panel_key, button_label, "")
+
+
 
 
 class TicketPanelSelect(discord.ui.Select):
@@ -1228,7 +1253,7 @@ class TicketPanelSelect(discord.ui.Select):
         except (TypeError, ValueError, IndexError, KeyError):
             await interaction.response.send_message("This ticket selection is no longer valid. Please use a current panel.", ephemeral=True)
             return
-        await interaction.response.send_modal(TicketCreateModal(self.panel_key, index, str(label)))
+        await _open_ticket_flow(interaction, self.panel_key, index, str(label))
 
 
 class TicketPanelView(discord.ui.View):
@@ -1248,7 +1273,7 @@ class TicketPanelView(discord.ui.View):
                 row=index // 4,
             )
             async def callback(interaction: discord.Interaction, i=index, text=label):
-                await interaction.response.send_modal(TicketCreateModal(self.panel_key, i, text))
+                await _open_ticket_flow(interaction, self.panel_key, i, text)
             button.callback = callback
             self.add_item(button)
 
@@ -2138,6 +2163,38 @@ async def ticketcreat(
     embed.set_footer(text="Choose a button to open a ticket. • Created by KingSnowy")
     await kanal.send(embed=embed, view=TicketPanelView(panel_key, labels))
     await interaction.response.send_message(f"Ticket panel posted in {kanal.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="ticket-settings", description="Configure AI support and pre-ticket questions for a ticket panel")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(
+    panel_id="Panel ID shown when the ticket panel was created",
+    ki_aktiv="Enable automatic AI replies in tickets for this panel",
+    fragen_vorher="Ask the member to fill in a form before opening the ticket",
+    antwort_pflicht="Require the member to fill in the form (only applies if questions are enabled)",
+)
+async def ticket_settings(
+    interaction: discord.Interaction,
+    panel_id: str,
+    ki_aktiv: bool,
+    fragen_vorher: bool,
+    antwort_pflicht: bool,
+):
+    cfg = guild_config(interaction.guild_id)
+    panel = cfg.get("ticket_panels", {}).get(panel_id)
+    if not panel:
+        await interaction.response.send_message("Panel ID not found. Use the ID returned by /ticket-create.", ephemeral=True)
+        return
+    panel["ai_support_enabled"] = bool(ki_aktiv)
+    panel["ask_before_open"] = bool(fragen_vorher)
+    panel["reason_required"] = bool(antwort_pflicht)
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"Ticket panel `{panel_id}` updated. AI: **{'ON' if ki_aktiv else 'OFF'}** · "
+        f"Pre-ticket form: **{'ON' if fragen_vorher else 'OFF'}** · "
+        f"Answer required: **{'YES' if antwort_pflicht else 'NO'}**.",
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(name="ticket-edit", description="Edit the title, description and button labels of a ticket panel")
