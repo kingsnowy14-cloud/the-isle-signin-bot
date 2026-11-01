@@ -746,18 +746,18 @@ class _GamingAccountVerifyView(discord.ui.View):
                     if provider == "roblox":
                         link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
                         message = (
-                            "🔐 **Roblox sicher verknüpfen**\\n"
+                            "🔐 **Roblox sicher verknüpfen**\n"
                             "Öffne den Link und melde dich direkt bei Roblox an. "
                             "IronWolf fragt nur die Roblox-Profilidentität ab, niemals dein Passwort. "
-                            "Der Link ist 10 Minuten gültig und einmalig.\\n" + link_url
+                            "Der Link ist 10 Minuten gültig und einmalig.\n" + link_url
                         )
                     else:
                         link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
                         message = (
-                            "🔐 **Steam sicher verknüpfen**\\n"
+                            "🔐 **Steam sicher verknüpfen**\n"
                             "Öffne diesen Link und melde dich direkt bei Steam an. "
                             "Dein Steam-Passwort wird niemals an IronWolf übermittelt. "
-                            "Der Link ist 10 Minuten gültig und kann nur einmal verwendet werden.\\n" + link_url
+                            "Der Link ist 10 Minuten gültig und kann nur einmal verwendet werden.\n" + link_url
                         )
                     await interaction.followup.send(message, ephemeral=True)
                     print(log_prefix + " link created and sent", flush=True)
@@ -2390,7 +2390,7 @@ def teamlist_dashboard(guild_id):
                                     inline=False,
                                 )
                         else:
-                            embed.description += "\\n\\nAktuell wurden keine Mitglieder mit den ausgewählten Rollen gefunden."
+                            embed.description += "\n\nAktuell wurden keine Mitglieder mit den ausgewählten Rollen gefunden."
                         embed.set_footer(text=f"IronWolf Teamliste · Seite {page_index}/{len(pages)}")
                         await target_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
                     return len(matching)
@@ -3201,7 +3201,7 @@ def guild_honeypot(guild_id):
     action = str(cfg.get("honeypot_action", "kick")).lower()
     action_options = ''.join('<option value="' + value + '"' + (' selected' if action == value else '') + '>' + label + '</option>' for value, label in [("kick", "Kick"), ("ban", "Ban"), ("timeout", "Timeout")])
     enabled = " checked" if cfg.get("honeypot_enabled", False) else ""
-    message = html.escape(str(cfg.get("honeypot_message") or "🍯 **Honeypot aktiv**\\nDieser Kanal dient der Sicherheitsüberwachung. Bitte hier nicht schreiben."))
+    message = html.escape(str(cfg.get("honeypot_message") or "🍯 **Honeypot aktiv**\nDieser Kanal dient der Sicherheitsüberwachung. Bitte hier nicht schreiben."))
     success = {"1": "Einstellungen gespeichert.", "published": "Honeypot-Nachricht veröffentlicht."}.get(request.args.get("saved", ""), "")
     body = '<span class="pill">IRONWOLF · SECURITY</span><h1 style="margin-top:12px">🍯 Honeypot-Schutz</h1><p class="muted">Wie bei Honeypot-Bots dient dieser Lockkanal als Falle: Normale Mitglieder sollen dort nicht schreiben. Wenn jemand es trotzdem tut, führt IronWolf die gewählte Aktion aus. Stelle sicher, dass der Kanal für normale Mitglieder verborgen ist und nur der Bot ihn lesen kann.</p>'
     if success:
