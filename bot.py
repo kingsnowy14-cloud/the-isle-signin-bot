@@ -5032,16 +5032,17 @@ async def _generate_ticket_ai_reply(channel, message, meta):
             method="POST",
         )
         def send_request():
-            with urllib.request.urlopen(request, timeout=15) as response:
+            # Gemini occasionally takes longer than 15 seconds to answer. A longer
+            # read timeout prevents normal model latency from being treated as failure.
+            with urllib.request.urlopen(request, timeout=60) as response:
                 return json.loads(response.read().decode("utf-8"))
         try:
             result = await asyncio.to_thread(send_request)
         except urllib.error.HTTPError as http_error:
             error_body = http_error.read().decode("utf-8", errors="replace")[:700]
             print(f"[TICKET AI] Gemini model {configured_model} failed: HTTP {http_error.code}: {error_body}", flush=True)
-            if http_error.code in {400, 404}:
-                return "The configured AI model is unavailable. Please contact the server administrator."
-            raise
+            # Do not post internal service/configuration errors into public Discord channels.
+            return None
         candidates = result.get("candidates", [])
         parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
         answer = "\n".join(str(part.get("text", "")) for part in parts).strip()
@@ -5052,7 +5053,8 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         return answer[:1800]
     except Exception as exc:
         print(f"[TICKET AI] Gemini request failed: {type(exc).__name__}: {exc}", flush=True)
-        return "I'm temporarily unable to generate an AI reply. Please contact the support team; the bot administrator needs to check the AI service configuration."
+        # Fail silently for members; keep the technical cause in Railway logs for admins.
+        return None
 
 _ticket_ai_last_reply = {}
 _ticket_quick_support_last_ping = {}
@@ -5132,7 +5134,12 @@ async def on_message(message: discord.Message):
                         save_json(CONFIG_FILE, config)
             # Ticket AI is independent from the optional public-channel mode.
             # The global AI switch and the server's ticket entitlement remain authoritative.
-            if not is_staff and cfg.get("ai_enabled_global", True) and guild_has_feature(cfg, "ticket"):
+            if (
+                not is_staff
+                and cfg.get("ai_enabled_global", True)
+                and guild_has_feature(cfg, "ticket")
+                and panel.get("ai_support_enabled", False)
+            ):
                 now = time.monotonic()
                 if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 25:
                     _ticket_ai_last_reply[message.channel.id] = now
