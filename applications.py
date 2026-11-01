@@ -89,51 +89,95 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
             return
         await interaction.response.send_message("✅ Your application has been submitted. The team will review it and get back to you.", ephemeral=True)
 
+async def _submit_dashboard_application(interaction, cog, guild_id, panel_id, panel, answers):
+    if not interaction.guild or interaction.guild.id != guild_id:
+        await interaction.response.send_message("Please use this panel on the correct server.", ephemeral=True)
+        return
+    if any(row.get("guild_id") == guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" and row.get("panel_id") == str(panel_id) for row in RECORDS.setdefault("applications", {}).values()):
+        await interaction.response.send_message("You already have a pending application for this panel.", ephemeral=True)
+        return
+    channel = interaction.guild.get_channel(int(panel.get("review_channel_id") or 0))
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("The application review channel is not configured.", ephemeral=True)
+        return
+    app_id = "{}-{}-{}".format(guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
+    normalized_answers = [
+        {"question": str(item.get("question", ""))[:200], "answer": str(item.get("answer", "")).strip()}
+        for item in answers
+    ]
+    row = {
+        "id": app_id, "guild_id": guild_id, "panel_id": str(panel_id),
+        "panel_name": panel.get("panel_name", "Bewerbung"), "user_id": interaction.user.id,
+        "rp_name": "—", "roblox_name": "—", "age": "—", "experience": "—", "motivation": "—",
+        "answers": normalized_answers, "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None
+    }
+    RECORDS["applications"][app_id] = row
+    save_records()
+    sent_messages = []
+    try:
+        # Discord embeds have aggregate size limits. Send four answers per message
+        # so long Premium forms can be reviewed without truncation.
+        chunks = [normalized_answers[index:index + 4] for index in range(0, len(normalized_answers), 4)] or [[]]
+        for chunk_index, chunk in enumerate(chunks):
+            embed = discord.Embed(
+                title="📨 New Application · " + str(row["panel_name"])[:200],
+                description=("Applicant: <@{}>\nStatus: ⏳ Pending\nQuestions: {}".format(interaction.user.id, len(normalized_answers)) if chunk_index == 0 else "Applicant: <@{}> · Continued answers ({}/{})".format(interaction.user.id, chunk_index + 1, len(chunks))),
+                color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc)
+            )
+            for item in chunk:
+                embed.add_field(name=safe_text(item["question"], 250) or "Question", value=safe_text(item["answer"], 1000) or "—", inline=False)
+            embed.set_footer(text="Application ID: " + app_id)
+            view = ApplicationReviewView(cog, app_id) if chunk_index == 0 else None
+            message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
+            sent_messages.append(message)
+        row["review_message_id"] = sent_messages[0].id
+        row["review_message_ids"] = [message.id for message in sent_messages]
+        save_records()
+    except (discord.Forbidden, discord.HTTPException):
+        for message in sent_messages:
+            try:
+                await message.delete()
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+        RECORDS["applications"].pop(app_id, None)
+        save_records()
+        await interaction.response.send_message("Your application could not be sent to the team.", ephemeral=True)
+        return
+    await interaction.response.send_message("✅ Your application has been submitted.", ephemeral=True)
+
+
 class DashboardApplicationModal(discord.ui.Modal):
-    def __init__(self, cog, guild_id, panel_id, panel):
+    QUESTIONS_PER_PAGE = 5
+
+    def __init__(self, cog, guild_id, panel_id, panel, answers=None, page=0):
         super().__init__(title=str(panel.get("title") or "Application")[:45], timeout=300)
         self.cog, self.guild_id, self.panel_id, self.panel = cog, guild_id, str(panel_id), panel
+        self.questions = [str(question)[:200] for question in panel.get("questions", [])]
+        self.answers = list(answers or [])
+        self.page = page
         self.fields = []
-        for index, question in enumerate(panel.get("questions", [])[:10]):
-            field = discord.ui.TextInput(label=str(question)[:45], style=discord.TextStyle.paragraph, max_length=1000, required=True)
-            self.fields.append((str(question)[:200], field))
+        start = page * self.QUESTIONS_PER_PAGE
+        for question in self.questions[start:start + self.QUESTIONS_PER_PAGE]:
+            field = discord.ui.TextInput(label=question[:45] or "Question", style=discord.TextStyle.paragraph, max_length=1000, required=True)
+            self.fields.append((question, field))
             self.add_item(field)
 
     async def on_submit(self, interaction):
-        if not interaction.guild or interaction.guild.id != self.guild_id:
-            await interaction.response.send_message("Please use this panel on the correct server.", ephemeral=True)
+        answers = self.answers + [
+            {"question": question, "answer": str(field.value).strip()}
+            for question, field in self.fields
+        ]
+        if len(answers) < len(self.questions):
+            next_modal = DashboardApplicationModal(
+                self.cog, self.guild_id, self.panel_id, self.panel,
+                answers=answers, page=self.page + 1
+            )
+            await interaction.response.send_modal(next_modal)
             return
-        if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" and row.get("panel_id") == self.panel_id for row in RECORDS.setdefault("applications", {}).values()):
-            await interaction.response.send_message("You already have a pending application for this panel.", ephemeral=True)
-            return
-        channel = interaction.guild.get_channel(int(self.panel.get("review_channel_id") or 0))
-        if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message("The application review channel is not configured.", ephemeral=True)
-            return
-        app_id = "{}-{}-{}".format(self.guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
-        answers = [{"question": question, "answer": str(field.value).strip()} for question, field in self.fields]
-        row = {
-            "id": app_id, "guild_id": self.guild_id, "panel_id": self.panel_id, "panel_name": self.panel.get("panel_name", "Bewerbung"),
-            "user_id": interaction.user.id, "rp_name": "—", "roblox_name": "—", "age": "—",
-            "experience": "—", "motivation": "—", "answers": answers, "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": None
-        }
-        RECORDS["applications"][app_id] = row
-        save_records()
-        embed = discord.Embed(title="📨 New Application · " + str(row["panel_name"])[:200], description="Applicant: <@{}>\nStatus: ⏳ Pending".format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
-        for question, answer in answers:
-            embed.add_field(name=safe_text(question, 250), value=safe_text(answer, 1000) or "—", inline=False)
-        embed.set_footer(text="Application ID: " + app_id)
-        try:
-            message = await channel.send(embed=embed, view=ApplicationReviewView(self.cog, app_id), allowed_mentions=discord.AllowedMentions.none())
-            row["review_message_id"] = message.id
-            save_records()
-        except (discord.Forbidden, discord.HTTPException):
-            RECORDS["applications"].pop(app_id, None)
-            save_records()
-            await interaction.response.send_message("Your application could not be sent to the team.", ephemeral=True)
-            return
-        await interaction.response.send_message("✅ Your application has been submitted.", ephemeral=True)
+        await _submit_dashboard_application(
+            interaction, self.cog, self.guild_id, self.panel_id, self.panel, answers
+        )
 
 
 class ApplicationPanelView(discord.ui.View):
@@ -231,7 +275,7 @@ class Applications(commands.Cog):
         label = str(button_label or default_button_label).strip()[:80] or default_button_label
         panel = {
             "panel_id": panel_id, "panel_name": str(panel_name)[:80], "title": str(title)[:256],
-            "description": str(description)[:4000], "questions": [str(q)[:200] for q in questions[:10]],
+            "description": str(description)[:4000], "questions": [str(q)[:200] for q in questions],
             "panel_channel_id": int(panel_channel_id), "review_channel_id": int(review_channel_id),
             "log_channel_id": int(log_channel_id), "review_role_id": review_role_id,
             "ping_role_id": ping_role_id, "button_label": label
