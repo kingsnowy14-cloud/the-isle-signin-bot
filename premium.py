@@ -114,11 +114,12 @@ PREMIUM_FEATURES = {
     "invite_tracker": "Invite Tracker",
     "server_boost": "Server-Boost-System",
     "applications": "Pro application system (unlimited panels and questions)",
+    "emergency_hamburg": "Emergency Hamburg public server monitor",
 }
 
 PLAN_FEATURES = {
     "free": frozenset(),
-    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications"}),
+    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications", "emergency_hamburg"}),
     "premium_plus": frozenset(PREMIUM_FEATURES),
 }
 
@@ -189,3 +190,16 @@ def guild_has_feature(guild_config, feature):
     if owner_plan != "free":
         return feature in PLAN_FEATURES[owner_plan]
     return False
+
+
+def guild_plan(guild_config):
+    """Return the effective plan for a guild, including overrides and trials."""
+    if not isinstance(guild_config, dict):
+        return "free"
+    override = guild_config.get("premium_server_override")
+    if override in {"premium", "premium_plus"}:
+        return override
+    if guild_trial_active(guild_config):
+        return "premium_plus"
+    owner_plan = account_plan(guild_config.get("premium_owner_id"))
+    return owner_plan if owner_plan in {"premium", "premium_plus"} else "free"
