@@ -3700,7 +3700,7 @@ def guild_custom_bot(guild_id):
         update_notes = profile.get("last_discord_update", [])
         retry_seconds = 0
         for note in update_notes:
-            match = re.search(r"wait approximately (\\d+) seconds", str(note), re.IGNORECASE)
+            match = re.search(r"wait approximately (\d+) seconds", str(note), re.IGNORECASE)
             if match:
                 retry_seconds = max(retry_seconds, int(match.group(1)))
         countdown_html = ""
