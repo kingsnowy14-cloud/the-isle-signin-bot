@@ -3412,10 +3412,10 @@ async def _apply_custom_bot_profile(guild, profile):
     description = str(profile.get("description", "")).strip()[:190]
     token = getattr(getattr(_bot, "http", None), "token", None) or os.getenv("DISCORD_TOKEN")
 
-    def image_data(asset):
+    def image_data(asset, image_url_override=None):
         stored = profile.get(asset + "_file")
-        image_url = str(profile.get(asset + "_url", "")).strip()
-        if stored and Path(stored).is_file():
+        image_url = str(image_url_override or profile.get(asset + "_url", "")).strip()
+        if not image_url_override and stored and Path(stored).is_file():
             raw = Path(stored).read_bytes()
             mime = profile.get(asset + "_mime", "application/octet-stream")
         elif image_url:
@@ -3453,7 +3453,21 @@ async def _apply_custom_bot_profile(guild, profile):
 
             for asset in ("avatar", "banner"):
                 if profile.get("remove_" + asset):
-                    payload[asset] = None
+                    if asset == "avatar":
+                        # Restore the bot account's original global avatar on this server.
+                        original_avatar_url = getattr(
+                            getattr(getattr(_bot, "user", None), "display_avatar", None),
+                            "url",
+                            None,
+                        )
+                        if original_avatar_url:
+                            payload[asset] = await asyncio.to_thread(
+                                image_data, asset, str(original_avatar_url)
+                            )
+                        else:
+                            payload[asset] = None
+                    else:
+                        payload[asset] = None
                 else:
                     data_uri = await asyncio.to_thread(image_data, asset)
                     if data_uri is not None:
@@ -3695,7 +3709,7 @@ def guild_custom_bot(guild_id):
         '<div class="cb-two"><div class="cb-field"><label for="cb-avatar">Avatar image</label>'
         '<input id="cb-avatar" type="file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp">'
         '<label for="cb-avatar-url" style="margin-top:12px">Or avatar URL</label><input id="cb-avatar-url" type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
-        + ('<label style="font-weight:400;margin-top:10px"><input type="checkbox" name="remove_avatar"> Reset avatar to default</label>' if avatar_file or avatar_url else '') +
+        + ('<label style="font-weight:400;margin-top:10px"><input type="checkbox" name="remove_avatar"> Originales Ironwolf-Profilbild wiederherstellen</label>' if avatar_file or avatar_url else '') +
         '</div><div class="cb-field"><label for="cb-banner">Banner image</label>'
         '<input id="cb-banner" type="file" name="banner_file" accept="image/png,image/jpeg,image/gif,image/webp">'
         '<label for="cb-banner-url" style="margin-top:12px">Or banner URL</label><input id="cb-banner-url" type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
