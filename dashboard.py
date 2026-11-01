@@ -301,11 +301,10 @@ async def _steam_grant_guild_role(guild_id, discord_id, nickname=None, provider=
             return "member_missing"
 
     nickname_status = "nickname_unchanged"
-    nickname_enabled = cfg.get("verified_accounts_nickname_enabled", True)
+    # Always synchronize the Discord server nickname to the verified gaming username.
+    # Discord nicknames are limited to 32 characters.
     safe_nickname = str(nickname or "").strip()[:32]
-    if not nickname_enabled:
-        nickname_status = "nickname_disabled"
-    elif not safe_nickname:
+    if not safe_nickname:
         nickname_status = "nickname_missing"
         print(f"[GAMING LINK] No username available for {provider} nickname in guild {guild_id}; Discord ID {discord_id}", flush=True)
     elif safe_nickname != (member.nick or ""):
