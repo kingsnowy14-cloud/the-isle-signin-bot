@@ -813,6 +813,18 @@ def _page(title, body):
                 )
         except Exception:
             custom_theme_css = ""
+    cursor_css = ""
+    try:
+        if match and _bot:
+            active_guild = _bot.get_guild(int(match.group(1)))
+            if active_guild and active_guild.icon:
+                cursor_url = str(active_guild.icon.with_size(64).url)
+                cursor_css = (
+                    "html,body,body *{cursor:url('" + html.escape(cursor_url, quote=True) +
+                    "') 16 16,auto!important}"
+                )
+    except Exception as exc:
+        print(f"[DASHBOARD] Custom server cursor unavailable: {type(exc).__name__}: {exc}", flush=True)
     nav = (
         '<a class="skip-link" href="#main-content">Skip to content</a><nav aria-label="Main navigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
         + ('<a class="nav-server" href="/">🎮 Switch server</a>' if logged_in else '')
@@ -967,6 +979,7 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
 @media(max-width:1000px){{.iw-card-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:650px){{.iw-hero{{padding:24px 19px}}.iw-metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.iw-card-grid{{grid-template-columns:1fr}}.iw-category{{padding:15px}}.iw-heading{{align-items:flex-start}}}}
 
 {custom_theme_css}
+{cursor_css}
 </style></head><body>{nav}<main id="main-content" tabindex="-1">{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
 
 
