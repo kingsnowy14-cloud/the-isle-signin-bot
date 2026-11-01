@@ -639,8 +639,8 @@ def migrate_all_guild_configs():
             cfg = config[guild_id]
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
-        if cfg.get("bot_language") != "en":
-            cfg["bot_language"] = "en"
+        if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
+            cfg["bot_language"] = "auto"
             changed = True
     # Ensure newly joined servers get a complete default config too.
     for guild in getattr(bot, "guilds", []):
@@ -651,7 +651,7 @@ def migrate_all_guild_configs():
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
         if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
-            cfg["bot_language"] = "en"
+            cfg["bot_language"] = "auto"
             changed = True
     if changed:
         save_json(CONFIG_FILE, config)
