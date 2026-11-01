@@ -1661,11 +1661,12 @@ def _public_status_panel():
 def set_dashboard_language():
     if not _csrf_ok():
         abort(400, "Security check failed. Please reload the page.")
-    language = "en"
-    session["dashboard_language"] = "en"
+    language = str(request.form.get("language", "auto")).lower()
+    if language not in {"de", "en", "auto"}:
+        abort(400, "Unsupported language.")
+    session["dashboard_language"] = language if language in {"de", "en"} else _dashboard_language()
 
-    # When the language is changed from a server page, keep that server's bot
-    # language in sync so dashboard and bot responses use the same selection.
+    # A server language choice controls the bot's default locale for that guild.
     referrer_path = urlparse(request.referrer or "").path
     guild_match = re.match(r"^/guild/(\\d+)(?:/|$)", referrer_path)
     if guild_match and _guild_config and _config is not None and _save_json:
@@ -2703,8 +2704,10 @@ def guild_page(guild_id):
                 if settings_section == "general":
                     # Missing flag is treated as enabled for legacy servers; new servers explicitly start disabled.
                     cfg["bot_enabled"] = request.form.get("bot_enabled") == "on"
-                    selected_language = "en"
-                    cfg["bot_language"] = "en"
+                    selected_language = request.form.get("bot_language", cfg.get("bot_language", "auto")).lower()
+                    if selected_language not in {"auto", "de", "en"}:
+                        abort(400, "Unsupported bot language.")
+                    cfg["bot_language"] = selected_language
                     # Welcome and goodbye destinations are configured in the Welcome module.
                     text_channel_ids = {str(item.id) for item in guild.text_channels}
                     for key, label in (("welcome_channel", "Welcome channel"), ("goodbye_channel", "Goodbye channel")):
@@ -2853,7 +2856,7 @@ def guild_page(guild_id):
         if section == "general":
             bot_enabled_checked = " checked" if cfg.get("bot_enabled", True) else ""
             settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 Enable IronWolf on this server</label></div><p class="muted">When disabled, the bot will not respond on this server. New servers start disabled; existing servers keep their current behavior.</p>'
-            settings_html += '<p class="muted">🌐 Bot language: English (fixed globally for every server).</p>'
+            settings_html += '<label>🌐 Bot language<select name="bot_language"><option value="auto"' + (' selected' if cfg.get("bot_language", "auto") == "auto" else '') + '>Automatic (Discord server language)</option><option value="de"' + (' selected' if cfg.get("bot_language") == "de" else '') + '>Deutsch</option><option value="en"' + (' selected' if cfg.get("bot_language") == "en" else '') + '>English</option></select></label>'
             settings_html += '<h3>👋 Welcome module · Channels</h3><p class="muted">Choose where IronWolf welcomes new members and where goodbye messages are posted.</p>'
             settings_html += '<label for="welcome_channel">Public welcome channel</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
             settings_html += '<label for="goodbye_channel">Goodbye channel</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
