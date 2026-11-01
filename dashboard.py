@@ -3505,12 +3505,19 @@ async def _apply_custom_bot_profile(guild, profile):
                         results.append("Discord accepted the request but did not confirm the requested nickname.")
                 for asset in ("avatar", "banner"):
                     if asset in payload:
-                        if updated.get(asset) == (None if payload[asset] is None else updated.get(asset)):
-                            changed.append(asset)
-                        elif payload[asset] is not None and updated.get(asset):
-                            changed.append(asset)
+                        confirmed = (
+                            updated.get(asset) is None
+                            if payload[asset] is None
+                            else bool(updated.get(asset))
+                        )
+                        if confirmed:
+                            changed.append(asset + (" reset" if payload[asset] is None else " updated"))
                         else:
-                            results.append("Discord did not confirm the {} update.".format(asset))
+                            results.append(
+                                "Discord did not confirm the {} update; API response field was {!r}.".format(
+                                    asset, updated.get(asset)
+                                )
+                            )
                 if "bio" in payload:
                     changed.append("bio")
                 results.append(
@@ -3526,35 +3533,38 @@ async def _apply_custom_bot_profile(guild, profile):
             channel = guild.get_channel(int(channel_id))
         except (TypeError, ValueError):
             channel = None
-        if channel is None:
-            results.append("profile card could not be published: selected channel was not found")
+        if channel is None or not hasattr(channel, "send"):
+            results.append("profile channel not found")
         else:
             try:
                 embed = discord.Embed(
-                    title="Custom Bot Profile",
-                    description=description or "No server-specific description set.",
+                    title=custom_name or (guild.me.display_name if guild.me else "IronWolf"),
+                    description=description or "Server bot profile",
                     color=discord.Color.blurple(),
                 )
-                embed.set_author(name=custom_name or getattr(_bot.user, "name", "Bot"))
-                if profile.get("avatar_file") and Path(profile["avatar_file"]).is_file():
-                    embed.set_thumbnail(url="attachment://avatar" + Path(profile["avatar_file"]).suffix)
-                    avatar_upload = discord.File(profile["avatar_file"], filename="avatar" + Path(profile["avatar_file"]).suffix)
-                elif profile.get("avatar_url"):
-                    embed.set_thumbnail(url=profile["avatar_url"])
-                    avatar_upload = None
-                else:
-                    avatar_upload = None
-                if profile.get("banner_file") and Path(profile["banner_file"]).is_file():
-                    embed.set_image(url="attachment://banner" + Path(profile["banner_file"]).suffix)
-                    banner_upload = discord.File(profile["banner_file"], filename="banner" + Path(profile["banner_file"]).suffix)
-                elif profile.get("banner_url"):
-                    embed.set_image(url=profile["banner_url"])
-                    banner_upload = None
-                else:
-                    banner_upload = None
-                files = [item for item in (avatar_upload, banner_upload) if item is not None]
-                await channel.send(embed=embed, files=files)
-                results.append("profile card published")
+                embed.set_footer(text=guild.name + " · IronWolf")
+                files = []
+                for asset, setter in (("avatar", embed.set_thumbnail), ("banner", embed.set_image)):
+                    asset_path = profile.get(asset + "_file")
+                    asset_url = profile.get(asset + "_url")
+                    if asset_path and Path(asset_path).is_file():
+                        asset_file = discord.File(asset_path, filename=Path(asset_path).name)
+                        files.append(asset_file)
+                        setter(url="attachment://" + asset_file.filename)
+                    elif asset_url:
+                        setter(url=asset_url)
+                sent = await channel.send(embed=embed, files=files)
+                old_message_id = profile.get("profile_message_id")
+                if old_message_id:
+                    try:
+                        old_message = await channel.fetch_message(int(old_message_id))
+                        await old_message.delete()
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
+                        pass
+                profile["profile_message_id"] = str(sent.id)
+                results.append("supplemental profile card published in #" + getattr(channel, "name", "channel"))
+            except discord.Forbidden:
+                results.append("profile card could not be published: check View Channel, Send Messages, Embed Links and Attach Files permissions")
             except discord.HTTPException as exc:
                 results.append("profile card publishing failed: " + str(exc)[:180])
     return results
