@@ -297,8 +297,8 @@ async def announce_private_release(changes):
         summary = "New improvements and technical updates have been released."
 
     embed = discord.Embed(
-        title="🐺 IronWolf · Update verfügbar",
-        description=f"**Änderung / Verbesserung**\n{discord.utils.escape_markdown(summary)}\n\n"
+        title="🐺 IronWolf · Update available",
+        description=f"**Change / Improvement**\n{discord.utils.escape_markdown(summary)}\n\n"
                     "This update is for this server. Only readable release notes are published here — **no source code or code snippets**.",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
@@ -339,7 +339,7 @@ async def ironwolf_logs(ctx):
     if len(text) > 1900:
         text = text[:1890] + "…"
     embed = discord.Embed(
-        title="🐺 IronWolf · Moduländerungen",
+        title="🐺 IronWolf · Module changes",
         description=text,
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
@@ -1950,7 +1950,7 @@ class DashboardMessageView(discord.ui.View):
         for index, item in enumerate(buttons[:5]):
             label = str(item.get("label", "Button"))[:80]
             if self.guild_id == 1561027077984227371:
-                label = {"Rolle erhalten": "Get Role", "Link öffnen": "Open Link", "Jetzt bewerben": "Apply Now", "Verifizieren": "Verify", "Geburtstag eintragen": "Register Birthday", "Meinen Geburtstag löschen": "Delete My Birthday", "Annehmen": "Accept", "Ablehnen": "Reject"}.get(label, label)
+                label = {"Rolle erhalten": "Get Role", "Link öffnen": "Open Link", "Jetzt bewerben": "Apply Now", "Verifizieren": "Verify", "Geburtstag eintragen": "Register Birthday", "Delete my birthday": "Delete My Birthday", "Annehmen": "Accept", "Ablehnen": "Reject"}.get(label, label)
             if item.get("type") == "link":
                 self.add_item(discord.ui.Button(
                     label=label,
@@ -2369,7 +2369,7 @@ async def inactive_members(interaction: discord.Interaction, tage: app_commands.
         color=discord.Color.orange() if inactive else discord.Color.green(),
         timestamp=now,
     )
-    embed.set_footer(text=f"{len(inactive)} inaktive Mitglieder gefunden · Beitrittsdatum ist Basis, wenn keine Aktivität vorliegt")
+    embed.set_footer(text=f"{len(inactive)} inactive members found · join date is used when no activity is available")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
@@ -2420,7 +2420,7 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
     inactive.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=timezone.utc))
     top_lines = [f"• {member.display_name} — {_activity_age_text(last_activity, now)}" for last_activity, member in active[:10]]
     embed = create_embed(
-        title=f"📊 Clan-Aktivitätsbericht · letzte {tage} Tage",
+        title=f"📊 Clan activity report · last {tage} days",
         description=(
             f"**Mitglieder:** {len(members)}\n"
             f"**Aktiv im Zeitraum:** {len(active)}\n"
@@ -2439,7 +2439,7 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
     if isinstance(log_channel, discord.TextChannel):
         try:
             await log_channel.send(embed=embed)
-            await interaction.followup.send(f"✅ Aktivitätsbericht wurde in {log_channel.mention} protokolliert.", ephemeral=True)
+            await interaction.followup.send(f"✅ Activity report was posted in {log_channel.mention}.", ephemeral=True)
         except discord.Forbidden:
             await interaction.followup.send(
                 f"❌ Ich kann nicht in {log_channel.mention} schreiben. Prüfe die Kanalrechte.", ephemeral=True
@@ -2606,9 +2606,9 @@ async def moderation_timeout(interaction: discord.Interaction, mitglied: discord
     try:
         await mitglied.timeout(timedelta(minutes=minuten), reason=f"{interaction.user}: {grund[:400]}")
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await interaction.response.send_message(f"Timeout fehlgeschlagen: {type(exc).__name__}. Prüfe Bot-Rechte und Rollenposition.", ephemeral=True); return
+        await interaction.response.send_message(f"Timeout failed: {type(exc).__name__}. Check bot permissions and role hierarchy.", ephemeral=True); return
     case_id = _new_mod_case(interaction.guild_id, mitglied.id, interaction.user.id, f"TIMEOUT {minuten}m", grund)
-    await interaction.response.send_message(f"🔇 {mitglied.mention} erhielt einen Timeout für **{minuten} Minuten**. Fall `#{case_id}`. Grund: {grund[:500]}")
+    await interaction.response.send_message(f"🔇 {mitglied.mention} was timed out for **{minuten} minutes**. Case `#{case_id}`. Grund: {grund[:500]}")
     await security_log(interaction.guild, "🔇 Timeout", f"Mitglied: {mitglied.mention}\nModerator: {interaction.user.mention}\nDauer: {minuten} Minuten\nGrund: {grund[:800]}", discord.Color.orange())
 
 
@@ -2683,7 +2683,7 @@ async def moderation_purge(interaction: discord.Interaction, anzahl: app_command
     app_commands.Choice(name="Alle Nachrichten", value="all"),
     app_commands.Choice(name="Nur Bot-Nachrichten", value="bots"),
     app_commands.Choice(name="Nur Links", value="links"),
-    app_commands.Choice(name="Nur Nachrichten mit Anhängen", value="attachments"),
+    app_commands.Choice(name="Messages with attachments only", value="attachments"),
     app_commands.Choice(name="Nur Befehlsnachrichten (! oder /)", value="commands"),
 ])
 async def moderation_clean(
@@ -2752,7 +2752,7 @@ async def moderation_slowmode(interaction: discord.Interaction, sekunden: app_co
     try:
         await interaction.channel.edit(slowmode_delay=sekunden, reason=f"Slowmode von {interaction.user}")
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await interaction.response.send_message(f"Slowmode konnte nicht geändert werden: {type(exc).__name__}.", ephemeral=True); return
+        await interaction.response.send_message(f"Slowmode could not be changed: {type(exc).__name__}.", ephemeral=True); return
     await interaction.response.send_message(f"Slowmode gesetzt: **{sekunden} Sekunden**.")
 
 
@@ -2882,7 +2882,7 @@ class BirthdayRegisterView(discord.ui.View):
             return
         await interaction.response.send_modal(BirthdayRegisterModal())
 
-    @discord.ui.button(label="Meinen Geburtstag löschen", style=discord.ButtonStyle.danger, emoji="🗑️", custom_id="ironwolf:birthday:delete_own")
+    @discord.ui.button(label="Delete my birthday", style=discord.ButtonStyle.danger, emoji="🗑️", custom_id="ironwolf:birthday:delete_own")
     async def delete_own_birthday(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild is None:
             await interaction.response.send_message("Please use this button in a server.", ephemeral=True)
@@ -3038,7 +3038,7 @@ async def birthday_worker():
                 if not isinstance(channel, discord.TextChannel):
                     continue
                 try:
-                    greeting = str(cfg.get("birthday_message") or "🎂 Alles Gute zum Geburtstag, {mention}! Wir wünschen dir einen tollen Tag! 🎉")
+                    greeting = str(cfg.get("birthday_message") or "🎂 Happy birthday, {mention}! We hope you have a wonderful day! 🎉")
                     greeting = greeting.replace("{mention}", member.mention).replace("{user}", member.display_name).replace("{server}", guild.name)
                     await channel.send(greeting[:1900], allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
                     greeted[user_id] = year_key
@@ -3393,7 +3393,7 @@ async def social_show(interaction: discord.Interaction):
         await interaction.response.send_message("Noch keine Social-Links eingerichtet. Ein Admin kann `/social-set` verwenden.", ephemeral=True); return
     embed = create_embed(title=f"🌐 Social Links — {interaction.guild.name}", color=discord.Color.blurple())
     for platform, link in sorted(links.items()):
-        embed.add_field(name=platform.capitalize(), value=f"[Hier öffnen]({link})", inline=True)
+        embed.add_field(name=platform.capitalize(), value=f"[Open here]({link})", inline=True)
     await interaction.response.send_message(embed=embed)
 
 
@@ -3434,7 +3434,7 @@ async def case_command(interaction: discord.Interaction, nummer: app_commands.Ra
     if not case:
         await interaction.response.send_message("This case was not found. Cases will be recorded from now on.", ephemeral=True)
         return
-    embed = create_embed(title=f"Moderationsfall #{case['id']}", description=f"**Aktion:** {case['action']}\n**Mitglied:** <@{case['user_id']}>\n**Moderator:** <@{case['moderator_id']}>\n**Grund:** {case['reason']}\n**Zeit:** {case['timestamp']}", color=discord.Color.orange())
+    embed = create_embed(title=f"Moderationsfall #{case['id']}", description=f"**Aktion:** {case['action']}\n**Member:** <@{case['user_id']}>\n**Moderator:** <@{case['moderator_id']}>\n**Grund:** {case['reason']}\n**Zeit:** {case['timestamp']}", color=discord.Color.orange())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -3906,7 +3906,7 @@ async def ausweis_command(interaction: discord.Interaction):
         return
     embed = discord.Embed(
         title=str(cfg.get("id_card_title", "🪪 Mitgliedsausweis"))[:256],
-        description=str(cfg.get("id_card_description", "Apply here for your digital member ID card."))[:4000] + "\n\nKlicke auf **Ausweis beantragen**, um das Formular auszufüllen.",
+        description=str(cfg.get("id_card_description", "Apply here for your digital member ID card."))[:4000] + "\n\nClick **Apply for ID card** to fill out the form.",
         color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16))
     )
     embed.set_footer(text="IronWolf · Created by KingSnowy")
@@ -4030,7 +4030,7 @@ async def verify_setup(
 ):
     bot_member = interaction.guild.me if interaction.guild else None
     if not bot_member or verifiziert.is_default() or verifiziert >= bot_member.top_role or (unverified and unverified >= bot_member.top_role):
-        await interaction.response.send_message("Die Bot-Rolle muss über den Verifizierungsrollen stehen.", ephemeral=True)
+        await interaction.response.send_message("The bot role must be above the verification roles.", ephemeral=True)
         return
     mode_value = modus.value if modus else "click"
     cfg = guild_config(interaction.guild_id)
@@ -4043,7 +4043,7 @@ async def verify_setup(
     cfg["verify_embed_title"] = "✅ Server-Verifizierung"
     cfg["verify_embed_description"] = (
         "Lies die Serverregeln und klicke auf den Button. "
-        + ("Anschließend löst du ein Bild-Captcha, indem du den passenden Code aus drei Antworten auswählst."
+        + ("Then solve an image CAPTCHA by selecting the matching code from three options."
            if mode_value == "code" else "Du wirst direkt verifiziert.")
     )
     save_json(CONFIG_FILE, config)
@@ -4051,7 +4051,7 @@ async def verify_setup(
         title="✅ Server-Verifizierung",
         description=(
             "Lies die Serverregeln und klicke auf den Button. "
-            + ("Anschließend löst du ein Bild-Captcha, indem du den passenden Code aus drei Antworten auswählst."
+            + ("Then solve an image CAPTCHA by selecting the matching code from three options."
                if mode_value == "code"
                else "Du wirst direkt verifiziert.")
         ),
@@ -4139,7 +4139,7 @@ async def event_create(interaction: discord.Interaction, titel: str, datum: str,
     await interaction.response.defer(ephemeral=True, thinking=True)
     embed = create_embed(
         title="📅 " + discord.utils.escape_markdown(titel),
-        description=f"**Wann:** {discord.utils.escape_markdown(datum)}\n\n{discord.utils.escape_markdown(beschreibung)}\n\nReagiere mit 📅, wenn du teilnehmen möchtest.",
+        description=f"**When:** {discord.utils.escape_markdown(datum)}\n\n{discord.utils.escape_markdown(beschreibung)}\n\nReact with 📅 if you would like to attend.",
         color=discord.Color.blurple(),
     )
     msg = None
@@ -4351,7 +4351,7 @@ async def social_alert_test(interaction: discord.Interaction, plattform: app_com
 @app_commands.checks.has_permissions(manage_guild=True)
 async def social_alert_status(interaction: discord.Interaction):
     alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
-    embed = create_embed(title="📡 Social-Alerts · Übersicht", color=discord.Color.blurple())
+    embed = create_embed(title="📡 Social alerts · Overview", color=discord.Color.blurple())
     if not alerts:
         embed.description = "No alerts configured yet. Use /social-alert-set for each creator."
     else:
@@ -4367,7 +4367,7 @@ async def social_alert_status(interaction: discord.Interaction):
                 inline=False,
             )
         if len(alerts) > 25:
-            embed.set_footer(text=f"Zeige 25 von {len(alerts)} Alerts. Diagnose enthält weitere Details.")
+            embed.set_footer(text=f"Showing 25 of {len(alerts)} alerts. Diagnostics contain more details.")
     await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
@@ -4404,9 +4404,9 @@ async def social_alert_diagnose(interaction: discord.Interaction):
 async def social_live(interaction: discord.Interaction):
     alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
     live = [a for a in alerts.values() if a.get("platform") == "twitch" and a.get("enabled") and a.get("is_live")]
-    embed = create_embed(title="🔴 Twitch · Live-Übersicht", color=discord.Color.purple())
+    embed = create_embed(title="🔴 Twitch · Live overview", color=discord.Color.purple())
     if not live:
-        embed.description = "Aktuell wird kein konfigurierter Twitch-Creator als live erkannt. Die Übersicht aktualisiert sich, sobald der nächste Check läuft."
+        embed.description = "No configured Twitch creator is currently detected as live. This overview updates after the next check."
     else:
         for alert in live[:25]:
             name = str(alert.get("source", "Twitch"))
@@ -4713,7 +4713,7 @@ class ClaimVoiceSupportView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Support übernehmen", style=discord.ButtonStyle.primary, emoji="🎧", custom_id="ironwolf:voice_support:claim")
+    @discord.ui.button(label="Claim support", style=discord.ButtonStyle.primary, emoji="🎧", custom_id="ironwolf:voice_support:claim")
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         if guild is None or not isinstance(interaction.user, discord.Member):
@@ -4729,7 +4729,7 @@ class ClaimVoiceSupportView(discord.ui.View):
         requester_id = _support_embed_field(embed, "requester_id")
         waiting_id = _support_embed_field(embed, "waiting_channel_id")
         if not requester_id or not waiting_id:
-            await interaction.response.send_message("Die Support-Anfrage ist unvollständig.", ephemeral=True)
+            await interaction.response.send_message("The support request is incomplete.", ephemeral=True)
             return
         requester = guild.get_member(requester_id)
         if requester is None or requester.voice is None or requester.voice.channel is None or requester.voice.channel.id != waiting_id:
@@ -4740,7 +4740,7 @@ class ClaimVoiceSupportView(discord.ui.View):
                 pass
             return
         if embed and _support_embed_field(embed, "support_channel_id"):
-            await interaction.response.send_message("Dieser Fall wurde bereits übernommen.", ephemeral=True)
+            await interaction.response.send_message("This case has already been claimed.", ephemeral=True)
             return
         category_id = cfg.get("voice_support_category")
         category = guild.get_channel(int(category_id)) if category_id else requester.voice.channel.category
@@ -4761,10 +4761,10 @@ class ClaimVoiceSupportView(discord.ui.View):
         existing_id = cfg.get("voice_support_existing_channel")
         selected_channel = guild.get_channel(int(existing_id)) if existing_id else None
         if existing_id and not isinstance(selected_channel, discord.VoiceChannel):
-            await interaction.response.send_message("Der ausgewählte vorhandene Support-Kanal existiert nicht mehr. Bitte prüfe die Dashboard-Einstellungen.", ephemeral=True)
+            await interaction.response.send_message("The selected support channel no longer exists. Please check the dashboard settings.", ephemeral=True)
             return
         if isinstance(selected_channel, discord.VoiceChannel) and selected_channel.members:
-            await interaction.response.send_message("Der ausgewählte Support-Kanal ist bereits belegt. Bitte leere ihn oder wähle im Dashboard einen anderen Kanal.", ephemeral=True)
+            await interaction.response.send_message("The selected support channel is already occupied. Please clear it or choose another channel in the dashboard.", ephemeral=True)
             return
         try:
             if isinstance(selected_channel, discord.VoiceChannel):
@@ -4821,7 +4821,7 @@ class ActiveVoiceSupportView(discord.ui.View):
         previous_id = _support_embed_field(embed, "supporter_previous_voice_id")
         requester_id = _support_embed_field(embed, "requester_id")
         if not (interaction.user.guild_permissions.manage_channels or (role and role in interaction.user.roles) or interaction.user.id == supporter_id):
-            await interaction.response.send_message("Nur der zuständige Supporter oder ein Moderator kann den Fall beenden.", ephemeral=True)
+            await interaction.response.send_message("Only the assigned support agent or a moderator can close this case.", ephemeral=True)
             return
         support_channel = guild.get_channel(channel_id) if channel_id else None
         if isinstance(support_channel, discord.VoiceChannel):
@@ -4885,7 +4885,7 @@ async def voice_support_waiting_room(member, before, after):
     _support_pending.add(key)
     embed = create_embed(
         title="🎧 Neue Voice-Support-Anfrage",
-        description=f"**Mitglied:** {member.mention}\n**Warteraum:** {after.channel.mention}\nEin Supporter kann den Fall mit dem Button übernehmen.",
+        description=f"**Member:** {member.mention}\n**Warteraum:** {after.channel.mention}\nA support agent can claim this case using the button.",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -4910,7 +4910,7 @@ class HoneypotStatsView(discord.ui.View):
     @discord.ui.button(label="Statistik aktualisieren", style=discord.ButtonStyle.secondary, emoji="🔄")
     async def refresh_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild_id != self.guild_id:
-            await interaction.response.send_message("Diese Statistik gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("These statistics belong to another server.", ephemeral=True)
             return
         stats = data.setdefault("honeypot_stats", {}).setdefault(str(self.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
         embed = discord.Embed(title="🍯 IronWolf Honeypot-Statistik", color=discord.Color.orange())
@@ -4940,24 +4940,24 @@ async def honeypot_publish(interaction: discord.Interaction):
     channel_id = cfg.get("honeypot_channel")
     channel = interaction.guild.get_channel(int(channel_id)) if channel_id else None
     if not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message("Bitte zuerst im Dashboard einen Honeypot-Textkanal auswählen.", ephemeral=True)
+        await interaction.response.send_message("Please select a honeypot text channel in the dashboard first.", ephemeral=True)
         return
     message_text = str(cfg.get("honeypot_message") or "Dieser Kanal ist ein Honeypot. Bitte hier nicht schreiben.")[:1900]
     try:
         embed = discord.Embed(title="🍯 IronWolf · Honeypot", description=message_text,
                               color=discord.Color.orange(), timestamp=datetime.now(timezone.utc))
-        embed.add_field(name="Ausgewählte Aktion", value=str(cfg.get("honeypot_action", "kick")).upper(), inline=False)
+        embed.add_field(name="Selected action", value=str(cfg.get("honeypot_action", "kick")).upper(), inline=False)
         stats = data.setdefault("honeypot_stats", {}).setdefault(str(interaction.guild_id), {"ban": 0, "kick": 0, "timeout": 0})
-        embed.add_field(name="🍯 Zähler · Ban", value=str(stats.get("ban", 0)), inline=True)
-        embed.add_field(name="👢 Zähler · Kick", value=str(stats.get("kick", 0)), inline=True)
-        embed.add_field(name="⏳ Zähler · Timeout", value=str(stats.get("timeout", 0)), inline=True)
+        embed.add_field(name="🍯 Count · Ban", value=str(stats.get("ban", 0)), inline=True)
+        embed.add_field(name="👢 Count · Kick", value=str(stats.get("kick", 0)), inline=True)
+        embed.add_field(name="⏳ Count · Timeout", value=str(stats.get("timeout", 0)), inline=True)
         embed.set_footer(text="Sicherheits-System · IronWolf")
         posted = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         cfg["honeypot_message_id"] = posted.id
         save_json(data_path("config.json"), _config)
-        await interaction.response.send_message(f"Honeypot-Nachricht wurde in {channel.mention} veröffentlicht.", ephemeral=True)
+        await interaction.response.send_message(f"Honeypot message was posted in {channel.mention}.", ephemeral=True)
     except (discord.Forbidden, discord.HTTPException):
-        await interaction.response.send_message("Die Nachricht konnte nicht gesendet werden. Bitte Kanalrechte prüfen.", ephemeral=True)
+        await interaction.response.send_message("The message could not be sent. Please check channel permissions.", ephemeral=True)
 
 
 async def _generate_ticket_ai_reply(channel, message, meta):
@@ -5077,7 +5077,7 @@ async def ai_knowledge_command(interaction: discord.Interaction):
     cfg = guild_config(interaction.guild.id)
     entries = cfg.get("ai_knowledge", [])
     if not isinstance(entries, list) or not entries:
-        await interaction.response.send_message("Für diesen Server ist noch kein KI-Wissen gespeichert. Du kannst es im Dashboard hinzufügen.", ephemeral=True)
+        await interaction.response.send_message("No AI knowledge has been saved for this server yet. You can add it in the dashboard.", ephemeral=True)
         return
     lines = []
     for index, item in enumerate(entries[-15:], 1):
@@ -5212,7 +5212,7 @@ async def on_message(message: discord.Message):
                         pass
                     try:
                         await security_log(guild, "🛡️ Ping-Schutz ausgelöst",
-                            f"**Mitglied:** {message.author.mention} (`{message.author.id}`)\n**Kanal:** {message.channel.mention}\n"
+                            f"**Member:** {message.author.mention} (`{message.author.id}`)\n**Kanal:** {message.channel.mention}\n"
                             f"**Geschützte Ziele:** {discord.utils.escape_markdown(targets_text)}\n**Nachricht gelöscht:** Ja",
                             discord.Color.orange())
                     except Exception:
@@ -5316,7 +5316,7 @@ async def on_message(message: discord.Message):
                     if published and published.embeds:
                         counter_embed = published.embeds[0].copy()
                         current_stats = data.setdefault("honeypot_stats", {}).setdefault(str(guild.id), {"ban": 0, "kick": 0, "timeout": 0})
-                        fields = {"ban": "🍯 Zähler · Ban", "kick": "👢 Zähler · Kick", "timeout": "⏳ Zähler · Timeout"}
+                        fields = {"ban": "🍯 Count · Ban", "kick": "👢 Count · Kick", "timeout": "⏳ Count · Timeout"}
                         for key, field_name in fields.items():
                             index = next((i for i, field in enumerate(counter_embed.fields) if field.name == field_name), None)
                             if index is None:
@@ -5330,7 +5330,7 @@ async def on_message(message: discord.Message):
                     action_names = {"ban": "vom Server gebannt", "kick": "vom Server gekickt", "timeout": "mit einem Timeout belegt"}
                     result_text = action_names[action] if succeeded else "nicht erfolgreich ausgeführt (möglicherweise fehlen dem Bot Rechte)"
                     await member.send(embed=discord.Embed(
-                        title="🍯 IronWolf Honeypot ausgelöst",
+                        title="🍯 IronWolf honeypot triggered",
                         description=(
                             f"Du hast im Honeypot-Kanal **#{getattr(message.channel, 'name', 'unbekannt')}** geschrieben. "
                             f"Diese Nachricht hat den Sicherheitsschutz ausgelöst.\n\n"
@@ -5345,7 +5345,7 @@ async def on_message(message: discord.Message):
                     log_id = cfg.get("security_log_channel") or cfg.get("log_channel_id")
                     log = guild.get_channel(int(log_id)) if log_id else None
                     if isinstance(log, discord.TextChannel):
-                        embed = discord.Embed(title="🍯 Honeypot ausgelöst", color=discord.Color.red())
+                        embed = discord.Embed(title="🍯 Honeypot triggered", color=discord.Color.red())
                         embed.add_field(name="Mitglied", value=f"{member} ({member.id})", inline=False)
                         embed.add_field(name="Aktion", value=action.upper(), inline=True)
                         embed.add_field(name="Ergebnis", value="Erfolgreich" if succeeded else "Fehlgeschlagen", inline=True)
@@ -6043,7 +6043,7 @@ async def security_setup(
     else:
         log_permissions = log_kanal.permissions_for(bot_member)
         if not log_permissions.view_channel or not log_permissions.send_messages or not log_permissions.embed_links:
-            warnings.append(f"Im Log-Kanal {log_kanal.mention} fehlen dem Bot möglicherweise Kanal ansehen, Nachrichten senden oder Links einbetten.")
+            warnings.append(f"The bot may be missing View Channel, Send Messages, or Embed Links permissions in the log channel {log_kanal.mention}.")
         if not bot_member.guild_permissions.view_audit_log:
             warnings.append("Audit-Log ansehen fehlt: Anti-Nuke kann Akteure nicht zuverlässig zuordnen.")
         if not bot_member.guild_permissions.kick_members:
@@ -6060,7 +6060,7 @@ async def security_setup(
             f"**Anti-Nuke:** Aktiv · Schwelle {cfg['anti_nuke_threshold']} verdächtige Aktionen/60 Sekunden.\n"
             f"**AutoMod Anti-Spam:** {'Aktiv' if anti_spam else 'Deaktiviert'} · "
             "6 Nachrichten/8 Sekunden lösen eine Löschung und einen 2-Minuten-Timeout aus.\n\n"
-            "Hinweis: Der Bot benötigt passende Moderations- und Audit-Log-Berechtigungen "
+            "Note: The bot needs the appropriate moderation and audit log permissions "
             "sowie eine ausreichend hohe Rollenposition."
             + (("\n\n⚠️ **Berechtigungsprüfung**\n" + "\n".join(f"• {item}" for item in warnings)) if warnings else "\n\n✅ Die grundlegenden Berechtigungen wurden geprüft.")
         ),
@@ -6420,7 +6420,7 @@ class Applications(commands.Cog):
         if not questions:
             questions = ["What is your RP name?", "What is your Roblox username?", "How old are you (OOC)?", "What experience do you have?", "Why do you want to join?"]
         if any(len(question) > 45 for question in questions):
-            await interaction.response.send_message("Jede Frage darf höchstens 45 Zeichen lang sein. Bitte kürze die Fragen.", ephemeral=True)
+            await interaction.response.send_message("Each question can be at most 45 characters. Please shorten the questions.", ephemeral=True)
             return
         gid = interaction.guild.id
         guild_settings(gid).update({
@@ -6496,7 +6496,7 @@ class Applications(commands.Cog):
             await interaction.response.send_message("Gib mindestens eine Frage an.", ephemeral=True)
             return
         if any(len(q) > 45 for q in questions):
-            await interaction.response.send_message("Jede Frage darf höchstens 45 Zeichen lang sein.", ephemeral=True)
+            await interaction.response.send_message("Each question can be at most 45 characters.", ephemeral=True)
             return
         guild_settings(interaction.guild.id)["questions"] = questions
         save_config()
@@ -6611,7 +6611,7 @@ async def ironwolf_profile(
             ephemeral=True,
         )
     except (ValueError, requests.RequestException) as exc:
-        await interaction.followup.send("❌ Profiländerung fehlgeschlagen: {}".format(str(exc)[:700]), ephemeral=True)
+        await interaction.followup.send("❌ Profile update failed: {}".format(str(exc)[:700]), ephemeral=True)
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
@@ -6713,12 +6713,12 @@ class PlayerFiles(commands.Cog):
     @app_commands.checks.has_permissions(moderate_members=True)
     async def akte(self, interaction: discord.Interaction, mitglied: discord.Member, grund: str):
         if mitglied.bot or mitglied.id == interaction.user.id:
-            await interaction.response.send_message("Bitte wähle ein anderes menschliches Mitglied.", ephemeral=True); return
+            await interaction.response.send_message("Please choose a different human member.", ephemeral=True); return
         db = read(AKTEN, {})
         records = db.setdefault(f"{interaction.guild_id}:{mitglied.id}", [])
         records.append({"member_id": mitglied.id, "moderator_id": interaction.user.id, "reason": grund[:1000], "created_at": datetime.now(timezone.utc).isoformat()})
         write(AKTEN, db)
-        await interaction.response.send_message(f"📁 Akteneintrag #{len(records)} für {mitglied.mention} gespeichert.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        await interaction.response.send_message(f"📁 Record #{len(records)} for {mitglied.mention} saved.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @app_commands.command(name="view-player-record", description="Shows the latest entries in a player record")
     @app_commands.guild_only()
@@ -6726,7 +6726,7 @@ class PlayerFiles(commands.Cog):
     async def akte_ansehen(self, interaction: discord.Interaction, mitglied: discord.Member):
         records = read(AKTEN, {}).get(f"{interaction.guild_id}:{mitglied.id}", [])
         if not records:
-            await interaction.response.send_message("Für dieses Mitglied gibt es keine Akteneinträge.", ephemeral=True); return
+            await interaction.response.send_message("There are no records for this member.", ephemeral=True); return
         lines = [f"#{i} · {r.get('created_at', '')[:10]} — {discord.utils.escape_markdown(r.get('reason', 'Kein Grund'))}" for i, r in enumerate(records[-10:], max(1, len(records)-9))]
         await interaction.response.send_message(embed=discord.Embed(title=f"📁 Spielerakte · {mitglied}", description="\n".join(lines)[:4000], color=discord.Color.dark_teal()), ephemeral=True)
 
@@ -6817,7 +6817,7 @@ class EventTools(commands.Cog):
         try: await kanal.send(embed=embed)
         except discord.Forbidden:
             await interaction.response.send_message("Event gespeichert, aber im Zielkanal fehlen Senderechte.", ephemeral=True); return
-        await interaction.response.send_message(f"Event gespeichert und in {kanal.mention} veröffentlicht.", ephemeral=True)
+        await interaction.response.send_message(f"Event saved and posted in {kanal.mention}.", ephemeral=True)
 
     @app_commands.command(name="events", description="Listet kommende IronWolf-Events")
     @app_commands.guild_only()
@@ -6830,7 +6830,7 @@ class EventTools(commands.Cog):
             except (KeyError, TypeError, ValueError): pass
         items.sort(key=lambda x: x[0])
         if not items:
-            await interaction.response.send_message("Keine zukünftigen Events gespeichert.", ephemeral=True); return
+            await interaction.response.send_message("No upcoming events saved.", ephemeral=True); return
         lines = [f"• **{discord.utils.escape_markdown(r['title'])}** — <t:{int(t.timestamp())}:F>" for t, r in items[:10]]
         await interaction.response.send_message(embed=discord.Embed(title="📅 Kommende Events", description="\n".join(lines), color=discord.Color.green()), ephemeral=True)
 
@@ -6847,7 +6847,7 @@ class ControlTools(commands.Cog):
         embed.add_field(name="Mitglieder", value=str(interaction.guild.member_count or 0))
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="control-data", description="Prüft, welche Bot-Datendateien vorhanden sind")
+    @app_commands.command(name="control-data", description="Checks which bot data files are present")
     @app_commands.guild_only()
     @admin()
     async def control_data(self, interaction: discord.Interaction):
@@ -7544,7 +7544,7 @@ async def deleteserver(ctx, bestaetigung: str = ""):
 @deleteserver.error
 async def deleteserver_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("❌ Nur Server-Administratoren dürfen diesen Befehl verwenden.", mention_author=False)
+        await ctx.reply("❌ Only server administrators can use this command.", mention_author=False)
     elif isinstance(error, commands.NoPrivateMessage):
         await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     else:
@@ -8258,7 +8258,7 @@ async def filmserver(ctx):
 @filmserver.error
 async def filmserver_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("❌ Für !filmserver brauchst du die Berechtigung **Server verwalten**.", mention_author=False)
+        await ctx.reply("❌ You need the **Manage Server** permission to use !filmserver.", mention_author=False)
     elif isinstance(error, commands.NoPrivateMessage):
         await ctx.reply("This command can only be used in a Discord server.", mention_author=False)
     else:
@@ -8338,7 +8338,7 @@ async def wolfincidents_command(interaction: discord.Interaction):
         return
     incidents = list_incidents(guild_config(interaction.guild.id), limit=8)
     if not incidents:
-        await interaction.response.send_message("🐺 WolfChronicle: Es sind noch keine Vorfälle dokumentiert.", ephemeral=True)
+        await interaction.response.send_message("🐺 WolfChronicle: No incidents have been recorded yet.", ephemeral=True)
         return
     lines = []
     for item in incidents:
@@ -8348,7 +8348,7 @@ async def wolfincidents_command(interaction: discord.Interaction):
             f"{item['severity_label']} · {item['status_label']} · {item['type_label']} · {stamp} UTC"
         )
     embed = create_embed(
-        title="🐺 WolfChronicle · Letzte Vorfälle",
+        title="🐺 WolfChronicle · Recent incidents",
         description="\n\n".join(lines)[:4000],
         color=discord.Color.blurple(),
     )
@@ -8439,9 +8439,9 @@ async def wolfcheck_command(interaction: discord.Interaction):
         description="\n".join(lines),
         color=discord.Color.green() if ready == len(checks) and all(v for _, v in permissions) else discord.Color.orange(),
     )
-    embed.add_field(name="Kanal-Konfiguration", value=f"{ready}/{len(checks)} geprüft", inline=True)
+    embed.add_field(name="Channel configuration", value=f"{ready}/{len(checks)} geprüft", inline=True)
     embed.add_field(name="Server", value=discord.utils.escape_markdown(guild.name[:100]), inline=True)
-    embed.set_footer(text="WolfPulse · Diagnose ohne Änderungen an deiner Konfiguration")
+    embed.set_footer(text="WolfPulse · Diagnostics without changing your configuration")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -8492,7 +8492,7 @@ async def emoji_command(ctx):
         "🏆", "📊", "💬", "😂", "📁", "🚀", "🎉", "🔔", "🆘", "🛠️",
     )
     status = await ctx.reply(
-        "😀 **IronWolf · Kanal-Emojis**\nIch ergänze passende Emojis bei Text-, Sprach- und Forumkanälen. Kategorien bleiben unverändert; vorhandene Emojis bleiben erhalten.",
+        "😀 **IronWolf · Channel emojis**\nI will add suitable emojis to text, voice, and forum channels. Categories will remain unchanged, and existing emojis will be preserved.",
         mention_author=False,
     )
     renamed = 0
