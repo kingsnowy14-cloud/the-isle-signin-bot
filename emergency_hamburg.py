@@ -149,14 +149,16 @@ def build_status_embed(guild, configured, server_map, error=None):
         embed.description += "\n\nNoch keine Roblox-Server im Dashboard verbunden."
     for item in selected[:20]:
         job_id = str(item.get("job_id", ""))
-        server_key = str(item.get("server_key") or job_id)
+        private_server_id = str(item.get("private_server_id", "")).strip()
+        server_key = str(item.get("server_key") or private_server_id or job_id)
         stats = server_map.get(job_id) if job_id else None
-        name = str(item.get("name") or ("Server " + (job_id or server_key)[:8]))[:100]
+        name = str(item.get("name") or ("Privater Server " + (private_server_id or server_key)[:8]))[:100]
         owner = str(item.get("owner") or "").strip()[:80]
-        if stats is None:
-            value = ("🔗 **JOIN-LINK HINTERLEGT**\nLive-Spielerdaten sind über einen Join-Link allein nicht abrufbar."
-                     if item.get("join_link") and not job_id
-                     else "🔴 **OFFLINE / NICHT GEFUNDEN**\nNicht in der öffentlichen Roblox-Serverliste gefunden.")
+        if private_server_id:
+            value = ("🟡 **PRIVATE SERVER-ID GESPEICHERT**\n"
+                     "Die ID ist hinterlegt. Roblox stellt für diese private Server-ID hier keine öffentliche Live-Abfrage bereit.")
+        elif stats is None:
+            value = "🔴 **OFFLINE / NICHT GEFUNDEN**\nNicht in der öffentlichen Roblox-Serverliste gefunden."
         else:
             playing = int(stats.get("playing", 0) or 0)
             maximum = int(stats.get("maxPlayers", 0) or 0)
