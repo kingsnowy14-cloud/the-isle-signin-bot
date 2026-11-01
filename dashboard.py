@@ -6415,19 +6415,19 @@ def guild_emergency_hamburg(guild_id):
         connected_html = "".join('<div data-eh-server="' + html.escape((str(item.get("name","")) + " " + str(item.get("owner","")) + " " + str(item.get("private_server_id",""))).lower(), quote=True) + '">' + card + '</div>' for item, card in zip(servers, connected_cards))
     options_html = "".join(server_options) or '<option value="">Keine Server auf diesem Abschnitt gefunden</option>'
     if not server_options and not notice:
-        notice += '<p class="muted">Auf diesem Abschnitt wurden keine auswählbaren Server gefunden. Nutze „Weitere Server laden“, falls Roblox noch eine nächste Seite bereitstellt.</p>'
+        notice += '<p class="muted">No selectable public servers found on this page. Use “Load more servers” if Roblox provides another page.</p>'
     next_page_html = (
         '<p><a class="button secondary" href="' + html.escape(url_for("guild_emergency_hamburg", guild_id=guild.id, cursor=next_server_cursor), quote=True) + '">Weitere Server laden →</a></p>'
         if next_server_cursor else
-        '<p class="muted">Roblox meldet für diesen Abschnitt keine weitere API-Seite.</p>'
+        '<p class="muted">Roblox reports no additional public server pages.</p>'
     )
     roles_html = "".join(role_options) or '<option disabled>Keine auswählbaren Rollen vorhanden</option>'
     channels_html = "".join(channel_options) or '<option value="">Kein Textkanal verfügbar</option>'
     enabled_checked = " checked" if monitor.get("enabled", True) else ""
     status_message = (
-        '<p class="muted">Automatische Aktualisierung alle 5 Minuten. Die Nachricht wird bearbeitet und nicht bei jedem Durchlauf neu gesendet.</p>'
+        '<p class="muted">Automatically refreshed every 5 minutes. The existing message is edited instead of sending a new one each time.</p>'
         if monitor.get("message_id") else
-        '<p class="muted">Nach dem Speichern und Aktivieren wird die Statusnachricht automatisch im gewählten Kanal erstellt.</p>'
+        '<p class="muted">The status message will be created in the selected channel after saving and enabling the monitor.</p>'
     )
     body = (
         '<section class="card"><h1>🚨 Emergency Hamburg · Roblox Monitor</h1>'
@@ -6460,7 +6460,7 @@ def guild_emergency_hamburg(guild_id):
         + status_message +
         '<form method="post">' + _csrf_field() +
         '<input type="hidden" name="action" value="reset_message">'
-        '<button class="secondary" type="submit">Statusnachricht neu erstellen</button></form></section>'
+        '<button class="secondary" type="submit">Recreate status message</button></form></section>'
         '<section class="card"><h2>ℹ️ Data availability & limitations</h2>'
         '<ul><li>Private server IDs identify a private server, but are not a live telemetry interface.</li>'
         '<li>Roblox does not provide a complete public directory of all private Emergency Hamburg servers with language, names and enabled packages.</li>'
