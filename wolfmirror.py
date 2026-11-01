@@ -20,7 +20,7 @@ SCENARIOS = {
     },
     "nuke": {
         "label": "Channel-/Rollen-Angriff",
-        "summary": "Ein verdächtiger Account löscht oder erstellt viele Serverobjekte.",
+        "summary": "A suspicious account deletes or creates many server objects.",
         "signals": ("anti_nuke_enabled",),
     },
     "new_accounts": {
@@ -52,7 +52,7 @@ def simulate_scenario(
             "anti_nuke_enabled": "Anti-Nuke",
         }[enabled_key],
         "active": enabled,
-        "detail": "Aktiviert" if enabled else "Nicht aktiviert",
+        "detail": "Enabled" if enabled else "Disabled",
     })
 
     if scenario in {"raid", "new_accounts"}:
@@ -121,7 +121,7 @@ def simulate_scenario(
             "channel_count": _bounded_int(metrics.get("channel_count", 0), 0, 0, 100_000),
         },
         "dry_run": True,
-        "disclaimer": "Simulation auf Basis gespeicherter Einstellungen und aktueller Bot-Berechtigungen. Keine Aktion wurde ausgeführt; dies ist keine Garantie gegen Angriffe.",
+        "disclaimer": "Simulation based on saved settings and current bot permissions. No action was performed; this is not a guarantee against attacks.",
     }
 
 
