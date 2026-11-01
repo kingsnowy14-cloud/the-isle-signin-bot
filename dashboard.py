@@ -1237,11 +1237,11 @@ def _render(title, body, status=200):
     if language not in {"en", "de"}:
         language = "en"
     body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
-    guild_match = re.match(r"^/guild/(\\d+)", request.path)
+    guild_match = re.match(r"^/guild/(\d+)", request.path)
     if guild_match and _bot:
         active_guild = _bot.get_guild(int(guild_match.group(1)))
         if active_guild and active_guild.icon:
-            cursor_url = html.escape(active_guild.icon.url, quote=True)
+            cursor_url = html.escape(active_guild.icon.with_format("png").with_size(32).url, quote=True)
             body += '<style>*,*::before,*::after{cursor:url("' + cursor_url + '") 16 16,auto!important}</style>'
     title = _translate_dashboard(title, language)
     selected_en = " selected" if language == "en" else ""
