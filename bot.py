@@ -2162,7 +2162,7 @@ async def ticketcreat(
     embed = create_embed(title=titel, description=beschreibung, color=discord.Color.blurple())
     embed.set_footer(text="Choose a button to open a ticket. • Created by KingSnowy")
     await kanal.send(embed=embed, view=TicketPanelView(panel_key, labels))
-    await interaction.response.send_message(f"Ticket panel posted in {kanal.mention}.", ephemeral=True)
+    await interaction.response.send_message(f"Ticket panel posted in {kanal.mention}. Panel ID: `{panel_key}`. Configure it with /ticket-settings.", ephemeral=True)
 
 
 @bot.tree.command(name="ticket-settings", description="Configure AI support and pre-ticket questions for a ticket panel")
@@ -2196,6 +2196,28 @@ async def ticket_settings(
         ephemeral=True,
     )
 
+
+@bot.tree.command(name="ticket-ai-status", description="Check whether AI replies can run in a ticket panel")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(panel_id="Panel ID shown when the ticket panel was created")
+async def ticket_ai_status(interaction: discord.Interaction, panel_id: str):
+    cfg = guild_config(interaction.guild_id)
+    panel = cfg.get("ticket_panels", {}).get(panel_id)
+    if not panel:
+        await interaction.response.send_message("Panel ID not found.", ephemeral=True)
+        return
+    checks = [
+        ("Panel AI setting", bool(panel.get("ai_support_enabled", True))),
+        ("Global AI setting", bool(cfg.get("ai_enabled_global", True))),
+        ("Ticket Premium entitlement", bool(guild_has_feature(cfg, "ticket"))),
+        ("Gemini API key configured", bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))),
+    ]
+    lines = [f"{'✅' if ok else '❌'} **{name}:** {'OK' if ok else 'Not enabled / missing'}" for name, ok in checks]
+    await interaction.response.send_message(
+        "**Ticket AI diagnostics**\\n" + "\\n".join(lines) +
+        "\\n\\nIf all checks pass, send a new message in an open ticket and inspect Railway logs for `[TICKET AI]` errors.",
+        ephemeral=True,
+    )
 
 @bot.tree.command(name="ticket-edit", description="Edit the title, description and button labels of a ticket panel")
 @app_commands.checks.has_permissions(manage_guild=True)
