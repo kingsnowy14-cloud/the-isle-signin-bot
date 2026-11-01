@@ -2735,7 +2735,7 @@ def guild_page(guild_id):
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
             settings_html += "<h3>Configure AutoMod & XP</h3>"
-            for key, label, minimum, maximum, default in [("automod_threshold", "Messages before spam detection", 3, 20, 6), ("automod_window_seconds", "Spam detection window (seconds)", 3, 30, 8), ("automod_timeout_minutes", "Timeout duration (minutes)", 1, 60, 2), ("xp_cooldown_seconds", "XP-Cooldown in Sekunden", 10, 600, 60), ("xp_min", "Minimum XP per message", 1, 100, 5), ("xp_max", "Maximum XP per message", 1, 100, 15)]:
+            for key, label, minimum, maximum, default in [("automod_threshold", "Messages before spam detection", 3, 20, 6), ("automod_window_seconds", "Spam detection window (seconds)", 3, 30, 8), ("automod_timeout_minutes", "Timeout duration (minutes)", 1, 60, 2), ("xp_cooldown_seconds", "XP-Cooldown in Sekunden", 10, 600, 60), ("xp_min", "Minimum XP per message (0 = XP aus)", 0, 100, 5), ("xp_max", "Maximum XP per message (0 = XP aus)", 0, 100, 15)]:
                 value = max(minimum, min(maximum, int(cfg.get(key, default) or default)))
                 settings_html += f'<label for="{key}">{label}</label><input id="{key}" name="{key}" type="number" min="{minimum}" max="{maximum}" value="{value}" required>'
             if guild_has_feature(cfg, "invite_tracker"):
@@ -4803,7 +4803,7 @@ def guild_ai_knowledge(guild_id):
     else:
         body += '<p class="muted">Noch keine Einträge vorhanden.</p>'
     body += '</section><p><a class="button secondary" href="/guild/' + str(guild.id) + '">Zur Serververwaltung</a></p>'
-    return _page(guild.name + " · KI-Wissen", body)
+    return _render(guild.name + " · KI-Wissen", body)
 
 
 @app.route("/guild/<guild_id>/tickets", methods=["GET", "POST"])
