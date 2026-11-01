@@ -1240,9 +1240,10 @@ def _render(title, body, status=200):
     guild_match = re.match(r"^/guild/(\d+)", request.path)
     if guild_match and _bot:
         active_guild = _bot.get_guild(int(guild_match.group(1)))
-        if active_guild and active_guild.icon:
-            cursor_url = html.escape(active_guild.icon.with_format("png").with_size(32).url, quote=True)
-            body += '<style>*,*::before,*::after{cursor:url("' + cursor_url + '") 16 16,auto!important}</style>'
+        if active_guild:
+            cursor_asset = active_guild.icon.with_format("png").with_size(32).url if active_guild.icon else f"https://cdn.discordapp.com/embed/avatars/{active_guild.id % 6}.png"
+            cursor_url = html.escape(cursor_asset, quote=True)
+            body += '<style>body,body a,body button,body .button,body select,body input[type=submit]{cursor:url("' + cursor_url + '") 16 16,auto!important}</style>'
     title = _translate_dashboard(title, language)
     selected_en = " selected" if language == "en" else ""
     language_control = '<p class="muted language-switcher">🌐 Dashboard language: English (fixed)</p>'
