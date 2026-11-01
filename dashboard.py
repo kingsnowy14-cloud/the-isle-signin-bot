@@ -4913,6 +4913,7 @@ def guild_ai_knowledge(guild_id):
     body = (
         '<span class="pill">IRONWOLF · AI CONTROL</span><h1 style="margin-top:12px">🤖 KI-Einstellungen & Serverwissen</h1>'
         '<p class="muted">Dieses Wissen gilt nur für diesen Discord-Server. Automatisches Lernen ist standardmäßig deaktiviert. Es werden nur Textnachrichten vertrauenswürdiger Staff-Mitglieder gespeichert; du kannst Einträge jederzeit prüfen und löschen.</p>'
+        + ('<p class="muted">AI provider: Gemini API key detected.</p>' if (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")) else '<div class="notice">AI replies are unavailable until GEMINI_API_KEY is added to the Railway service variables.</div>')
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
         + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
         + '<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", guild_has_feature(cfg, "ticket")) else '') + '> KI-Assistent für diesen Server aktivieren</label>'
