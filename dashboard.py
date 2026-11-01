@@ -967,6 +967,19 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
 .module-nav-link.is-active{{color:#fff;background:rgba(129,140,248,.18);border-color:rgba(139,157,255,.4)}}
 @media(max-width:1000px){{.iw-card-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:650px){{.iw-hero{{padding:24px 19px}}.iw-metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.iw-card-grid{{grid-template-columns:1fr}}.iw-category{{padding:15px}}.iw-heading{{align-items:flex-start}}}}
 
+
+/* IronWolf motion effects: subtle ambient glow, card lift and cursor sparks */
+@keyframes iwAmbient{{0%,100%{{opacity:.35;transform:scale(1)}}50%{{opacity:.75;transform:scale(1.08)}}}}
+@keyframes iwSpark{{0%{{opacity:0;transform:translate(-50%,-50%) scale(.35) rotate(0deg)}}18%{{opacity:1}}100%{{opacity:0;transform:translate(-50%,-115%) scale(0) rotate(100deg)}}}}
+body::before{{content:"";position:fixed;z-index:0;inset:-25%;pointer-events:none;background:radial-gradient(circle at 25% 35%,rgba(90,130,255,.075),transparent 25%),radial-gradient(circle at 75% 60%,rgba(50,220,190,.045),transparent 23%);animation:iwAmbient 9s ease-in-out infinite}}
+nav,main{{position:relative;z-index:1}}
+.card,.iw-module-card,.iw-popular-card,.dashboard-metric{{transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease}}
+.card:hover{{transform:translateY(-3px);border-color:rgba(139,157,255,.38);box-shadow:0 16px 38px rgba(0,0,0,.25),0 0 24px rgba(129,140,248,.06)}}
+.iw-spark{{position:fixed;z-index:99999;left:0;top:0;width:13px;height:13px;pointer-events:none;color:#aebaff;font-size:13px;line-height:1;text-shadow:0 0 12px currentColor;animation:iwSpark .65s ease-out forwards}}
+.cursor-picker-label select{{border-color:rgba(139,157,255,.35);box-shadow:0 0 14px rgba(129,140,248,.08)}}
+.cursor-picker-label select:hover{{border-color:rgba(139,157,255,.75);box-shadow:0 0 18px rgba(129,140,248,.2)}}
+@media(prefers-reduced-motion:reduce){{body::before{{animation:none}}.iw-spark{{display:none}}.card,.iw-module-card,.iw-popular-card,.dashboard-metric{{transition:none}}}}
+
 {custom_theme_css}
 .cursor-picker-label{{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:12px;font-weight:850;color:var(--muted);margin:0}}
 .cursor-picker-label select{{width:auto;min-width:145px;padding:7px 30px 7px 10px;font-size:12px;border-radius:9px}}
@@ -988,6 +1001,22 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
  let saved='wolf';try{{saved=localStorage.getItem('ironwolf-cursor')||'wolf';}}catch(e){{}}
  apply(saved);
  picker.addEventListener('change',function(){{apply(this.value);try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
+ // Lightweight sparkle trail; capped and disabled for reduced-motion preferences.
+ const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const touch=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
+ if(!reduce&&!touch){{
+  let last=0,active=0;
+  document.addEventListener('pointermove',function(event){{
+   const now=performance.now();if(now-last<48||active>=14)return;last=now;active++;
+   const spark=document.createElement('span');spark.className='iw-spark';
+   spark.textContent=picker.value==='skeleton'?'✦':(picker.value==='tree'?'✧':'✧');
+   spark.style.left=event.clientX+'px';spark.style.top=event.clientY+'px';
+   if(picker.value==='tree')spark.style.color='#7be6a8';
+   else if(picker.value==='skeleton')spark.style.color='#e8e4d5';
+   document.body.appendChild(spark);
+   spark.addEventListener('animationend',function(){{spark.remove();active=Math.max(0,active-1);}},{{once:true}});
+  }},{{passive:true}});
+ }}
 }})();
 </script></body></html>"""
 
