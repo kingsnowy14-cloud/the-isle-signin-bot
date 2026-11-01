@@ -117,7 +117,8 @@ def build_status_embed(guild, configured, server_map, error=None):
             total_players += playing
             total_slots += maximum
             online += 1
-            parts = [f"🟢 **Online** · {playing}/{maximum} Spieler"]
+            status_label = "🟡 Letzter bekannter Status" if error else "🟢 Online"
+            parts = [f"{status_label} · {playing}/{maximum} Spieler"]
             if stats.get("ping") is not None:
                 try:
                     parts.append(f"Ping: {round(float(stats['ping']))} ms")
@@ -229,9 +230,17 @@ class EmergencyHamburg(commands.Cog):
                     )
                     server_map = {item["id"]: item for item in rows}
                 except Exception as exc:
-                    server_map = {}
+                    server_map = None
                     error = f"{type(exc).__name__}: {exc}"
                     print(f"[EH MONITOR] Roblox API error for guild {guild.id}: {error}", flush=True)
+            if server_map is None:
+                server_map = settings.get("last_server_data", {})
+            else:
+                settings["last_server_data"] = {
+                    str(item.get("job_id")): server_map[str(item.get("job_id"))]
+                    for item in selected
+                    if str(item.get("job_id")) in server_map
+                }
             embed = build_status_embed(guild, settings, server_map, error=error)
             message = None
             message_id = settings.get("message_id")
@@ -282,6 +291,7 @@ class EmergencyHamburg(commands.Cog):
                 )
                 server_map = {item["id"]: item for item in rows}
             except Exception as exc:
+                server_map = None
                 api_error = f"{type(exc).__name__}: {exc}"
                 print(f"[EH MONITOR] Shared Roblox API refresh failed: {api_error}", flush=True)
         for guild in guilds:
