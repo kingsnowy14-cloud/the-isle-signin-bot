@@ -2469,6 +2469,10 @@ def guild_welcome_settings(guild_id):
             if len(value) > limit:
                 abort(400, f"{key}: maximal {limit} Zeichen.")
             cfg[key] = value
+        dm_message = request.form.get("welcome_dm_message", "").strip()
+        if len(dm_message) > 1000:
+            abort(400, "welcome_dm_message: maximal 1000 Zeichen.")
+        cfg["welcome_dm_message"] = dm_message
         for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed"):
             cfg[key] = request.form.get(key) == "on"
         _save_json(data_path("config.json"), _config)
@@ -2492,7 +2496,11 @@ def guild_welcome_settings(guild_id):
     body += '<label for="welcome_message">Willkommensnachricht</label><textarea id="welcome_message" name="welcome_message" maxlength="1000" rows="4">' + html.escape(str(cfg.get("welcome_message", ""))) + '</textarea><small class="muted">Platzhalter: {mention}, {user}, {server}, {count}</small>'
     body += welcome_check("welcome_embed", "Willkommensnachricht als Embed senden")
     body += welcome_check("welcome_bots_enabled", "Auch Bot-Konten begrüßen")
-    body += welcome_check("welcome_dm_enabled", "Willkommensnachricht zusätzlich privat senden")
+    body += welcome_check("welcome_dm_enabled", "Willkommensnachricht zusätzlich privat senden", "Wenn aktiviert, erscheint darunter ein eigenes Nachrichtenfeld für die private Begrüßung.")
+    dm_message_value = html.escape(str(cfg.get("welcome_dm_message") or cfg.get("welcome_message", "")))
+    dm_hidden = "" if cfg.get("welcome_dm_enabled", False) else " hidden"
+    body += '<div id="welcome-dm-message-wrap"' + dm_hidden + '><label for="welcome_dm_message">Private DM-Willkommensnachricht</label><textarea id="welcome_dm_message" name="welcome_dm_message" maxlength="1000" rows="4">' + dm_message_value + '</textarea><small class="muted">Diese Nachricht wird nur per DM gesendet. Platzhalter: {mention}, {user}, {server}, {count}</small></div>'
+    body += '<script>(function(){const toggle=document.getElementById("welcome_dm_enabled");const field=document.getElementById("welcome-dm-message-wrap");if(toggle&&field){const update=()=>{field.hidden=!toggle.checked;};toggle.addEventListener("change",update);update();}})();</script>'
     body += '<hr><h2>Goodbye</h2><label for="goodbye_channel">Abschiedskanal</label><select id="goodbye_channel" name="goodbye_channel">' + welcome_options(cfg.get("goodbye_channel")) + '</select>'
     body += '<label for="leave_message">Abschiedsnachricht</label><textarea id="leave_message" name="leave_message" maxlength="1000" rows="4">' + html.escape(str(cfg.get("leave_message", ""))) + '</textarea><small class="muted">Platzhalter: {user}, {server}, {count}</small>'
     body += welcome_check("leave_enabled", "Abschiedsnachrichten aktivieren")

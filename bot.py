@@ -5599,7 +5599,7 @@ async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm:
     try:
         # Optional private welcome message; disabled by default to avoid unsolicited DMs.
         if should_welcome and include_dm and cfg.get("welcome_dm_enabled", False):
-            dm_template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
+            dm_template = cfg.get("welcome_dm_message") or cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
             dm_text = (dm_template.replace("{mention}", member.mention)
                        .replace("{user}", discord.utils.escape_markdown(member.display_name))
                        .replace("{server}", discord.utils.escape_markdown(member.guild.name))
