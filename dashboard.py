@@ -3406,7 +3406,7 @@ def guild_custom_bot_asset(guild_id, asset):
 
 
 async def _apply_custom_bot_profile(guild, profile):
-    """Apply the per-server member profile through Discord's Modify Current Member API."""
+    """Apply each per-server profile field independently so one invalid field cannot block the others."""
     results = []
     custom_name = str(profile.get("bot_name", "")).strip()[:32]
     description = str(profile.get("description", "")).strip()[:190]
@@ -3419,19 +3419,19 @@ async def _apply_custom_bot_profile(guild, profile):
             raw = Path(stored).read_bytes()
             mime = profile.get(asset + "_mime", "application/octet-stream")
         elif image_url:
-            response = requests.get(image_url, timeout=15, stream=True, allow_redirects=True)
-            response.raise_for_status()
-            if urlparse(response.url).scheme != "https":
-                raise ValueError(asset + " URL redirected to a non-HTTPS address")
-            mime = response.headers.get("Content-Type", "").split(";")[0].lower()
-            chunks = []
-            total = 0
-            for chunk in response.iter_content(65536):
-                total += len(chunk)
-                if total > 5 * 1024 * 1024:
-                    raise ValueError(asset + " image exceeds the 5 MB limit")
-                chunks.append(chunk)
-            raw = b"".join(chunks)
+            with requests.get(image_url, timeout=15, stream=True, allow_redirects=True) as response:
+                response.raise_for_status()
+                if urlparse(response.url).scheme != "https":
+                    raise ValueError(asset + " URL redirected to a non-HTTPS address")
+                mime = response.headers.get("Content-Type", "").split(";")[0].lower()
+                chunks = []
+                total = 0
+                for chunk in response.iter_content(65536):
+                    total += len(chunk)
+                    if total > 5 * 1024 * 1024:
+                        raise ValueError(asset + " image exceeds the 5 MB limit")
+                    chunks.append(chunk)
+                raw = b"".join(chunks)
         else:
             return None
         if not raw or len(raw) > 5 * 1024 * 1024:
@@ -3440,36 +3440,62 @@ async def _apply_custom_bot_profile(guild, profile):
             raise ValueError(asset + " must be PNG, JPG, GIF or WEBP")
         return "data:{};base64,{}".format(mime, base64.b64encode(raw).decode("ascii"))
 
+    async def patch_profile_field(field, value):
+        def send_patch():
+            auth_token = str(token).removeprefix("Bot ").strip()
+            return requests.patch(
+                DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
+                headers={"Authorization": "Bot " + auth_token, "Content-Type": "application/json"},
+                json={field: value},
+                timeout=20,
+            )
+        response = await asyncio.to_thread(send_patch)
+        if response.status_code >= 400:
+            detail = " ".join(response.text.split())[:350]
+            results.append("{} update failed (HTTP {}): {}".format(field, response.status_code, detail))
+            return False
+        results.append("{} updated successfully".format(field))
+        return True
+
     if not token:
         results.append("Discord profile could not be updated: bot token is unavailable")
     else:
-        payload = {"nick": custom_name or None, "bio": description or None}
+        # Send fields separately: Discord may reject a banner or nickname while still
+        # allowing the avatar (or another field) to be changed.
         try:
-            for asset in ("avatar", "banner"):
-                if profile.get("remove_" + asset):
-                    payload[asset] = None
-                else:
-                    data_uri = await asyncio.to_thread(image_data, asset)
-                    if data_uri is not None:
-                        payload[asset] = data_uri
-
-            def update_guild_profile():
-                auth_token = str(token).removeprefix("Bot ").strip()
-                return requests.patch(
-                    DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
-                    headers={"Authorization": "Bot " + auth_token, "Content-Type": "application/json"},
-                    json=payload,
-                    timeout=20,
-                )
-
-            response = await asyncio.to_thread(update_guild_profile)
-            if response.status_code >= 400:
-                detail = " ".join(response.text.split())[:500]
-                results.append("Discord server profile update failed (HTTP {}): {}".format(response.status_code, detail))
+            if profile.get("remove_avatar"):
+                await patch_profile_field("avatar", None)
             else:
-                results.append("Discord server profile updated: nickname, avatar, banner and bio fields submitted")
+                data_uri = await asyncio.to_thread(image_data, "avatar")
+                if data_uri is not None:
+                    await patch_profile_field("avatar", data_uri)
         except (ValueError, requests.RequestException, OSError) as exc:
-            results.append("Discord server profile update failed: " + str(exc)[:300])
+            results.append("avatar update failed: " + str(exc)[:300])
+
+        try:
+            if profile.get("remove_banner"):
+                await patch_profile_field("banner", None)
+            else:
+                data_uri = await asyncio.to_thread(image_data, "banner")
+                if data_uri is not None:
+                    await patch_profile_field("banner", data_uri)
+        except (ValueError, requests.RequestException, OSError) as exc:
+            results.append("banner update failed: " + str(exc)[:300])
+
+        try:
+            me = getattr(guild, "me", None)
+            permissions = getattr(me, "guild_permissions", None)
+            if custom_name and permissions is not None and not permissions.change_nickname:
+                results.append("nickname update skipped: the bot needs the Change Nickname permission in this server")
+            else:
+                await patch_profile_field("nick", custom_name or None)
+        except (requests.RequestException, OSError) as exc:
+            results.append("nickname update failed: " + str(exc)[:300])
+
+        try:
+            await patch_profile_field("bio", description or None)
+        except (requests.RequestException, OSError) as exc:
+            results.append("bio update failed: " + str(exc)[:300])
 
     # Keep the optional channel card as a supplemental preview, not as the actual profile.
     channel_id = str(profile.get("profile_channel_id", "")).strip()
