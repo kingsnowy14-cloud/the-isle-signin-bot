@@ -5292,17 +5292,31 @@ async def on_message(message: discord.Message):
         guild = message.guild
         cfg = guild_config(guild.id)
 
-        # Standalone Quick Support: independent from ticket panels and ticket settings.
+        # Standalone Quick Support only notifies staff; it never invokes the AI.
         quick_channel_id = cfg.get("quick_support_channel_id")
         quick_role_id = cfg.get("quick_support_role_id")
-        if (
-            cfg.get("quick_support_enabled_global", True)
-            and str(quick_channel_id or "").isdigit()
+        is_quick_support_channel = (
+            str(quick_channel_id or "").isdigit()
             and int(quick_channel_id) == message.channel.id
+        )
+        if (
+            is_quick_support_channel
+            and cfg.get("quick_support_enabled_global", True)
             and str(quick_role_id or "").isdigit()
         ):
             quick_role = guild.get_role(int(quick_role_id))
-            if quick_role and not quick_role.is_default() and not quick_role.managed:
+            staff_role_id = cfg.get("support_role")
+            staff_role = guild.get_role(int(staff_role_id)) if str(staff_role_id or "").isdigit() else None
+            member_role_ids = {role.id for role in getattr(message.author, "roles", [])}
+            # Do not alert the team when a staff member (or administrator) writes
+            # in the Quick Support channel. Also suppress self-pings for the
+            # configured notification role itself.
+            is_staff_member = (
+                message.author.guild_permissions.administrator
+                or (staff_role is not None and staff_role.id in member_role_ids)
+                or (quick_role is not None and quick_role.id in member_role_ids)
+            )
+            if quick_role and not quick_role.is_default() and not quick_role.managed and not is_staff_member:
                 ping_key = (message.channel.id, message.author.id)
                 now = time.monotonic()
                 if now - _ticket_quick_support_last_ping.get(ping_key, 0) >= 300:
@@ -5341,7 +5355,8 @@ async def on_message(message: discord.Message):
             # Ticket AI is independent from the optional public-channel mode.
             # The global AI switch and the server's ticket entitlement remain authoritative.
             if (
-                not is_staff
+                not is_quick_support_channel
+                and not is_staff
                 and cfg.get("ai_enabled_global", True)
                 and guild_has_feature(cfg, "ticket")
                 and panel.get("ai_support_enabled", True)
