@@ -3444,87 +3444,92 @@ async def _apply_custom_bot_profile(guild, profile):
     if not token:
         results.append("Discord profile could not be updated: bot token is unavailable")
     else:
-        # Only include fields that are intentionally being changed. The nickname
-        # is Premium-gated independently and is never sent for non-Premium servers.
-        payload = {"bio": description or None}
-        try:
-            me = getattr(guild, "me", None)
-            permissions = getattr(me, "guild_permissions", None)
-            if premium_nickname:
-                if permissions is not None and not permissions.change_nickname:
-                    results.append("Nickname not changed: give the bot the Change Nickname permission.")
-                else:
-                    payload["nick"] = custom_name or None
-            else:
-                results.append("Nickname unchanged: an active Premium plan is required.")
+        # Send each field separately: Discord can reject one image field (especially
+        # banners, whose availability varies) without preventing the other updates.
+        auth_token = str(token).removeprefix("Bot ").strip()
+        headers = {"Authorization": "Bot " + auth_token, "Content-Type": "application/json"}
 
-            for asset in ("avatar", "banner"):
-                if profile.get("remove_" + asset):
-                    # Discord's documented reset operation is null; uploading the
-                    # global avatar as a new guild avatar would not restore inheritance.
-                    payload[asset] = None
-                else:
-                    data_uri = await asyncio.to_thread(image_data, asset)
-                    if data_uri is not None:
-                        payload[asset] = data_uri
+        def patch_profile(fields):
+            return requests.patch(
+                DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
+                headers=headers,
+                json=fields,
+                timeout=20,
+            )
 
-            def update_guild_profile():
-                auth_token = str(token).removeprefix("Bot ").strip()
-                return requests.patch(
-                    DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
-                    headers={"Authorization": "Bot " + auth_token, "Content-Type": "application/json"},
-                    json=payload,
-                    timeout=20,
-                )
-
-            response = await asyncio.to_thread(update_guild_profile)
-            if response.status_code == 429:
-                try:
-                    retry_after = float(response.json().get("retry_after", 0))
-                except (ValueError, TypeError, AttributeError):
-                    retry_after = 0
-                results.append(
-                    "Discord rate limit (HTTP 429). No profile fields were applied. "
-                    "Wait approximately {} seconds before saving again.".format(
-                        max(1, int(retry_after + 0.999))
+        async def send_update(label, fields, confirmation):
+            try:
+                response = await asyncio.to_thread(patch_profile, fields)
+                if response.status_code == 429:
+                    try:
+                        retry_after = float(response.json().get("retry_after", 0))
+                    except (ValueError, TypeError, AttributeError):
+                        retry_after = 0
+                    results.append(
+                        "{} not updated: Discord rate limit (HTTP 429); wait approximately {} seconds.".format(
+                            label, max(1, int(retry_after + 0.999))
+                        )
                     )
-                )
-            elif response.status_code >= 400:
-                detail = " ".join(response.text.split())[:500]
-                results.append("Discord server profile update failed (HTTP {}): {}".format(response.status_code, detail))
-            else:
+                    return
+                if response.status_code >= 400:
+                    detail = " ".join(response.text.split())[:350]
+                    results.append("{} update failed (HTTP {}): {}".format(label, response.status_code, detail))
+                    return
                 try:
                     updated = response.json()
                 except ValueError:
                     updated = {}
-                changed = []
-                if "nick" in payload:
-                    if updated.get("nick") == payload["nick"]:
-                        changed.append("nickname")
-                    else:
-                        results.append("Discord accepted the request but did not confirm the requested nickname.")
-                for asset in ("avatar", "banner"):
-                    if asset in payload:
-                        confirmed = (
-                            updated.get(asset) is None
-                            if payload[asset] is None
-                            else bool(updated.get(asset))
-                        )
-                        if confirmed:
-                            changed.append(asset + (" reset" if payload[asset] is None else " updated"))
-                        else:
-                            results.append(
-                                "Discord did not confirm the {} update; API response field was {!r}.".format(
-                                    asset, updated.get(asset)
-                                )
-                            )
-                if "bio" in payload:
-                    changed.append("bio")
-                results.append(
-                    "Discord confirmed profile update: " + (", ".join(changed) if changed else "no changed fields")
+                if confirmation(updated):
+                    results.append("{} updated successfully.".format(label))
+                else:
+                    results.append("Discord accepted the {} request but did not confirm the change.".format(label))
+            except (ValueError, requests.RequestException, OSError) as exc:
+                results.append("{} update failed: {}".format(label, str(exc)[:250]))
+
+        # Nickname is only sent when the server has the custom_bot Premium feature.
+        base_payload = {"bio": description or None}
+        me = getattr(guild, "me", None)
+        permissions = getattr(me, "guild_permissions", None)
+        if premium_nickname:
+            if permissions is not None and not permissions.change_nickname:
+                results.append("Nickname not changed: give the bot the Change Nickname permission.")
+            else:
+                base_payload["nick"] = custom_name or None
+        else:
+            results.append("Nickname unchanged: an active Premium plan is required.")
+
+        await send_update(
+            "Server bio",
+            {"bio": base_payload["bio"]},
+            lambda updated: "bio" in updated,
+        )
+        if "nick" in base_payload:
+            await send_update(
+                "Nickname",
+                {"nick": base_payload["nick"]},
+                lambda updated: updated.get("nick") == base_payload["nick"],
+            )
+
+        for asset in ("avatar", "banner"):
+            try:
+                if profile.get("remove_" + asset):
+                    # null clears a guild-specific image so Discord falls back to
+                    # the bot's default image.
+                    image_payload = {asset: None}
+                else:
+                    data_uri = await asyncio.to_thread(image_data, asset)
+                    if data_uri is None:
+                        continue
+                    image_payload = {asset: data_uri}
+                await send_update(
+                    asset.title(),
+                    image_payload,
+                    lambda updated, key=asset, value=image_payload[asset]: (
+                        updated.get(key) is None if value is None else bool(updated.get(key))
+                    ),
                 )
-        except (ValueError, requests.RequestException, OSError) as exc:
-            results.append("Discord server profile update failed: " + str(exc)[:300])
+            except (ValueError, requests.RequestException, OSError) as exc:
+                results.append("{} update failed: {}".format(asset.title(), str(exc)[:250]))
 
     # Keep the optional channel card as a supplemental preview, not as the actual profile.
     channel_id = str(profile.get("profile_channel_id", "")).strip()
