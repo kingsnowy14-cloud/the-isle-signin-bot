@@ -813,23 +813,9 @@ def _page(title, body):
                 )
         except Exception:
             custom_theme_css = ""
-    cursor_css = ""
-    try:
-        if match and _bot:
-            active_guild = _bot.get_guild(int(match.group(1)))
-            cursor_url = (
-                str(active_guild.icon.with_size(64).url)
-                if active_guild and active_guild.icon
-                else "https://cdn.discordapp.com/embed/avatars/0.png"
-            )
-            cursor_css = (
-                "html,body,body *{cursor:url('" + html.escape(cursor_url, quote=True) +
-                "') 16 16,auto!important}"
-            )
-    except Exception as exc:
-        print(f"[DASHBOARD] Custom server cursor unavailable: {type(exc).__name__}: {exc}", flush=True)
     nav = (
         '<a class="skip-link" href="#main-content">Skip to content</a><nav aria-label="Main navigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
+        + '<label class="cursor-picker-label" for="iw-cursor-choice">🖱️ Cursor <select id="iw-cursor-choice" aria-label="Choose cursor"><option value="wolf">🐺 Wolf</option><option value="skeleton">💀 Skeleton</option><option value="tree">🎄 Christmas tree</option></select></label>'
         + ('<a class="nav-server" href="/">🎮 Switch server</a>' if logged_in else '')
         + ('<a class="nav-server" href="/guild/' + match.group(1) + '?section=general">⚙️ Server Settings</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
@@ -982,8 +968,28 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
 @media(max-width:1000px){{.iw-card-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:650px){{.iw-hero{{padding:24px 19px}}.iw-metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.iw-card-grid{{grid-template-columns:1fr}}.iw-category{{padding:15px}}.iw-heading{{align-items:flex-start}}}}
 
 {custom_theme_css}
-{cursor_css}
-</style></head><body>{nav}<main id="main-content" tabindex="-1">{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}</body></html>"""
+.cursor-picker-label{{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:12px;font-weight:850;color:var(--muted);margin:0}}
+.cursor-picker-label select{{width:auto;min-width:145px;padding:7px 30px 7px 10px;font-size:12px;border-radius:9px}}
+@media(max-width:900px){{.cursor-picker-label{{order:5}}}}
+</style></head><body>{nav}<main id="main-content" tabindex="-1">{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}
+<script>
+(function(){{
+ const picker=document.getElementById('iw-cursor-choice');if(!picker)return;
+ const art={{
+ wolf:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#d7e9ff" stroke="#152238" stroke-width="1.5" d="M5 9 13 12 18 9 24 12 31 8 29 18 25 23 23 31 17 27 12 31 11 23 6 18Z"/><path fill="#152238" d="m11 17 4 2-3 2zm11 0-4 2 3 2z"/><path fill="#8cc8ff" d="m16 23 3 2 3-2-3 4z"/></svg>',
+ skeleton:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#f3f0df" stroke="#263044" stroke-width="1.5" d="M18 3a12 12 0 0 0-7 21v7h14v-7A12 12 0 0 0 18 3Z"/><circle cx="13" cy="15" r="3.5" fill="#202b3e"/><circle cx="23" cy="15" r="3.5" fill="#202b3e"/><path fill="#202b3e" d="m18 18-3 5h6zM12 27h12v2H12zm2 4h2v3h-2zm6 0h2v3h-2z"/></svg>',
+ tree:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#ffd75e" stroke="#684b16" stroke-width="1" d="m18 2 2.3 5 5.4.6-4 3.7 1.1 5.3-4.8-2.7-4.8 2.7 1.1-5.3-4-3.7 5.4-.6z"/><path fill="#2fc47b" stroke="#135b45" stroke-width="1.3" d="m18 8-9 11h5l-7 8h8v7h6v-7h8l-7-8h5z"/><circle cx="13" cy="21" r="1.6" fill="#e94d5b"/><circle cx="23" cy="25" r="1.6" fill="#65baff"/><circle cx="18" cy="18" r="1.6" fill="#ffd75e"/></svg>'
+ }};
+ function apply(name){{
+  const value=art[name]?name:'wolf',url='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(art[value])+'") 4 4, auto';
+  let s=document.getElementById('iw-cursor-style');if(!s){{s=document.createElement('style');s.id='iw-cursor-style';document.head.appendChild(s);}}
+  s.textContent='html,body,body *{{cursor:'+url+' !important}}';picker.value=value;
+ }}
+ let saved='wolf';try{{saved=localStorage.getItem('ironwolf-cursor')||'wolf';}}catch(e){{}}
+ apply(saved);
+ picker.addEventListener('change',function(){{apply(this.value);try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
+}})();
+</script></body></html>"""
 
 
 
@@ -1259,13 +1265,6 @@ def _render(title, body, status=200):
     if language not in {"en", "de"}:
         language = "en"
     body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
-    guild_match = re.match(r"^/guild/(\d+)", request.path)
-    if guild_match and _bot:
-        active_guild = _bot.get_guild(int(guild_match.group(1)))
-        if active_guild:
-            cursor_asset = active_guild.icon.with_format("png").with_size(32).url if active_guild.icon else f"https://cdn.discordapp.com/embed/avatars/{active_guild.id % 6}.png"
-            cursor_url = html.escape(cursor_asset, quote=True)
-            body += '<style>body,body a,body button,body .button,body select,body input[type=submit]{cursor:url("' + cursor_url + '") 16 16,auto!important}</style>'
     title = _translate_dashboard(title, language)
     selected_en = " selected" if language == "en" else ""
     language_control = '<p class="muted language-switcher">🌐 Dashboard language: English (fixed)</p>'
