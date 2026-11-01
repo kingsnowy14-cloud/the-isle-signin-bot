@@ -803,14 +803,24 @@ def _page(title, body):
         try:
             theme_cfg = _guild_config(int(match.group(1)))
             raw_color = str(theme_cfg.get("dashboard_brand_color", "8B9DFF")).strip().lstrip("#")
-            if re.fullmatch(r"[0-9a-fA-F]{6}", raw_color):
-                rgb = [int(raw_color[i:i + 2], 16) for i in (0, 2, 4)]
-                custom_theme_css = (
-                    ":root{--accent:#" + raw_color + ";--accent2:#" + raw_color + ";}"
-                    ".card::before{background:linear-gradient(90deg,#" + raw_color + ",transparent)}"
-                    ".pill{background:rgba(" + ",".join(map(str, rgb)) + ",.12);"
-                    "border-color:rgba(" + ",".join(map(str, rgb)) + ",.35)}"
-                )
+            button_primary = str(theme_cfg.get("dashboard_button_primary", "438FD0")).strip().lstrip("#")
+            button_secondary = str(theme_cfg.get("dashboard_button_secondary", "26364F")).strip().lstrip("#")
+            button_danger = str(theme_cfg.get("dashboard_button_danger", "B83B52")).strip().lstrip("#")
+            for color_value in (raw_color, button_primary, button_secondary, button_danger):
+                if not re.fullmatch(r"[0-9a-fA-F]{6}", color_value):
+                    raise ValueError("Invalid saved dashboard color")
+            rgb = [int(raw_color[i:i + 2], 16) for i in (0, 2, 4)]
+            custom_theme_css = (
+                ":root{--accent:#" + raw_color + ";--accent2:#" + raw_color + ";"
+                "--iw-btn-primary:#" + button_primary + ";--iw-btn-secondary:#" + button_secondary + ";"
+                "--iw-btn-danger:#" + button_danger + ";}"
+                ".card::before{background:linear-gradient(90deg,#" + raw_color + ",transparent)}"
+                ".pill{background:rgba(" + ",".join(map(str, rgb)) + ",.12);"
+                "border-color:rgba(" + ",".join(map(str, rgb)) + ",.35)}"
+                "button:not(.secondary):not(.nav-logout-button),.button:not(.secondary){background:var(--iw-btn-primary)!important;color:#fff!important}"
+                "button.secondary,.button.secondary{background:var(--iw-btn-secondary)!important;color:#fff!important}"
+                "button.danger,.button.danger{background:var(--iw-btn-danger)!important;color:#fff!important}"
+            )
         except Exception:
             custom_theme_css = ""
     nav = (
@@ -3932,40 +3942,48 @@ def guild_custom_bot(guild_id):
 
 @app.route("/guild/<guild_id>/branding", methods=["GET", "POST"])
 def guild_branding(guild_id):
-    """Configure dashboard-only accent styling for this Discord server."""
+    """Configure dashboard colors for this Discord server."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
+    color_fields = {
+        "dashboard_brand_color": ("8B9DFF", "Dashboard-Akzentfarbe"),
+        "dashboard_button_primary": ("438FD0", "Standard-Buttons"),
+        "dashboard_button_secondary": ("26364F", "Sekundäre Buttons"),
+        "dashboard_button_danger": ("B83B52", "Warn-/Lösch-Buttons"),
+    }
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
-        dashboard_color = request.form.get("dashboard_brand_color", "8B9DFF").strip().lstrip("#")
-        if not re.fullmatch(r"[0-9a-fA-F]{6}", dashboard_color):
-            abort(400, "Bitte eine gültige Dashboard-Farbe auswählen.")
-        cfg["dashboard_brand_color"] = dashboard_color.upper()
+        changed = []
+        for key, (default, label) in color_fields.items():
+            value = request.form.get(key, default).strip().lstrip("#")
+            if not re.fullmatch(r"[0-9a-fA-F]{6}", value):
+                abort(400, "Bitte für alle Felder gültige HEX-Farben auswählen.")
+            cfg[key] = value.upper()
+            changed.append(label + " #" + value.upper())
         _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Dashboard-Design", session.get("user_id"), "Dashboard-Akzentfarbe #" + dashboard_color.upper())
+        _audit_dashboard_change(guild.id, "Dashboard-Design", session.get("user_id"), "; ".join(changed))
         return redirect(url_for("guild_branding", guild_id=gid, saved="1"))
-    dashboard_color = str(cfg.get("dashboard_brand_color", "8B9DFF")).strip().lstrip("#")
-
-    success = '<div class="notice">✅ Dashboard-Design gespeichert. Die Änderung betrifft ausschließlich die Darstellung im Dashboard und verändert keine Discord-Nachrichten.</div>' if request.args.get("saved") == "1" else ""
+    values = {key: str(cfg.get(key, default)).strip().lstrip("#") for key, (default, _) in color_fields.items()}
+    success = '<div class="notice">✅ Farben gespeichert. Die Änderungen gelten für das IronWolf-Dashboard dieses Servers.</div>' if request.args.get("saved") == "1" else ""
+    fields = ''.join(
+        '<div class="row"><label for="' + key + '">' + label + '</label><input id="' + key + '" name="' + key + '" type="color" value="#' + html.escape(values[key]) + '" style="width:100px;height:48px;padding:4px"></div>'
+        for key, (_, label) in color_fields.items()
+    )
     body = (
         '<section class="card"><span class="pill">IRONWOLF · SERVER DESIGN</span><h1>🎨 Server-Design</h1>'
-        '<p class="muted">Passe ausschließlich die Darstellung des Dashboards für diesen Server an.</p>'
-        + success +
-        '<form method="post">' + _csrf_field() +
-        '<div class="grid"><section class="card"><h2>🖥️ Dashboard-Design</h2>'
-        '<label for="dashboard_brand_color">Akzentfarbe</label><input id="dashboard_brand_color" name="dashboard_brand_color" type="color" value="#' + html.escape(dashboard_color) + '" style="height:54px;padding:5px">'
-        '<p class="muted">Ändert ausschließlich Akzentlinien, Links und Markierungen im IronWolf-Dashboard dieses Servers. Discord-Rollen, Embeds und Nachrichten bleiben unverändert.</p>'
-        '<button type="submit">💾 Dashboard-Design speichern</button></form></section>'
-        '<section class="card"><h2>👀 Vorschau</h2><div style="border-radius:12px;padding:18px;background:#111827;color:#f3f6fc;border-left:5px solid #' + html.escape(dashboard_color) + '">'
-        '<strong>IronWolf Control Center</strong><p>So sieht die Akzentfarbe im Dashboard aus.</p><small>IronWolf · Created by KingSnowy</small></div>'
-        '<p><a class="button secondary" href="/guild/' + gid + '/messages">✉️ Nachricht mit Vorschau erstellen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></p></section>'
+        '<p class="muted">Passe die Dashboard-Akzentfarbe und die verschiedenen Button-Farben an. Die Änderungen betreffen nur die Dashboard-Oberfläche.</p>'
+        + success + '<form method="post">' + _csrf_field()
+        + '<section class="card"><h2>🖥️ Dashboard und Buttons</h2>' + fields
+        + '<button type="submit">💾 Farben speichern</button></form></section>'
+        + '<section class="card"><h2>👀 Vorschau</h2><p><button type="button">Standard-Button</button> <button type="button" class="secondary">Sekundärer Button</button> <button type="button" class="danger">Warn-Button</button></p>'
+        + '<p><a class="button secondary" href="/guild/' + gid + '/messages">✉️ Embed und Discord-Buttons erstellen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></p></section></section>'
     )
     return _render(guild.name + " · Server-Design", body)
 
