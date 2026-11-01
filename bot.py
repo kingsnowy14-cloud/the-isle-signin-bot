@@ -4946,22 +4946,6 @@ async def on_message(message: discord.Message):
                         except (discord.Forbidden, discord.HTTPException):
                             pass
 
-        # Optional opt-in learning from trusted staff messages in ordinary server channels.
-        if cfg.get("ai_learning_enabled", False) and isinstance(message.author, discord.Member):
-            support_role_id = cfg.get("support_role")
-            support_role = guild.get_role(int(support_role_id)) if str(support_role_id or "").isdigit() else None
-            trusted_staff = message.author.guild_permissions.administrator or message.author.guild_permissions.manage_guild or bool(support_role and support_role in message.author.roles)
-            if trusted_staff and not data.setdefault("tickets", {}).get(str(message.channel.id)):
-                learned_text = (message.content or "").strip()
-                if len(learned_text) >= 20 and not message.attachments and not message.content.startswith(("!", "/")):
-                    entries = cfg.setdefault("ai_knowledge", [])
-                    if not isinstance(entries, list):
-                        entries = cfg["ai_knowledge"] = []
-                    if not any(isinstance(item, dict) and item.get("message_id") == str(message.id) for item in entries):
-                        entries.append({"text": learned_text[:700], "source": f"#{getattr(message.channel, 'name', 'channel')}", "author_id": str(message.author.id), "message_id": str(message.id), "created_at": datetime.now(timezone.utc).isoformat()})
-                        del entries[:-80]
-                        save_json(CONFIG_FILE, config)
-
         # Delete pings to configured protected roles or members.
         if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:
             protected_role_ids = {int(value) for value in cfg.get("ping_protected_role_ids", []) if str(value).isdigit()}
