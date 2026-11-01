@@ -863,6 +863,7 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
  nav:not(.module-nav) .nav-logout{{margin:0;padding:0;border:0}}
  .module-nav{{position:fixed;z-index:9;inset:64px auto 0 0;width:246px;height:calc(100vh - 64px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:stretch;gap:4px;flex-wrap:nowrap;margin:0;padding:16px 12px;border:0;border-right:1px solid var(--border);border-radius:0;background:rgba(10,15,29,.98)}}
  .module-nav-title{{padding:7px 10px 10px}}
+ .module-nav-group-title{{padding:13px 10px 5px;margin-top:8px;border-top:1px solid var(--border);color:#aebaff;font-size:11px;font-weight:900;letter-spacing:1px;text-transform:uppercase}}
  .module-nav-link{{width:100%;min-height:36px;white-space:normal}}
  main{{max-width:1440px;margin:30px auto;padding:0 34px 52px}}
 }}
@@ -4930,10 +4931,10 @@ def guild_ai_knowledge(guild_id):
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
         + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
         + ('<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", guild_has_feature(cfg, "ticket")) else '') + '> KI-Assistent für diesen Server aktivieren</label>' if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><label class="check"><input type="checkbox" disabled> KI-Assistent für diesen Server aktivieren</label></div>')
-        + ('<p class="muted">KI ist Premium. Wähle, wo der Assistent antworten soll. Im Ticket-Modus muss zusätzlich die KI-Option im jeweiligen Ticket-Panel aktiviert sein.</p>' if guild_has_feature(cfg, "ticket") else '<p class="notice">🔒 KI-Assistent und KI-Ticketsupport sind Premium-Funktionen. Verknüpfe Premium auf der Premium-Seite.</p>')
-        + (('<label for="ai_mode">KI-Einsatzort (Premium)</label><select id="ai_mode" name="ai_mode"><option value="ticket"' + (' selected' if cfg.get("ai_mode", "ticket") == "ticket" else '') + '>Nur in Tickets</option><option value="channel"' + (' selected' if cfg.get("ai_mode") == "channel" else '') + '>In einem bestimmten Kanal</option><option value="both"' + (' selected' if cfg.get("ai_mode") == "both" else '') + '>In Tickets und im Kanal</option></select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>KI-Einsatzort</option></select></div>')
+        + '<p class="muted">Der KI-Assistent antwortet ausschließlich im ausgewählten Textkanal. KI in Tickets ist deaktiviert; Bildgenerierung findest du als eigenes Modul unter „AI & Creation“.</p>'
+        + '<input type="hidden" name="ai_mode" value="channel">'
         + (('<label for="ai_channel_id">KI-Kanal (für Kanal-Modus)</label><select id="ai_channel_id" name="ai_channel_id"><option value="">— Textkanal auswählen —</option>' + ''.join('<option value="' + str(channel.id) + '"' + (' selected' if str(cfg.get("ai_channel_id") or "") == str(channel.id) else '') + '>#' + html.escape(channel.name) + '</option>' for channel in guild.text_channels) + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>KI-Kanal</option></select></div>')
-        + '<p class="muted">Wenn ein Kanal ausgewählt ist, antwortet die KI sowohl dort als auch in Tickets (sofern die KI aktiviert ist).</p>'
+        + '<p class="muted">Wähle genau einen Textkanal. Außerhalb dieses Kanals antwortet der KI-Assistent nicht.</p>'
         + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
         + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
         + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
@@ -4962,6 +4963,10 @@ def guild_tickets(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     panels = cfg.setdefault("ticket_panels", {})
+    # Remove legacy ticket-AI flags so old panels cannot keep enabling ticket replies.
+    for legacy_panel in panels.values():
+        if isinstance(legacy_panel, dict):
+            legacy_panel["ai_support_enabled"] = False
     result_html = ""
     if request.method == "POST":
         if not _csrf_ok():
@@ -5218,7 +5223,7 @@ def guild_tickets(guild_id):
         + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select>'
         + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select>'
         + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>'
-        + (('<label class="check"><input type="checkbox" name="ai_support_enabled" value="on"> 🤖 KI-Ticketsupport aktivieren <small>Premium · optional.</small></label>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><label class="check"><input type="checkbox" disabled> 🤖 KI-Ticketsupport aktivieren</label></div>')
+
         + (('<label>Premium-Prioritätsrolle</label><select name="priority_role_id">' + options(roles, None, "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Prioritätsrolle</option></select></div>')
         + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     )
@@ -5250,7 +5255,7 @@ def guild_tickets(guild_id):
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support role (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support role verwenden —") + '</select>'
-            + (('<label class="check"><input type="checkbox" name="ai_support_enabled" value="on"' + (' checked' if panel.get("ai_support_enabled", False) else '') + '> 🤖 KI-Ticketsupport aktivieren <small>Premium · optional, standardmäßig aus. Benötigt GEMINI_API_KEY mit kostenlosem Gemini-Kontingent.</small></label>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><label class="check"><input type="checkbox" disabled> 🤖 KI-Ticketsupport aktivieren</label></div>')
+
             + (('<label>✨ Premium-Prioritätsrolle (wird im Ticket erwähnt und erhält Zugriff)</label><select name="priority_role_id">' + options(roles, panel.get("priority_role_id"), "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Prioritätsrolle</option></select></div>')
             + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
             + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color_picker.value=\'#\'+this.value" placeholder="5865F2"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><small>' + ('Aktuelles Logo: ' + html.escape(str(panel.get("brand_logo_filename", "hochgeladen")), quote=True) if panel.get("brand_logo_file") else 'Noch kein hochgeladenes Logo.') + '</small><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '"><div class="check"><input type="checkbox" name="remove_brand_logo" id="remove-logo-' + html.escape(str(panel_key), quote=True) + '"><label for="remove-logo-' + html.escape(str(panel_key), quote=True) + '">Hochgeladenes Logo entfernen</label></div>' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
