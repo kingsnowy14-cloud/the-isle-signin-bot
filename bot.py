@@ -4916,7 +4916,7 @@ async def on_message(message: discord.Message):
                         })
                         del entries[:-80]
                         save_json(CONFIG_FILE, config)
-            if not is_staff and panel.get("quick_support_enabled", False) and staff_role:
+            if not is_staff and cfg.get("quick_support_enabled_global", True) and panel.get("quick_support_enabled", False) and staff_role:
                 now = time.monotonic()
                 if now - _ticket_quick_support_last_ping.get(message.channel.id, 0) >= 300:
                     _ticket_quick_support_last_ping[message.channel.id] = now
@@ -4928,7 +4928,8 @@ async def on_message(message: discord.Message):
                     except (discord.Forbidden, discord.HTTPException):
                         pass
             if (
-                not is_staff and panel.get("ai_support_enabled", False)
+                not is_staff and cfg.get("ai_enabled_global", True)
+                and panel.get("ai_support_enabled", False)
                 and guild_has_feature(cfg, "ticket") and os.getenv("GEMINI_API_KEY")
             ):
                 now = time.monotonic()
