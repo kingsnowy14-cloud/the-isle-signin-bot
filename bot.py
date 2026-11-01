@@ -5385,7 +5385,8 @@ async def on_message(message: discord.Message):
 
         # Standalone Quick Support only notifies staff; it never invokes the AI.
         quick_channel_id = cfg.get("quick_support_channel_id")
-        quick_role_id = cfg.get("quick_support_role_id")
+        # Prefer the dedicated Quick Support role; fall back to the general support role.
+        quick_role_id = cfg.get("quick_support_role_id") or cfg.get("support_role")
         is_quick_support_channel = (
             str(quick_channel_id or "").isdigit()
             and int(quick_channel_id) == message.channel.id
@@ -5429,6 +5430,13 @@ async def on_message(message: discord.Message):
                         print(f"[QUICK SUPPORT] Staff role ping sent in channel {message.channel.id} for requester {message.author.id}.", flush=True)
                     except (discord.Forbidden, discord.HTTPException, OSError) as exc:
                         print(f"[QUICK SUPPORT] Could not send staff ping/button in channel {message.channel.id}: {type(exc).__name__}: {exc}", flush=True)
+                else:
+                    print(f"[QUICK SUPPORT] Ping skipped in channel {message.channel.id}: cooldown active for user {message.author.id}.", flush=True)
+            else:
+                reason = "role_not_found_or_not_configured" if quick_role is None else (
+                    "default_or_managed_role" if quick_role.is_default() or quick_role.managed else "message_author_is_staff"
+                )
+                print(f"[QUICK SUPPORT] Ping skipped in channel {message.channel.id}: {reason}; configured_role_id={quick_role_id}.", flush=True)
 
         ticket_meta = data.setdefault("tickets", {}).get(str(message.channel.id))
         if ticket_meta and str(ticket_meta.get("guild_id", guild.id)) == str(guild.id):
