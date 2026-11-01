@@ -4913,6 +4913,7 @@ async def on_message(message: discord.Message):
                         pass
             if (
                 not is_staff and cfg.get("ai_enabled_global", True)
+                and cfg.get("ai_mode", "ticket") in {"ticket", "both"}
                 and panel.get("ai_support_enabled", False)
                 and guild_has_feature(cfg, "ticket") and os.getenv("GEMINI_API_KEY")
             ):
@@ -4930,6 +4931,33 @@ async def on_message(message: discord.Message):
                             )
                         except (discord.Forbidden, discord.HTTPException):
                             pass
+
+        # Optional Premium AI assistant in one configured public text channel.
+        # Ticket channels are handled separately above to avoid duplicate answers.
+        ai_mode = cfg.get("ai_mode", "ticket")
+        ai_channel_id = cfg.get("ai_channel_id")
+        is_ticket_channel = bool(ticket_meta and str(ticket_meta.get("guild_id", guild.id)) == str(guild.id))
+        if (
+            not is_ticket_channel and cfg.get("ai_enabled_global", True)
+            and ai_mode in {"channel", "both"}
+            and str(message.channel.id) == str(ai_channel_id or "")
+            and guild_has_feature(cfg, "ticket") and os.getenv("GEMINI_API_KEY")
+            and not message.author.bot
+        ):
+            now = time.monotonic()
+            if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 25:
+                _ticket_ai_last_reply[message.channel.id] = now
+                async with message.channel.typing():
+                    answer = await _generate_ticket_ai_reply(message.channel, message, None)
+                if answer:
+                    try:
+                        await message.reply(
+                            f"🤖 **KI-Assistent**\\n{discord.utils.escape_mentions(answer)}",
+                            mention_author=False,
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
 
         # Delete pings to configured protected roles or members.
         if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:

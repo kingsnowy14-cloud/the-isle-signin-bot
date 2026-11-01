@@ -844,7 +844,7 @@ main{{max-width:1240px;margin:42px auto;padding:0 24px 54px}}main>p:last-child{{
 .dashboard-metrics{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:12px;margin:18px 0 26px}}.dashboard-metric{{border:1px solid var(--border);border-radius:14px;padding:16px;background:rgba(13,20,34,.82);min-width:0}}.dashboard-metric strong{{display:block;font-size:25px;line-height:1.25;color:var(--accent2);overflow-wrap:anywhere}}.dashboard-metric span{{display:block;color:var(--muted);font-size:12px;font-weight:750;margin-top:5px}}.dashboard-group-title{{margin:28px 0 10px;font-size:17px}}.dashboard-card{{display:block;text-decoration:none;min-height:145px}}.dashboard-card h2{{font-size:18px;margin-top:4px}}.dashboard-card p{{margin-bottom:12px}}.dashboard-card .card-link{{font-weight:850;font-size:13px}}
 .card{{background:linear-gradient(145deg,rgba(19,28,44,.94),rgba(12,17,29,.97));border:1px solid var(--border);border-radius:20px;padding:25px;margin:20px 0;box-shadow:var(--shadow);min-width:0;position:relative;overflow:hidden;backdrop-filter:blur(14px)}}.card::before{{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,var(--accent),#7e9ee9 42%,transparent);opacity:.9}}.card::after{{content:"";position:absolute;right:-90px;top:-115px;width:190px;height:190px;border-radius:50%;background:var(--glow);filter:blur(18px);pointer-events:none}}.card h1{{margin-bottom:14px}}.card p{{color:var(--muted)}}.card ul{{padding-left:22px;color:var(--muted)}}.card li{{padding:3px 0}}
 .grid>a.card{{transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}}.grid>a.card:hover{{transform:translateY(-4px);border-color:rgba(114,199,255,.45);box-shadow:0 28px 75px rgba(0,0,0,.4)}}
-label{{display:block;font-weight:750;margin:15px 0 7px;color:#e1e8f3}}input[type=text],input[type=password],select,textarea{{width:100%;padding:12px 14px;border:1px solid rgba(154,177,211,.23);border-radius:12px;background:rgba(5,9,17,.78);color:var(--text);font:inherit;outline:none;transition:border-color .18s,box-shadow .18s,background .18s}}input:focus,select:focus,textarea:focus{{border-color:rgba(114,199,255,.75);background:#0b1120;box-shadow:0 0 0 4px rgba(114,199,255,.1)}}textarea{{min-height:110px;resize:vertical}}input::placeholder,textarea::placeholder{{color:#718099}}
+label{{display:block;font-weight:750;margin:15px 0 7px;color:#e1e8f3}}input[type=text],input[type=password],input[type=search],select,textarea{{width:100%;padding:12px 14px;border:1px solid rgba(154,177,211,.23);border-radius:12px;background:rgba(5,9,17,.78);color:var(--text);font:inherit;outline:none;transition:border-color .18s,box-shadow .18s,background .18s}}input:focus,select:focus,textarea:focus{{border-color:rgba(114,199,255,.75);background:#0b1120;box-shadow:0 0 0 4px rgba(114,199,255,.1)}}textarea{{min-height:110px;resize:vertical}}input::placeholder,textarea::placeholder{{color:#718099}}
 button,.button{{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:11px 17px;background:linear-gradient(125deg,#9cddff,#438fd0);color:#07111e;font:inherit;font-weight:900;cursor:pointer;text-decoration:none;margin-top:15px;box-shadow:0 8px 24px rgba(201,148,62,.13);transition:transform .16s,filter .16s,box-shadow .16s}}button:hover,.button:hover{{transform:translateY(-2px);filter:brightness(1.07);box-shadow:0 12px 28px rgba(201,148,62,.2)}}button.secondary,.button.secondary{{background:rgba(30,43,63,.8);border-color:var(--border);color:var(--text);box-shadow:none}}button.secondary:hover,.button.secondary:hover{{border-color:rgba(114,199,255,.5);color:var(--accent)}}button:focus-visible,.button:focus-visible,a:focus-visible{{outline:2px solid var(--accent);outline-offset:4px}}
 .muted,small{{color:var(--muted)}}.pill{{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:rgba(114,199,255,.09);border:1px solid rgba(114,199,255,.25);color:#b7e5ff;font-size:10px;font-weight:900;letter-spacing:1.25px;text-transform:uppercase}}
 .row{{display:flex;gap:14px;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(154,177,211,.12);padding:13px 0}}.row:last-child{{border:0}}.row strong{{overflow-wrap:anywhere}}.check{{display:flex;gap:9px;align-items:center;flex-shrink:0}}.check label{{margin:0;font-weight:650;color:var(--muted)}}.check input{{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}}
@@ -872,6 +872,8 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
  nav:not(.module-nav) .nav-logout{{margin:0}}
  .module-nav{{position:relative;width:100%;height:auto;max-height:220px;overflow-x:auto;overflow-y:hidden;flex-direction:row;align-items:center;flex-wrap:nowrap;margin:0 0 18px;padding:10px;border:1px solid var(--border);border-radius:13px}}
  .module-nav-link{{width:auto;white-space:nowrap}}
+ .module-search-label,.module-nav-search{{flex:0 0 100%}}
+ .module-nav-list{{flex-direction:row;flex-wrap:wrap;gap:4px;min-width:100%}}
 }}
 \n@media(prefers-reduced-motion:reduce){{*,*::before,*::after{{scroll-behavior:auto!important;transition:none!important;animation:none!important}}}}
 /* GalaxyBot-inspired clean module dashboard */
@@ -953,6 +955,10 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
 .iw-category{{margin:0 0 22px;padding:20px;border:1px solid var(--border);border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.025),rgba(255,255,255,.008))}}.iw-category>h2{{font-size:18px;margin:0 0 4px}}.iw-category-subtitle{{margin-bottom:15px}}
 .module-nav{{display:flex;align-items:center;gap:7px;flex-wrap:nowrap;overflow-x:auto;margin:0 0 18px;padding:10px;border:1px solid var(--border);border-radius:13px;background:rgba(9,14,27,.72);scrollbar-width:thin}}
 .module-nav-title{{flex:0 0 auto;padding:0 7px;color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.12em}}
+.module-search-label{{margin:4px 8px 0;color:var(--muted);font-size:11px;font-weight:800}}
+.module-nav-search{{width:calc(100% - 16px)!important;margin:0 8px 8px;padding:9px 11px!important;font-size:13px!important}}
+.module-nav-list{{display:flex;flex-direction:column;gap:4px;width:100%}}
+.module-nav-link[hidden]{{display:none!important}}
 .module-nav-link{{flex:0 0 auto;display:inline-flex;align-items:center;min-height:34px;padding:7px 10px;border:1px solid transparent;border-radius:8px;color:var(--muted);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}}
 .module-nav-link:hover{{color:var(--text);background:rgba(139,157,255,.08);border-color:var(--border)}}
 .module-nav-link.is-active{{color:#fff;background:rgba(129,140,248,.18);border-color:rgba(139,157,255,.4)}}
@@ -1147,7 +1153,10 @@ def _module_navigation():
     return (
         '<aside class="module-nav" aria-label="Server modules">'
         '<div class="module-nav-title">SERVER MODULES</div>' +
-        ''.join(links) + '</aside>'
+        '<label class="module-search-label" for="module-nav-search">🔎 Module suchen</label>' +
+        '<input id="module-nav-search" class="module-nav-search" type="search" placeholder="Modul suchen …" autocomplete="off" aria-label="Module durchsuchen">' +
+        '<div class="module-nav-list">' + ''.join(links) + '</div>' +
+        '<script>(function(){var input=document.getElementById("module-nav-search");if(!input)return;var items=Array.prototype.slice.call(document.querySelectorAll(".module-nav-list .module-nav-link"));input.addEventListener("input",function(){var q=input.value.trim().toLocaleLowerCase();items.forEach(function(item){item.hidden=q!==""&&item.textContent.toLocaleLowerCase().indexOf(q)===-1;});});})();</script></aside>'
     )
 
 DASHBOARD_TRANSLATIONS = {
@@ -4755,7 +4764,23 @@ def guild_ai_knowledge(guild_id):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         action = request.form.get("action", "save")
         if action == "save":
-            cfg["ai_enabled_global"] = request.form.get("ai_enabled") == "on"
+            ai_enabled = request.form.get("ai_enabled") == "on"
+            ai_mode = request.form.get("ai_mode", "ticket").strip()
+            ai_channel_raw = request.form.get("ai_channel_id", "").strip()
+            valid_modes = {"ticket", "channel", "both"}
+            if ai_mode not in valid_modes:
+                abort(400, "Bitte wähle einen gültigen KI-Einsatzort.")
+            if ai_enabled and not guild_has_feature(cfg, "ticket"):
+                abort(403, "Der KI-Assistent ist eine Premium-Funktion. Verknüpfe zuerst Premium mit diesem Server.")
+            if ai_enabled and ai_mode in {"channel", "both"}:
+                valid_channel_ids = {str(channel.id) for channel in guild.text_channels}
+                if ai_channel_raw not in valid_channel_ids:
+                    abort(400, "Für den Kanal-Modus musst du einen gültigen Textkanal auswählen.")
+            elif ai_channel_raw and ai_channel_raw not in {str(channel.id) for channel in guild.text_channels}:
+                abort(400, "Bitte wähle einen gültigen Textkanal.")
+            cfg["ai_enabled_global"] = ai_enabled
+            cfg["ai_mode"] = ai_mode
+            cfg["ai_channel_id"] = int(ai_channel_raw) if ai_channel_raw else None
             cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
             cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         entries = cfg.setdefault("ai_knowledge", [])
@@ -4787,8 +4812,11 @@ def guild_ai_knowledge(guild_id):
         '<p class="muted">Dieses Wissen gilt nur für diesen Discord-Server. Automatisches Lernen ist standardmäßig deaktiviert. Es werden nur Textnachrichten vertrauenswürdiger Staff-Mitglieder gespeichert; du kannst Einträge jederzeit prüfen und löschen.</p>'
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
         + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
-        + '<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", True) else '') + '> KI-Assistent für diesen Server aktivieren</label>'
-        + '<p class="muted">Schaltet KI-Antworten in allen Ticket-Panels zentral ein oder aus. Die jeweilige Panel-Option muss zusätzlich aktiviert sein.</p>'
+        + '<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", guild_has_feature(cfg, "ticket")) else '') + '> KI-Assistent für diesen Server aktivieren</label>'
+        + ('<p class="muted">KI ist Premium. Wähle, wo der Assistent antworten soll. Im Ticket-Modus muss zusätzlich die KI-Option im jeweiligen Ticket-Panel aktiviert sein.</p>' if guild_has_feature(cfg, "ticket") else '<p class="notice">🔒 KI-Assistent und KI-Ticketsupport sind Premium-Funktionen. Verknüpfe Premium auf der Premium-Seite.</p>')
+        + '<label for="ai_mode">KI-Einsatzort (Premium)</label><select id="ai_mode" name="ai_mode"><option value="ticket"' + (' selected' if cfg.get("ai_mode", "ticket") == "ticket" else '') + '>Nur in Tickets</option><option value="channel"' + (' selected' if cfg.get("ai_mode") == "channel" else '') + '>In einem bestimmten Kanal</option><option value="both"' + (' selected' if cfg.get("ai_mode") == "both" else '') + '>In Tickets und im Kanal</option></select>'
+        + '<label for="ai_channel_id">KI-Kanal (für Kanal-Modus)</label><select id="ai_channel_id" name="ai_channel_id"><option value="">— Textkanal auswählen —</option>' + ''.join('<option value="' + str(channel.id) + '"' + (' selected' if str(cfg.get("ai_channel_id") or "") == str(channel.id) else '') + '>#' + html.escape(channel.name) + '</option>' for channel in guild.text_channels) + '</select>'
+        + '<p class="muted">Im Kanal-Modus antwortet die KI auf normale Nachrichten im ausgewählten Kanal. Ticket-Antworten funktionieren weiterhin nur, wenn das jeweilige Ticket-Panel KI-Support aktiviert hat.</p>'
         + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
         + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
         + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
