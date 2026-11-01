@@ -3451,6 +3451,9 @@ async def _apply_custom_bot_profile(guild, profile):
                 elif profile.get("banner_url"):
                     embed.set_image(url=profile["banner_url"])
 
+                # Publish the replacement first; only remove the previous card
+                # after Discord confirms that the new message was sent.
+                sent = await channel.send(embed=embed, files=files)
                 old_message_id = profile.get("profile_message_id")
                 if old_message_id:
                     try:
@@ -3458,7 +3461,6 @@ async def _apply_custom_bot_profile(guild, profile):
                         await old_message.delete()
                     except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
                         pass
-                sent = await channel.send(embed=embed, files=files)
                 profile["profile_message_id"] = str(sent.id)
                 results.append("profile card published in #" + getattr(channel, "name", "channel"))
             except discord.Forbidden:
@@ -3555,6 +3557,13 @@ def guild_custom_bot(guild_id):
                 profile_data[asset + "_file"] = str(destination.resolve())
                 profile_data[asset + "_mime"] = mime
                 profile_data[asset + "_url"] = ""
+            elif profile_data.get(asset + "_url"):
+                # Switching from an uploaded image to a URL must remove the old
+                # upload, otherwise the preview and Discord card keep using it.
+                for previous in asset_dir.glob(asset + ".*"):
+                    previous.unlink(missing_ok=True)
+                profile_data.pop(asset + "_file", None)
+                profile_data.pop(asset + "_mime", None)
             if request.form.get("remove_" + asset) == "on":
                 for previous in asset_dir.glob(asset + ".*"):
                     previous.unlink(missing_ok=True)
