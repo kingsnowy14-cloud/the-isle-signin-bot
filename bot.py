@@ -5266,6 +5266,99 @@ _ticket_ai_last_reply = {}
 _ticket_quick_support_last_ping = {}
 
 
+class QuickSupportThreadView(discord.ui.View):
+    """Persistent button that opens a private support thread for a Quick Support request."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Support-Thread erstellen",
+        style=discord.ButtonStyle.primary,
+        emoji="🧵",
+        custom_id="quick_support:create_private_thread",
+    )
+    async def create_private_thread(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        if guild is None or interaction.message is None:
+            await interaction.response.send_message("Dieser Button funktioniert nur auf dem Server.", ephemeral=True)
+            return
+
+        request = data.setdefault("quick_support_requests", {}).get(str(interaction.message.id))
+        if not isinstance(request, dict) or str(request.get("guild_id")) != str(guild.id):
+            await interaction.response.send_message("Dieser Quick-Support-Aufruf ist nicht mehr verfügbar.", ephemeral=True)
+            return
+
+        cfg = guild_config(guild.id)
+        staff_role_id = cfg.get("support_role") or cfg.get("quick_support_role_id")
+        staff_role = guild.get_role(int(staff_role_id)) if str(staff_role_id or "").isdigit() else None
+        member_role_ids = {role.id for role in getattr(interaction.user, "roles", [])}
+        is_staff = (
+            interaction.user.guild_permissions.administrator
+            or (staff_role is not None and staff_role.id in member_role_ids)
+        )
+        if not is_staff:
+            await interaction.response.send_message("Nur das Support-Team kann diesen Thread erstellen.", ephemeral=True)
+            return
+
+        existing_thread_id = request.get("thread_id")
+        if str(existing_thread_id or "").isdigit():
+            existing_thread = guild.get_thread(int(existing_thread_id))
+            if existing_thread is not None:
+                await interaction.response.send_message(f"Für diesen Hilferuf gibt es bereits {existing_thread.mention}.", ephemeral=True)
+                return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        requester_id = request.get("requester_id")
+        requester = guild.get_member(int(requester_id)) if str(requester_id or "").isdigit() else None
+        if requester is None and str(requester_id or "").isdigit():
+            try:
+                requester = await guild.fetch_member(int(requester_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                requester = None
+        if requester is None:
+            await interaction.followup.send("Die Person, die den Hilferuf ausgelöst hat, ist nicht mehr auf dem Server.", ephemeral=True)
+            return
+
+        channel = interaction.channel
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.followup.send("Der Quick-Support-Kanal ist kein normaler Textkanal.", ephemeral=True)
+            return
+
+        safe_name = re.sub(r"[^a-z0-9-]", "-", requester.display_name.lower()).strip("-")[:35] or "mitglied"
+        try:
+            thread = await channel.create_thread(
+                name=f"support-{safe_name}",
+                type=discord.ChannelType.private_thread,
+                invitable=False,
+                auto_archive_duration=1440,
+                reason=f"Quick Support request by {requester} handled by {interaction.user}",
+            )
+            await thread.add_user(requester)
+            await thread.add_user(interaction.user)
+            await thread.send(
+                f"🆘 **Quick Support**\nAnfrage von {requester.mention}\nSupport: {interaction.user.mention}\n"
+                "Hier könnt ihr privat miteinander schreiben. Nur eingeladene Mitglieder und das Serverteam können den Thread sehen.",
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            request["thread_id"] = str(thread.id)
+            request["handled_by"] = str(interaction.user.id)
+            request["created_at"] = datetime.now(timezone.utc).isoformat()
+            save_json(DATA_FILE, data)
+            await interaction.followup.send(f"Privater Support-Thread erstellt: {thread.mention}", ephemeral=True)
+            print(f"[QUICK SUPPORT] Private thread {thread.id} created for requester {requester.id} by staff {interaction.user.id}.", flush=True)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[QUICK SUPPORT] Could not create private thread in channel {channel.id}: {type(exc).__name__}: {exc}", flush=True)
+            await interaction.followup.send(
+                "Der private Thread konnte nicht erstellt werden. Bitte prüfe die Bot-Berechtigungen: Kanäle verwalten, Threads erstellen, Nachrichten senden und Mitglieder zu Threads hinzufügen.",
+                ephemeral=True,
+            )
+
+
+# Register once at startup so buttons on older Quick Support messages keep working after restarts.
+bot.add_view(QuickSupportThreadView())
+
+
 @bot.tree.command(name="ai-knowledge", description="Show the server knowledge currently saved for IronWolf AI")
 @app_commands.checks.has_permissions(manage_guild=True)
 async def ai_knowledge_command(interaction: discord.Interaction):
@@ -5320,14 +5413,24 @@ async def on_message(message: discord.Message):
                 ping_key = (message.channel.id, message.author.id)
                 now = time.monotonic()
                 if now - _ticket_quick_support_last_ping.get(ping_key, 0) >= 300:
-                    _ticket_quick_support_last_ping[ping_key] = now
                     try:
-                        await message.channel.send(
+                        alert_message = await message.channel.send(
                             f"🆘 {quick_role.mention} — {message.author.mention} benötigt Unterstützung.",
+                            view=QuickSupportThreadView(),
                             allowed_mentions=discord.AllowedMentions(roles=[quick_role], users=False, everyone=False),
                         )
-                    except (discord.Forbidden, discord.HTTPException):
-                        pass
+                        data.setdefault("quick_support_requests", {})[str(alert_message.id)] = {
+                            "guild_id": str(guild.id),
+                            "channel_id": str(message.channel.id),
+                            "requester_id": str(message.author.id),
+                            "source_message_id": str(message.id),
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        save_json(DATA_FILE, data)
+                        _ticket_quick_support_last_ping[ping_key] = now
+                        print(f"[QUICK SUPPORT] Staff role ping sent in channel {message.channel.id} for requester {message.author.id}.", flush=True)
+                    except (discord.Forbidden, discord.HTTPException, OSError) as exc:
+                        print(f"[QUICK SUPPORT] Could not send staff ping/button in channel {message.channel.id}: {type(exc).__name__}: {exc}", flush=True)
 
         ticket_meta = data.setdefault("tickets", {}).get(str(message.channel.id))
         if ticket_meta and str(ticket_meta.get("guild_id", guild.id)) == str(guild.id):
