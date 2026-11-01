@@ -47,6 +47,34 @@ class EmergencyHamburgTests(unittest.TestCase):
         self.assertIn("10/40", embed.fields[0].value)
         self.assertIn("Spieler:** 10", embed.fields[-1].value)
 
+    def test_online_offline_thresholds_use_hysteresis(self):
+        guild = Mock()
+        settings = {
+            "servers": [{"job_id": "job-1", "name": "Testserver"}],
+            "online_min_players": 5,
+            "offline_max_players": 1,
+        }
+        online_embed = emergency_hamburg.build_status_embed(
+            guild, settings, {"job-1": {"playing": 5, "maxPlayers": 40}}
+        )
+        self.assertIn("🟢 Online", online_embed.fields[0].value)
+        middle_embed = emergency_hamburg.build_status_embed(
+            guild, settings, {"job-1": {"playing": 3, "maxPlayers": 40}}
+        )
+        self.assertIn("🟢 Online", middle_embed.fields[0].value)
+        offline_embed = emergency_hamburg.build_status_embed(
+            guild, settings, {"job-1": {"playing": 1, "maxPlayers": 40}}
+        )
+        self.assertIn("🔴 Offline", offline_embed.fields[0].value)
+
+    def test_server_owner_is_displayed(self):
+        guild = Mock()
+        settings = {"servers": [{"job_id": "job-1", "name": "Testserver", "owner": "RobloxOwner"}]}
+        embed = emergency_hamburg.build_status_embed(
+            guild, settings, {"job-1": {"playing": 2, "maxPlayers": 40}}
+        )
+        self.assertIn("Besitzer: RobloxOwner", embed.fields[0].value)
+
 
 if __name__ == "__main__":
     unittest.main()
