@@ -542,6 +542,10 @@ def guild_config(guild_id):
     if cfg.get("bot_language") != "en":
         cfg["bot_language"] = "en"
         changed = True
+    # If an AI channel is configured, run the assistant in BOTH that channel and tickets.
+    if cfg.get("ai_enabled_global", True) and cfg.get("ai_channel_id") and cfg.get("ai_mode") != "both":
+        cfg["ai_mode"] = "both"
+        changed = True
     if changed:
         save_json(CONFIG_FILE, config)
         print(f"[CONFIG] Merged missing defaults for guild {gid}; existing settings were preserved.", flush=True)
