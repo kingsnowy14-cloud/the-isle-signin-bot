@@ -216,6 +216,7 @@ def record_module_changes():
         logs = []
 
     current = {}
+    now_stamp = now_stamp
     for module_path in sorted(REPO_DIR.glob("*.py")):
         try:
             digest = hashlib.sha256(module_path.read_bytes()).hexdigest()
@@ -228,7 +229,7 @@ def record_module_changes():
             logs.append({
                 "module": name,
                 "change": "Initial setup" if previous is None else "Module changed",
-                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "detected_at": now_stamp,
                 "sha256": digest,
             })
 
@@ -237,7 +238,7 @@ def record_module_changes():
             logs.append({
                 "module": name,
                 "change": "Modul entfernt",
-                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "detected_at": now_stamp,
                 "sha256": None,
             })
 
@@ -245,6 +246,62 @@ def record_module_changes():
     logs = logs[-500:]
     MODULE_STATE_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
     MODULE_LOG_FILE.write_text(json.dumps(logs, ensure_ascii=False, indent=2), encoding="utf-8")
+    return [entry for entry in logs if entry.get("detected_at") == now_stamp]
+
+
+async def announce_private_release(changes):
+    """Announce release notes only in the explicitly configured private server channel."""
+    target_guild_id = 1558583861519056979
+    target_channel_id = 1566181537655816303
+    if not changes or all(entry.get("change") == "Initial setup" for entry in changes):
+        return
+
+    guild = bot.get_guild(target_guild_id)
+    if guild is None or guild.id != target_guild_id:
+        print(f"[RELEASE ANNOUNCEMENT] Target guild {target_guild_id} is unavailable.", flush=True)
+        return
+    channel = guild.get_channel(target_channel_id)
+    if not isinstance(channel, discord.TextChannel) or channel.guild.id != target_guild_id:
+        print(f"[RELEASE ANNOUNCEMENT] Target channel {target_channel_id} is unavailable or invalid.", flush=True)
+        return
+
+    release_id = os.getenv("RAILWAY_GIT_COMMIT_SHA") or hashlib.sha256(
+        json.dumps(changes, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    announced = data.setdefault("private_release_announcements", {})
+    if announced.get(str(target_guild_id)) == release_id:
+        return
+
+    raw_summary = os.getenv("RAILWAY_GIT_COMMIT_MESSAGE", "").strip()
+    summary_lines = [line.strip() for line in raw_summary.splitlines() if line.strip()]
+    summary_lines = [
+        line for line in summary_lines
+        if not line.lower().startswith(("merge pull request", "merge branch", "co-authored-by:"))
+        and not line.startswith((chr(96), "#"))
+    ]
+    summary = summary_lines[0] if summary_lines else "Neue Verbesserungen und technische Aktualisierungen wurden bereitgestellt."
+    # Publish descriptive notes only: no source, snippets, file paths, hashes, or URLs.
+    summary = re.sub(r"\x60+[^\x60]*\x60+", "[interne technische Details]", summary)
+    summary = re.sub(r"https?://\S+|\b[a-f0-9]{7,40}\b", "", summary, flags=re.IGNORECASE)
+    summary = re.sub(r"\s+", " ", summary).strip()[:350]
+    if not summary:
+        summary = "Neue Verbesserungen und technische Aktualisierungen wurden bereitgestellt."
+
+    embed = discord.Embed(
+        title="🐺 IronWolf · Update verfügbar",
+        description=f"**Änderung / Verbesserung**\n{discord.utils.escape_markdown(summary)}\n\n"
+                    "Dieses Update gehört zu diesem Server. Hier werden nur verständliche Änderungsinfos veröffentlicht – **kein Quellcode und keine Codeausschnitte**.",
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(text="Privater Server-Updatekanal")
+    try:
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[RELEASE ANNOUNCEMENT] Could not post to configured channel: {type(exc).__name__}: {exc}", flush=True)
+        return
+    announced[str(target_guild_id)] = release_id
+    save_json(DATA_FILE, data)
 
 
 @bot.group(name="IronWolf", invoke_without_command=True)
@@ -7730,7 +7787,8 @@ async def on_ready():
     global _automation_worker_task
     global _birthday_worker_task
     global _server_statistics_task
-    record_module_changes()
+    release_changes = record_module_changes()
+    await announce_private_release(release_changes)
     if _automation_worker_task is None or _automation_worker_task.done():
         _automation_worker_task = asyncio.create_task(premium_automation_worker(), name="premium-automation-worker")
     if _birthday_worker_task is None or _birthday_worker_task.done():
