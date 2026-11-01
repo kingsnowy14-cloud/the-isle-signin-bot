@@ -199,12 +199,12 @@ class Ausweis(commands.Cog):
     async def id_card(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if interaction.guild is None:
             await interaction.response.send_message(
-                "Dieser Befehl kann nur auf einem Server genutzt werden.", ephemeral=True
+                "This command can only be used in a server.", ephemeral=True
             )
             return
 
         panels = load_panels()
-        record = {"guild_id": interaction.guild.id, "channel_id": kanal.id}
+        record = {"guild_id": interaction.guild.id, "channel_id": channel.id}
         if record not in panels:
             panels.append(record)
             save_panels(panels)
@@ -212,12 +212,12 @@ class Ausweis(commands.Cog):
         view = AusweisPanelView(self.bot, interaction.guild.id, channel.id)
         self.bot.add_view(view)
         embed = discord.Embed(
-            title="🪪 Personal-Ausweis beantragen",
+            title="🪪 Request an ID card",
             description=(
                 "Would you like an official roleplay ID card? "
-                "Klicke auf **Ausweis beantragen**. Der Bot sendet dir eine DM; "
+                "Click **Request ID card**. The bot will send you a DM; "
                 "You can open and complete the form there. "
-                "Dieses Panel bleibt auch nach einem Bot-Neustart nutzbar."
+                "This panel remains available after bot restarts."
             ),
             color=discord.Color.dark_blue(),
         )
