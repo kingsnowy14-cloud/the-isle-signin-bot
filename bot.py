@@ -2722,8 +2722,11 @@ async def welcome_test(interaction: discord.Interaction):
         return
     await interaction.response.defer(ephemeral=True, thinking=True)
     try:
-        await send_welcome_for_member(interaction.user, cfg, include_dm=False, force=True)
-        await interaction.followup.send(f"Test welcome sent to {channel.mention}. If it is not visible, check the bot's View Channel and Send Messages permissions.", ephemeral=True)
+        sent = await send_welcome_for_member(interaction.user, cfg, include_dm=False, force=True)
+        if sent:
+            await interaction.followup.send(f"Test welcome sent to {channel.mention}.", ephemeral=True)
+        else:
+            await interaction.followup.send(f"The welcome test could not be sent to {channel.mention}. Check the bot's View Channel and Send Messages permissions; see Railway logs for details.", ephemeral=True)
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.followup.send(f"Could not send the test welcome: {type(exc).__name__}. Check channel permissions.", ephemeral=True)
 
@@ -5592,8 +5595,8 @@ async def on_guild_remove(guild: discord.Guild):
 async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm: bool = True, force: bool = False):
     """Send configured welcome messages independently of invite tracking and security checks."""
     should_welcome = force or (not member.bot) or cfg.get("welcome_bots_enabled", False)
+    sent_public = False
     try:
-        should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
         # Optional private welcome message; disabled by default to avoid unsolicited DMs.
         if should_welcome and include_dm and cfg.get("welcome_dm_enabled", False):
             dm_template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
@@ -5645,6 +5648,7 @@ async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm:
                             allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
                         )
                     print(f"[WELCOME] Sent welcome for {member} ({member.id}) in #{welcome_channel.name} ({member.guild.id}).")
+                    sent_public = True
                 except (discord.Forbidden, discord.HTTPException) as exc:
                     print(f"[WELCOME] Sending failed in guild {member.guild.id}, channel {welcome_channel_id}: {type(exc).__name__}: {exc}")
             elif welcome_channel is not None:
@@ -5652,13 +5656,17 @@ async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm:
         elif should_welcome:
             print(f"[WELCOME] No welcome channel configured for guild {member.guild.id}. Run /welcome-set in Discord.")
 
+        return sent_public
     except Exception as exc:
         print(f"[WELCOME] Unexpected welcome handler error in guild {member.guild.id} for member {member.id}: {type(exc).__name__}: {exc}", flush=True)
+        return False
 
 
 @bot.event
 async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
+    # Run welcome handling first so other optional modules cannot suppress it.
+    await send_welcome_for_member(member, cfg)
     if cfg.get("anti_raid_enabled", False) and not member.bot:
         now_mono = time.monotonic()
         joins = _raid_join_times[member.guild.id]
@@ -5722,8 +5730,6 @@ async def on_member_join(member: discord.Member):
             await member.add_roles(unverified_role, reason="Neue Mitglieder müssen sich verifizieren")
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[VERIFY] Could not assign unverified role: {type(exc).__name__}: {exc}")
-    # Run welcome handling first so failures in invite tracking or security modules cannot suppress it.
-    await send_welcome_for_member(member, cfg)
     # Preserve the existing anti-raid behavior: bot joins do not count as member raids.
     if member.bot or not cfg.get("anti_raid_enabled", False):
         return
