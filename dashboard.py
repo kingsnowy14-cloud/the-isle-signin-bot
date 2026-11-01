@@ -996,6 +996,13 @@ nav:not(.module-nav) .nav-logout-button{{width:100%;min-height:39px;padding:8px 
 @media(max-width:420px){{nav:not(.module-nav){{grid-template-columns:1fr;}}nav:not(.module-nav) .brand-mark,nav:not(.module-nav) .cursor-picker-label{{grid-column:1;}}}}
 
 {custom_theme_css}
+/* Keep every top-level dashboard control in one horizontal row */
+nav:not(.module-nav){{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:7px!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;}}
+nav:not(.module-nav) .brand-mark{{flex:0 0 auto!important;width:auto!important;grid-column:auto!important;margin:0 10px 0 0!important;padding:7px 10px!important;border:0!important;white-space:nowrap!important;}}
+nav:not(.module-nav) a:not(.brand-mark){{flex:0 0 auto!important;width:auto!important;min-width:max-content!important;white-space:nowrap!important;}}
+nav:not(.module-nav) .cursor-picker-label{{flex:0 0 auto!important;grid-column:auto!important;white-space:nowrap!important;}}
+nav:not(.module-nav) .nav-logout{{flex:0 0 auto!important;width:auto!important;}}
+nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap!important;}}
 .cursor-picker-label{{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:12px;font-weight:850;color:var(--muted);margin:0}}
 .cursor-picker-label select{{width:auto;min-width:145px;padding:7px 30px 7px 10px;font-size:12px;border-radius:9px}}
 @media(max-width:900px){{.cursor-picker-label{{order:5}}}}
