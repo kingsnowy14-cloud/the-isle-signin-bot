@@ -216,7 +216,7 @@ def record_module_changes():
         logs = []
 
     current = {}
-    now_stamp = now_stamp
+    now_stamp = datetime.now(timezone.utc).isoformat()
     for module_path in sorted(REPO_DIR.glob("*.py")):
         try:
             digest = hashlib.sha256(module_path.read_bytes()).hexdigest()
