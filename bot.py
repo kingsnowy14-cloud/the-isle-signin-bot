@@ -5464,13 +5464,16 @@ async def on_message(message: discord.Message):
                 and not is_staff
                 and cfg.get("ai_enabled_global", True)
                 and guild_has_feature(cfg, "ticket")
-                and panel.get("ai_support_enabled", True)
             ):
                 now = time.monotonic()
                 if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 5:
                     _ticket_ai_last_reply[message.channel.id] = now
-                    async with message.channel.typing():
-                        answer = await _generate_ticket_ai_reply(message.channel, message, ticket_meta)
+                    try:
+                        async with message.channel.typing():
+                            answer = await _generate_ticket_ai_reply(message.channel, message, ticket_meta)
+                    except Exception as ai_error:
+                        print(f"[TICKET AI] Unexpected ticket handler error in channel {message.channel.id}: {type(ai_error).__name__}: {ai_error}", flush=True)
+                        answer = None
                     if answer:
                         try:
                             await message.reply(
