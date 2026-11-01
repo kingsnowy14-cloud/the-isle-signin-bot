@@ -7852,10 +7852,9 @@ async def on_ready():
         # Discord allows at most 100 global slash commands. Keep economy commands
         # guild-scoped so they do not prevent the main command set from syncing.
         economy_names = {
-            "candyshop", "bank", "konto", "bank-zinsen", "bank-limit",
+            "bank", "konto", "bank-zinsen", "bank-limit",
             "steuern", "shop", "shop-hinzufuegen", "shop-entfernen",
-            "shop-kaufen", "suesses", "spook", "halloween-shop",
-            "halloween-kaufen", "halloween-guthaben",
+            "shop-kaufen",
         }
         economy_commands = []
         for command_name in economy_names:
