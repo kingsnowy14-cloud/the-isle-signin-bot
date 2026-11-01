@@ -2849,7 +2849,7 @@ def guild_page(guild_id):
         ("🧩 Modules", [("🆘", "Quick Support", "Automatic support-team pings in tickets", "/quick-support")]),
         ("📨 Support & Communication", [("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
         ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("🎭", "Roles & Rewards", "Bot roles and level rewards", "?section=roles#settings-panel"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
-        ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
+        ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "Server Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
     ]
     def module_cards(items, popular_style=False):
         css_class = "iw-popular-card" if popular_style else "iw-module-card"
@@ -4015,6 +4015,82 @@ document.addEventListener("DOMContentLoaded",()=>{
     success = '<div class="notice">✅ Nachricht wurde vom Bot gesendet.</div>' if request.args.get("sent") == "1" else ''
     body = '<section class="card scnx-message-builder"><span class="pill">MESSAGE BUILDER</span><h1>✉️ Nachricht erstellen</h1><p class="muted">Erstelle eine Discord-Nachricht wie in einem visuellen Editor: Inhalt links bearbeiten, Vorschau rechts ansehen und am Ende direkt senden.</p>' + success + error_html + '<form method="post">' + _csrf_field() + '<div class="scnx-builder"><div><section class="scnx-panel"><h2>1. Wo soll die Nachricht hin?</h2><label for="channel_id">Discord-Kanal</label><select id="channel_id" name="channel_id" required>' + channels + '</select><small class="scnx-field-help">Wähle den Kanal, in dem der Bot die Nachricht veröffentlichen soll.</small></section><section class="scnx-panel"><h2>2. Nachricht gestalten</h2><label for="message">Nachrichtentext</label><textarea id="message" name="message" maxlength="2000" rows="4" placeholder="Schreibe hier deine Nachricht …"></textarea><small class="scnx-field-help">Normale Discord-Nachricht, maximal 2000 Zeichen.</small><h3>Embed (optional)</h3><label for="embed_title">Überschrift</label><input id="embed_title" name="embed_title" maxlength="256" placeholder="z. B. Willkommen auf dem Server!"><label for="embed_description">Description</label><textarea id="embed_description" name="embed_description" maxlength="4000" rows="5" placeholder="Erkläre hier, was Mitglieder tun sollen …"></textarea><small class="scnx-field-help">Du kannst nur normalen Text, nur einen Embed oder beides zusammen senden.</small></section><section class="scnx-panel"><h2>3. Buttons hinzufügen</h2><p class="muted">Füge nur die Buttons hinzu, die du brauchst. Wähle einen Button-Typ; unnötige Felder werden automatisch ausgeblendet.</p>' + button_fields + '</section><button class="scnx-send" type="submit">🚀 Nachricht jetzt senden</button></div><aside class="scnx-panel scnx-preview"><div class="scnx-preview-label">Live-Vorschau · Discord</div><div class="scnx-discord-preview"><div class="scnx-preview-message" id="scnx-preview-message">Deine Nachricht erscheint hier …</div><div class="scnx-preview-embed" id="scnx-preview-embed" hidden><div class="scnx-preview-title" id="scnx-preview-title"></div><div class="scnx-preview-desc" id="scnx-preview-desc"></div></div><div class="scnx-preview-buttons" id="scnx-preview-buttons"></div></div><p class="muted" style="font-size:.85rem;margin-top:12px">Die Vorschau ist eine ungefähre Darstellung. Das tatsächliche Aussehen richtet sich nach Discord.</p></aside></div></form><p><a class="button secondary" href="/guild/' + gid + '">← Serverübersicht</a></p></section>'
     return _render(guild.name + " · Bot-Nachricht", body)
+
+
+@app.route("/guild/<guild_id>/server-logs", methods=["GET", "POST"])
+def guild_server_logs(guild_id):
+    """Configure all IronWolf server activity logs."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    store_path = data_path("server_logs.json")
+    try:
+        log_db = json.loads(store_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        log_db = {}
+    cfg = log_db.get(gid, {})
+    categories = [
+        ("members", "Members", "Member joins, leaves, bans and unbans"),
+        ("messages", "Messages", "Deleted, edited and bulk-deleted messages"),
+        ("roles", "Roles", "Role creation, deletion and changes"),
+        ("channels", "Channels", "Channel creation, deletion and changes"),
+        ("voice", "Voice", "Voice channel joins, leaves and switches"),
+    ]
+    channels = _guild_channels(guild)
+    valid_ids = {str(cid) for cid, _ in channels}
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        all_in_one = request.form.get("all_in_one") == "on"
+        enabled = request.form.get("enabled") == "on"
+        main_channel = request.form.get("channel_id", "").strip()
+        if main_channel and main_channel not in valid_ids:
+            abort(400, "Bitte wähle einen gültigen Log-Kanal.")
+        category_channels = {}
+        category_enabled = {}
+        for key, _, _ in categories:
+            value = request.form.get("channel_" + key, "").strip()
+            if value and value not in valid_ids:
+                abort(400, "Bitte wähle einen gültigen Log-Kanal.")
+            category_channels[key] = int(value) if value.isdigit() else None
+            category_enabled[key] = request.form.get("category_" + key) == "on"
+        if all_in_one and not main_channel:
+            abort(400, "Bitte wähle einen gemeinsamen Log-Kanal.")
+        if not all_in_one and any(category_enabled[k] and not category_channels[k] for k, _, _ in categories):
+            abort(400, "Bitte wähle für jede aktivierte Kategorie einen Log-Kanal.")
+        cfg = {"enabled": enabled, "all_in_one": all_in_one,
+               "channel_id": int(main_channel) if main_channel.isdigit() else None,
+               "channels": category_channels, "categories": category_enabled}
+        log_db[gid] = cfg
+        store_path.parent.mkdir(parents=True, exist_ok=True)
+        store_path.write_text(json.dumps(log_db, ensure_ascii=False, indent=2), encoding="utf-8")
+        _audit_dashboard_change(guild.id, "Server Logs", session.get("user_id"),
+                                "Server logging saved; mode: " + ("single channel" if all_in_one else "separate channels"))
+        return redirect(url_for("guild_server_logs", guild_id=gid, saved="1"))
+    def channel_select(name, selected):
+        options = ['<option value="">— Select log channel —</option>']
+        for cid, label in channels:
+            options.append('<option value="' + str(cid) + '"' + (' selected' if str(cid) == str(selected or "") else '') + '>' + html.escape(label) + '</option>')
+        return '<select id="' + name + '" name="' + name + '">' + ''.join(options) + '</select>'
+    notice = '<div class="notice">Settings saved.</div>' if request.args.get("saved") == "1" else ''
+    enabled = ' checked' if cfg.get("enabled", False) else ''
+    all_checked = ' checked' if cfg.get("all_in_one", True) else ''
+    body = '<section class="card"><span class="pill">LOGGING · SERVER ACTIVITY</span><h1>📋 Server Logs</h1><p>Choose one channel for every event or assign a separate channel to each category.</p>' + notice
+    body += '<form method="post">' + _csrf_field()
+    body += '<div class="check"><input type="checkbox" id="server-logs-enabled" name="enabled"' + enabled + '><label for="server-logs-enabled">Enable server logs</label></div>'
+    body += '<div class="check"><input type="checkbox" id="server-logs-all" name="all_in_one"' + all_checked + '><label for="server-logs-all">Log everything in one channel</label></div>'
+    body += '<div id="server-logs-single"><label for="channel_id">Shared log channel</label>' + channel_select("channel_id", cfg.get("channel_id")) + '</div>'
+    body += '<div id="server-logs-split"><h2>Separate log channels</h2>'
+    for key, title, description in categories:
+        checked = ' checked' if cfg.get("categories", {}).get(key, True) else ''
+        body += '<div class="card"><div class="check"><input type="checkbox" id="category_' + key + '" name="category_' + key + '"' + checked + '><label for="category_' + key + '">' + title + '</label></div><small class="muted">' + description + '</small><label for="channel_' + key + '">Log channel</label>' + channel_select("channel_" + key, cfg.get("channels", {}).get(key)) + '</div>'
+    body += '</div><button type="submit">💾 Save server log settings</button> <a class="button secondary" href="/guild/' + gid + '">Back to server overview</a></form></section>'
+    body += '<script>(function(){const all=document.getElementById("server-logs-all"),one=document.getElementById("server-logs-single"),split=document.getElementById("server-logs-split");function update(){one.hidden=!all.checked;split.hidden=all.checked;}all.addEventListener("change",update);update();})();</script>'
+    return _render(guild.name + " · Server Logs", body)
 
 
 @app.route("/guild/<guild_id>/command-log", methods=["GET", "POST"])

@@ -6763,7 +6763,28 @@ class ServerLogs(commands.Cog):
     async def log(self, guild, title, description, color=discord.Color.blurple(), actor=None, target=None):
         db = read(SERVER_LOGS, {})
         cfg = db.get(str(guild.id), {})
-        channel = guild.get_channel(cfg.get("channel_id")) if cfg.get("channel_id") else None
+        if not cfg or not cfg.get("enabled", True):
+            return
+        title_lower = str(title).lower()
+        if any(word in title_lower for word in ("message", "messages")):
+            category = "messages"
+        elif any(word in title_lower for word in ("member", "ban", "unban")):
+            category = "members"
+        elif "role" in title_lower:
+            category = "roles"
+        elif "channel" in title_lower and "voice" not in title_lower:
+            category = "channels"
+        elif "voice" in title_lower:
+            category = "voice"
+        else:
+            category = "members"
+        if cfg.get("all_in_one", True):
+            channel_id = cfg.get("channel_id")
+        else:
+            if not cfg.get("categories", {}).get(category, True):
+                return
+            channel_id = cfg.get("channels", {}).get(category)
+        channel = guild.get_channel(int(channel_id)) if channel_id else None
         if not isinstance(channel, discord.TextChannel):
             return
         embed = discord.Embed(
