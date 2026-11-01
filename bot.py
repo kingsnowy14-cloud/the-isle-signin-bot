@@ -5518,6 +5518,8 @@ async def on_member_join(member: discord.Member):
             await member.add_roles(unverified_role, reason="Neue Mitglieder müssen sich verifizieren")
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[VERIFY] Could not assign unverified role: {type(exc).__name__}: {exc}")
+    # Decide once, before either DM or channel welcome handling.
+    should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
     # Optional private welcome message; disabled by default to avoid unsolicited DMs.
     if should_welcome and cfg.get("welcome_dm_enabled", False):
         dm_template = cfg.get("welcome_message") or "Welcome {mention} to **{server}**! You are member **#{count}**."
@@ -5534,7 +5536,6 @@ async def on_member_join(member: discord.Member):
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[WELCOME] Could not DM member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}")
     # Welcome messages for bots can be toggled per server with /welcome-bots.
-    should_welcome = (not member.bot) or cfg.get("welcome_bots_enabled", False)
     welcome_channel_id = cfg.get("welcome_channel")
     if should_welcome and welcome_channel_id:
         welcome_channel = member.guild.get_channel(int(welcome_channel_id))
