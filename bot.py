@@ -449,7 +449,7 @@ def format_duration(seconds):
 # Defaults are merged recursively into existing per-server settings. Existing values,
 # unknown keys and module-specific configuration are deliberately never overwritten.
 DEFAULT_GUILD_CONFIG = {
-    "bot_language": "en",
+    "bot_language": "auto",
     "registration_channel": None,
     "ticket_category": None,
     "ticket_log_channel": None,
@@ -543,8 +543,8 @@ def guild_config(guild_id):
     else:
         changed = False
     changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
-    if cfg.get("bot_language") != "en":
-        cfg["bot_language"] = "en"
+    if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
+        cfg["bot_language"] = "auto"
         changed = True
     # The assistant is intentionally restricted to the single dashboard-selected text channel.
     if cfg.get("ai_mode") != "channel":
@@ -556,7 +556,7 @@ def guild_config(guild_id):
     return cfg
 
 
-SUPPORTED_BOT_LANGUAGES = {"en"}
+SUPPORTED_BOT_LANGUAGES = {"auto", "de", "en"}
 BOT_TRANSLATIONS = {
     "de": {
         "This command has been disabled for this server in the web dashboard.": "Dieser Befehl wurde für diesen Server im Dashboard deaktiviert.",
@@ -597,13 +597,16 @@ BOT_TRANSLATIONS = {
 }
 
 def server_language(guild_id):
-    """Return the globally enforced bot language: English on every server."""
-    if guild_id is not None:
-        cfg = guild_config(guild_id)
-        if cfg.get("bot_language") != "en":
-            cfg["bot_language"] = "en"
-            save_json(CONFIG_FILE, config)
-    return "en"
+    """Resolve a server language, using Discord's preferred locale when set to auto."""
+    if guild_id is None:
+        return "en"
+    cfg = guild_config(guild_id)
+    language = str(cfg.get("bot_language", "auto")).lower()
+    if language == "auto":
+        guild = bot.get_guild(int(guild_id))
+        locale = str(getattr(guild, "preferred_locale", "en-US")).lower()
+        return "de" if locale.startswith("de") else "en"
+    return language if language in {"de", "en"} else "en"
 
 def bot_text(guild_id, text):
     """Translate catalogued common bot messages; unknown text remains unchanged."""
@@ -806,9 +809,13 @@ async def premium_automation_worker():
                 print(f"[AUTOMATION] Could not send announcement in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
 
-def user_language(user_id):
-    """IronWolf uses English as its single interface language."""
-    return "en"
+def user_language(user_id, discord_locale=None):
+    """Return a saved user preference or detect German/English from Discord locale."""
+    saved = data.setdefault("languages", {}).get(str(user_id))
+    if saved in {"de", "en"}:
+        return saved
+    locale = str(discord_locale or "en").lower()
+    return "de" if locale.startswith("de") else "en"
 
 
 TEXTS = {
@@ -858,7 +865,13 @@ TEXTS = {
 
 
 def set_user_language(user_id, language):
-    data.setdefault("languages", {})[str(user_id)] = "en"
+    if language not in {"de", "en", "auto"}:
+        raise ValueError("language must be de, en or auto")
+    languages = data.setdefault("languages", {})
+    if language == "auto":
+        languages.pop(str(user_id), None)
+    else:
+        languages[str(user_id)] = language
     save_json(DATA_FILE, data)
 
 
@@ -8847,6 +8860,82 @@ async def wolfcheck_command(interaction: discord.Interaction):
     embed.add_field(name="Server", value=discord.utils.escape_markdown(guild.name[:100]), inline=True)
     embed.set_footer(text="WolfPulse · Diagnostics without changing your configuration")
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.command(name="translate", aliases=["tr"])
+@commands.cooldown(3, 10, commands.BucketType.user)
+async def translate_command(ctx, target: str, *, text: str):
+    """Translate text to German or English; source language is detected automatically."""
+    target = target.lower()
+    if target not in {"de", "en"}:
+        await ctx.reply("🌐 Usage: `!translate en <text>` or `!translate de <text>`.", mention_author=False)
+        return
+    source_text = text.strip()
+    if not source_text:
+        await ctx.reply("Please provide text to translate.", mention_author=False)
+        return
+    if len(source_text) > 4000:
+        await ctx.reply("Please keep translations under 4,000 characters.", mention_author=False)
+        return
+    try:
+        from deep_translator import MyMemoryTranslator
+        translator = MyMemoryTranslator(source="auto", target=target)
+        translated = await asyncio.to_thread(translator.translate, source_text)
+        if not translated:
+            raise ValueError("The translation provider returned an empty result.")
+        source_label = "automatically detected"
+        target_label = "German" if target == "de" else "English"
+        embed = discord.Embed(
+            title="🌐 IronWolf · Translation",
+            description=translated[:4000],
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="Target language", value=target_label, inline=True)
+        embed.add_field(name="Source language", value=source_label, inline=True)
+        await ctx.reply(embed=embed, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
+    except Exception as exc:
+        print(f"[TRANSLATE] Translation failed: {type(exc).__name__}: {exc}", flush=True)
+        await ctx.reply("❌ Translation is temporarily unavailable. Please try again later.", mention_author=False)
+
+
+@translate_command.error
+async def translate_command_error(ctx, error):
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.reply(f"⏳ Please wait {error.retry_after:.1f}s before translating again.", mention_author=False)
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.reply("🌐 Usage: `!translate en <text>` or `!translate de <text>`.", mention_author=False)
+    else:
+        original = getattr(error, "original", error)
+        print(f"[TRANSLATE] Command error: {type(original).__name__}: {original}", flush=True)
+        await ctx.reply("❌ The translation command failed.", mention_author=False)
+
+
+@bot.command(name="language", aliases=["lang"])
+async def language_command(ctx, language: str = "auto"):
+    """Set your personal language preference."""
+    language = language.lower()
+    if language not in {"de", "en", "auto"}:
+        await ctx.reply("🌐 Usage: `!language de`, `!language en` or `!language auto`.", mention_author=False)
+        return
+    set_user_language(ctx.author.id, language)
+    label = {"de": "Deutsch", "en": "English", "auto": "automatically detected"}[language]
+    await ctx.reply(f"✅ Your personal IronWolf language is now **{label}**.", mention_author=False)
+
+
+@bot.command(name="serverlanguage", aliases=["serverlang"])
+@commands.guild_only()
+@commands.has_guild_permissions(manage_guild=True)
+async def server_language_command(ctx, language: str = "auto"):
+    """Set this server's default bot language."""
+    language = language.lower()
+    if language not in {"de", "en", "auto"}:
+        await ctx.reply("🌐 Usage: `!serverlanguage de`, `!serverlanguage en` or `!serverlanguage auto`.", mention_author=False)
+        return
+    cfg = guild_config(ctx.guild.id)
+    cfg["bot_language"] = language
+    save_json(CONFIG_FILE, config)
+    label = {"de": "Deutsch", "en": "English", "auto": "Discord server language"}[language]
+    await ctx.reply(f"✅ IronWolf's default language for this server is now **{label}**.", mention_author=False)
 
 
 @bot.command(name="emoji", aliases=["emojis", "kanalemojis"])
