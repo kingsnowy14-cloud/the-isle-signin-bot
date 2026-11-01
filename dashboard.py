@@ -1030,15 +1030,14 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
  const follower=document.createElement('div');follower.id='iw-animated-cursor';
  follower.setAttribute('aria-hidden','true');
  const followerStyle=document.createElement('style');
- followerStyle.textContent='#iw-animated-cursor{{position:fixed;left:0;top:0;width:36px;height:36px;z-index:100000;pointer-events:none;transform:translate(-4px,-4px);filter:drop-shadow(0 0 7px rgba(139,157,255,.55));animation:iwCursorFloat 1.25s ease-in-out infinite}}#iw-animated-cursor svg{{display:block;width:36px;height:36px}}@keyframes iwCursorFloat{{0%,100%{{margin-top:0;scale:1;filter:drop-shadow(0 0 5px rgba(139,157,255,.45))}}50%{{margin-top:-3px;scale:1.09;filter:drop-shadow(0 0 12px rgba(139,157,255,.9))}}}}html,html body,html body *{{cursor:none!important}}@media(prefers-reduced-motion:reduce){{#iw-animated-cursor{{animation:none}}}}';
+ followerStyle.textContent='#iw-animated-cursor{{position:fixed;left:0;top:0;width:36px;height:36px;z-index:100000;pointer-events:none;transform:translate(-4px,-4px);filter:drop-shadow(0 0 7px rgba(139,157,255,.55));animation:iwCursorFloat 1.25s ease-in-out infinite;transform-origin:35% 35%}}#iw-animated-cursor svg{{display:block;width:36px;height:36px}}#iw-animated-cursor.iw-over-link{{animation:iwCursorLink  .58s ease-in-out infinite;filter:drop-shadow(0 0 13px rgba(114,199,255,.95))}}@keyframes iwCursorFloat{{0%,100%{{margin-top:0;scale:1;filter:drop-shadow(0 0 5px rgba(139,157,255,.45))}}50%{{margin-top:-3px;scale:1.09;filter:drop-shadow(0 0 12px rgba(139,157,255,.9))}}}}@keyframes iwCursorLink{{0%,100%{{scale:1;rotate:-8deg;translate:0 0}}50%{{scale:1.28;rotate:8deg;translate:0 -4px}}}}html,html body,html body *{{cursor:none!important}}@media(prefers-reduced-motion:reduce){{#iw-animated-cursor{{animation:none!important}}}}';
  document.head.appendChild(followerStyle);document.body.appendChild(follower);
- let overInteractive=false;
- function updateFollower(){{follower.innerHTML=overInteractive?handArt:art[picker.value]||art.wolf;}}
- updateFollower();
+ function setInteractiveState(target){{const active=!!(target&&target.closest&&target.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'));follower.classList.toggle('iw-over-link',active);}}
+ follower.innerHTML=art[picker.value]||art.wolf;
  document.addEventListener('pointermove',function(event){{follower.style.left=event.clientX+'px';follower.style.top=event.clientY+'px';}},{{passive:true}});
- document.addEventListener('pointerover',function(event){{overInteractive=!!(event.target&&event.target.closest&&event.target.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'));updateFollower();}},{{passive:true}});
- document.addEventListener('pointerout',function(event){{if(event.relatedTarget&&event.relatedTarget.closest&&event.relatedTarget.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'))return;overInteractive=false;updateFollower();}},{{passive:true}});
- picker.addEventListener('change',function(){{apply(this.value);updateFollower();try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
+ document.addEventListener('pointerover',function(event){{setInteractiveState(event.target);}},{{passive:true}});
+ document.addEventListener('pointerout',function(event){{setInteractiveState(event.relatedTarget);}},{{passive:true}});
+ picker.addEventListener('change',function(){{apply(this.value);follower.innerHTML=art[picker.value]||art.wolf;try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
  // Lightweight sparkle trail; capped and disabled for reduced-motion preferences.
  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
  const touch=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
