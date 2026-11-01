@@ -3406,19 +3406,72 @@ def guild_custom_bot_asset(guild_id, asset):
 
 
 async def _apply_custom_bot_profile(guild, profile):
-    """Apply the per-server nickname and publish/update the profile card."""
+    """Apply the per-server member profile through Discord's Modify Current Member API."""
     results = []
-    member = guild.me
     custom_name = str(profile.get("bot_name", "")).strip()[:32]
-    if member is not None:
-        try:
-            await member.edit(nick=custom_name or None, reason="Custom Bot Profile updated from IronWolf dashboard")
-            results.append("nickname updated")
-        except discord.Forbidden:
-            results.append("nickname could not be changed: the bot needs Change Nickname permission and a higher role than its current role")
-        except discord.HTTPException as exc:
-            results.append("nickname update failed: " + str(exc)[:180])
+    description = str(profile.get("description", "")).strip()[:190]
+    token = getattr(getattr(_bot, "http", None), "token", None) or os.getenv("DISCORD_TOKEN")
 
+    def image_data(asset):
+        stored = profile.get(asset + "_file")
+        image_url = str(profile.get(asset + "_url", "")).strip()
+        if stored and Path(stored).is_file():
+            raw = Path(stored).read_bytes()
+            mime = profile.get(asset + "_mime", "application/octet-stream")
+        elif image_url:
+            response = requests.get(image_url, timeout=15, stream=True, allow_redirects=True)
+            response.raise_for_status()
+            if urlparse(response.url).scheme != "https":
+                raise ValueError(asset + " URL redirected to a non-HTTPS address")
+            mime = response.headers.get("Content-Type", "").split(";")[0].lower()
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(65536):
+                total += len(chunk)
+                if total > 5 * 1024 * 1024:
+                    raise ValueError(asset + " image exceeds the 5 MB limit")
+                chunks.append(chunk)
+            raw = b"".join(chunks)
+        else:
+            return None
+        if not raw or len(raw) > 5 * 1024 * 1024:
+            raise ValueError(asset + " image is empty or exceeds the 5 MB limit")
+        if mime not in {"image/png", "image/jpeg", "image/gif", "image/webp"}:
+            raise ValueError(asset + " must be PNG, JPG, GIF or WEBP")
+        return "data:{};base64,{}".format(mime, base64.b64encode(raw).decode("ascii"))
+
+    if not token:
+        results.append("Discord profile could not be updated: bot token is unavailable")
+    else:
+        payload = {"nick": custom_name or None, "bio": description or None}
+        try:
+            for asset in ("avatar", "banner"):
+                if profile.get("remove_" + asset):
+                    payload[asset] = None
+                else:
+                    data_uri = await asyncio.to_thread(image_data, asset)
+                    if data_uri is not None:
+                        payload[asset] = data_uri
+
+            def update_guild_profile():
+                auth_token = str(token).removeprefix("Bot ").strip()
+                return requests.patch(
+                    DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
+                    headers={"Authorization": "Bot " + auth_token, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=20,
+                )
+
+            response = await asyncio.to_thread(update_guild_profile)
+            if response.status_code >= 400:
+                detail = " ".join(response.text.split())[:500]
+                results.append("Discord server profile update failed (HTTP {}): {}".format(response.status_code, detail))
+            else:
+                results.append("Discord server profile updated: nickname, avatar, banner and bio fields submitted")
+        except (ValueError, requests.RequestException, OSError) as exc:
+            results.append("Discord server profile update failed: " + str(exc)[:300])
+
+    # Keep the optional channel card as a supplemental preview, not as the actual profile.
     channel_id = str(profile.get("profile_channel_id", "")).strip()
     if channel_id:
         try:
@@ -3430,29 +3483,21 @@ async def _apply_custom_bot_profile(guild, profile):
         else:
             try:
                 embed = discord.Embed(
-                    title=custom_name or (member.display_name if member else "IronWolf"),
-                    description=str(profile.get("description", "")).strip() or "Server bot profile",
+                    title=custom_name or (guild.me.display_name if guild.me else "IronWolf"),
+                    description=description or "Server bot profile",
                     color=discord.Color.blurple(),
                 )
                 embed.set_footer(text=guild.name + " · IronWolf")
                 files = []
-                avatar_path = profile.get("avatar_file")
-                banner_path = profile.get("banner_file")
-                if avatar_path and Path(avatar_path).is_file():
-                    avatar_file = discord.File(avatar_path, filename=Path(avatar_path).name)
-                    files.append(avatar_file)
-                    embed.set_thumbnail(url="attachment://" + avatar_file.filename)
-                elif profile.get("avatar_url"):
-                    embed.set_thumbnail(url=profile["avatar_url"])
-                if banner_path and Path(banner_path).is_file():
-                    banner_file = discord.File(banner_path, filename=Path(banner_path).name)
-                    files.append(banner_file)
-                    embed.set_image(url="attachment://" + banner_file.filename)
-                elif profile.get("banner_url"):
-                    embed.set_image(url=profile["banner_url"])
-
-                # Publish the replacement first; only remove the previous card
-                # after Discord confirms that the new message was sent.
+                for asset, setter in (("avatar", embed.set_thumbnail), ("banner", embed.set_image)):
+                    asset_path = profile.get(asset + "_file")
+                    asset_url = profile.get(asset + "_url")
+                    if asset_path and Path(asset_path).is_file():
+                        asset_file = discord.File(asset_path, filename=Path(asset_path).name)
+                        files.append(asset_file)
+                        setter(url="attachment://" + asset_file.filename)
+                    elif asset_url:
+                        setter(url=asset_url)
                 sent = await channel.send(embed=embed, files=files)
                 old_message_id = profile.get("profile_message_id")
                 if old_message_id:
@@ -3462,15 +3507,12 @@ async def _apply_custom_bot_profile(guild, profile):
                     except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
                         pass
                 profile["profile_message_id"] = str(sent.id)
-                results.append("profile card published in #" + getattr(channel, "name", "channel"))
+                results.append("supplemental profile card published in #" + getattr(channel, "name", "channel"))
             except discord.Forbidden:
-                results.append("profile card could not be published: the bot needs View Channel, Send Messages, Embed Links and Attach Files permissions")
+                results.append("profile card could not be published: check View Channel, Send Messages, Embed Links and Attach Files permissions")
             except discord.HTTPException as exc:
                 results.append("profile card publishing failed: " + str(exc)[:180])
-    else:
-        results.append("no Discord profile channel selected; only the dashboard preview and nickname were updated")
     return results
-
 
 def _apply_custom_bot_profile_sync(guild, profile):
     """Run Discord API updates from the dashboard's Flask worker thread."""
@@ -3520,8 +3562,8 @@ def guild_custom_bot(guild_id):
                 parsed = urlparse(value)
                 if parsed.scheme != "https" or not parsed.hostname or len(value) > 500:
                     abort(400, field.title() + " URL must be a valid HTTPS URL (maximum 500 characters).")
-        if len(description) > 500:
-            abort(400, "Description must be 500 characters or fewer.")
+        if len(description) > 190:
+            abort(400, "Discord server bio must be 190 characters or fewer.")
         profile_data = dict(profile)
         profile_data.update({
             "avatar_url": avatar_url,
@@ -3570,6 +3612,8 @@ def guild_custom_bot(guild_id):
                 profile_data.pop(asset + "_file", None)
                 profile_data.pop(asset + "_mime", None)
                 profile_data[asset + "_url"] = ""
+        profile_data["remove_avatar"] = request.form.get("remove_avatar") == "on"
+        profile_data["remove_banner"] = request.form.get("remove_banner") == "on"
         profile_data["updated_at"] = datetime.now(timezone.utc).isoformat()
         cfg["custom_bot_profile"] = profile_data
         _save_json(data_path("config.json"), _config)
@@ -3599,7 +3643,7 @@ def guild_custom_bot(guild_id):
         '<section class="card"><span class="pill">PREMIUM FEATURE</span><h1>🤖 Custom Bot Profile</h1>'
         '<p>Set a separate presentation for IronWolf inside this server: avatar, banner and description. These settings are saved only for '
         + html.escape(guild.name) + '.</p>'
-        + '<div class="notice">The bot account avatar and global username cannot be different per server. The bot nickname can be customized per server. The profile card below can be published to a text channel you choose.</div>'
+        + '<div class="notice">Avatar, banner, bio and nickname are applied to IronWolf’s actual Discord profile in this server. The global bot username remains unchanged. An optional profile card can also be published to a channel.</div>'
         + success +
         '<form method="post" enctype="multipart/form-data">' + _csrf_field() +
         '<label>Bot name in this server (nickname, max. 32 characters)</label><input type="text" name="bot_name" maxlength="32" value="' + html.escape(bot_name, quote=True) + '" placeholder="IronWolf">'
@@ -3610,8 +3654,8 @@ def guild_custom_bot(guild_id):
         + '<label>Upload banner from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="banner_file" accept="image/png,image/jpeg,image/gif,image/webp">'
         + '<label>Or use a banner image URL (HTTPS)</label><input type="url" name="banner_url" maxlength="500" value="' + html.escape(banner_url, quote=True) + '" placeholder="https://example.com/banner.png">'
         + ('<label><input type="checkbox" name="remove_banner"> Remove uploaded banner</label>' if banner_file else '')
-        + '<label>Bot description</label><textarea name="description" maxlength="500" rows="4" placeholder="Describe this server’s IronWolf setup...">' + html.escape(description) + '</textarea>'
-        + '<p class="muted">Uploaded images are private to this server dashboard. Maximum file size: 5 MB per image. Description limit: 500 characters.</p>'
+        + '<label>Server profile bio (max. 190 characters)</label><textarea name="description" maxlength="190" rows="4" placeholder="Describe this server’s IronWolf setup...">' + html.escape(description) + '</textarea>'
+        + '<p class="muted">Uploaded images are private to this server dashboard. Maximum file size: 5 MB per image. Discord bio limit: 190 characters.</p>'
         + '<button type="submit">Save Custom Bot Profile</button></form></section>'
         + '<section class="card"><h2>Profile preview</h2>'
         + ('<img src="' + html.escape(banner_src, quote=True) + '" alt="Custom banner" style="display:block;width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin-bottom:12px">' if banner_src else '')
