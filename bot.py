@@ -1366,7 +1366,7 @@ class TicketControlView(discord.ui.View):
                     entries = cfg.setdefault("ai_knowledge", [])
                     if not isinstance(entries, list):
                         entries = cfg["ai_knowledge"] = []
-                    knowledge = "Resolved ticket conversation (category: " + str(meta.get("label") or "Support")[:80] + "):\\n" + "\\n".join(transcript)
+                    knowledge = "Resolved ticket conversation (category: " + str(meta.get("label") or "Support")[:80] + "):\n" + "\n".join(transcript)
                     entries.append({
                         "text": knowledge[:7000],
                         "source": f"Resolved ticket #{meta.get('ticket_number') or interaction.channel.name}",
