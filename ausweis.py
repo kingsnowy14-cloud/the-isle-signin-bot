@@ -144,13 +144,13 @@ class AusweisRequestButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         if interaction.guild is None or interaction.guild.id != self.guild_id:
             await interaction.response.send_message(
-                "Bitte nutze diesen Button auf dem zugehörigen IronWolf-Server.", ephemeral=True
+                "Please use this button on the associated IronWolf server.", ephemeral=True
             )
             return
         try:
             dm = await interaction.user.create_dm()
             await dm.send(
-                f"Hallo! Du beantragst einen Personal-Ausweis für **{interaction.guild.name}**. "
+                f"Hello! You are requesting an identity card for **{interaction.guild.name}**. "
                 "Klicke auf den Button, um das Formular privat auszufüllen.",
                 view=OpenAusweisFormView(
                     self.bot, self.guild_id, interaction.user.id, self.channel_id
@@ -158,7 +158,7 @@ class AusweisRequestButton(discord.ui.Button):
             )
         except (discord.Forbidden, discord.HTTPException):
             await interaction.response.send_message(
-                "Ich kann dir keine DM senden. Aktiviere Direktnachrichten für diesen Server "
+                "I cannot send you a DM. Please enable direct messages for this server "
                 "und drücke den Button erneut.",
                 ephemeral=True,
             )
@@ -191,12 +191,12 @@ class Ausweis(commands.Cog):
 
     @app_commands.command(
         name="ausweis",
-        description="Erstellt ein dauerhaftes Ausweis-Panel und wählt den Veröffentlichungskanal",
+        description="Creates a persistent ID card panel and selects the publishing channel",
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    @app_commands.describe(kanal="Kanal, in dem fertige Ausweise veröffentlicht werden")
-    async def ausweis(self, interaction: discord.Interaction, kanal: discord.TextChannel):
+    @app_commands.describe(kanal="Channel where completed ID cards will be published")
+    async def id_card(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if interaction.guild is None:
             await interaction.response.send_message(
                 "Dieser Befehl kann nur auf einem Server genutzt werden.", ephemeral=True
@@ -209,14 +209,14 @@ class Ausweis(commands.Cog):
             panels.append(record)
             save_panels(panels)
 
-        view = AusweisPanelView(self.bot, interaction.guild.id, kanal.id)
+        view = AusweisPanelView(self.bot, interaction.guild.id, channel.id)
         self.bot.add_view(view)
         embed = discord.Embed(
             title="🪪 Personal-Ausweis beantragen",
             description=(
-                "Du möchtest einen offiziellen Roleplay-Ausweis? "
+                "Would you like an official roleplay ID card? "
                 "Klicke auf **Ausweis beantragen**. Der Bot sendet dir eine DM; "
-                "dort kannst du das Formular öffnen und ausfüllen. "
+                "You can open and complete the form there. "
                 "Dieses Panel bleibt auch nach einem Bot-Neustart nutzbar."
             ),
             color=discord.Color.dark_blue(),
