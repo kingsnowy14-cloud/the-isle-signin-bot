@@ -8508,15 +8508,6 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not load IronWolf security suite: {type(exc).__name__}: {exc}")
 
-    # Load the opt-in Emergency Hamburg monitor before slash-command sync.
-    if not getattr(bot, "_emergency_hamburg_loaded", False):
-        try:
-            await bot.load_extension("emergency_hamburg")
-            bot._emergency_hamburg_loaded = True
-            print("Emergency Hamburg monitor loaded.")
-        except Exception as exc:
-            print(f"Could not load Emergency Hamburg monitor: {type(exc).__name__}: {exc}", flush=True)
-
     # Discord allows at most 100 global application commands. The economy
     # extension currently registers 15 slash commands, so reserve that capacity
     # before loading it rather than letting add_cog fail part-way through.
