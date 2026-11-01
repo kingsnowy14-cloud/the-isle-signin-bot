@@ -5203,7 +5203,8 @@ async def _generate_ticket_ai_reply(channel, message, meta, initial_reason=None,
             "This includes German, English, and other languages; do not default to English. "
             "Answer genuine questions directly and helpfully, using the recent conversation for context. "
             "Understand URLs and Discord links included in messages. Use the verified channel directory below to link relevant server channels. "
-            "For a channel, prefer its Discord mention (<#CHANNEL_ID>) and you may also include its exact https://discord.com/channels/GUILD_ID/CHANNEL_ID URL. "
+            "When mentioning a server channel in your answer, write its exact #channel-name token from the directory; the bot converts it into a clickable Discord channel link. "
+            "Never write a made-up channel name. You may also include the exact https://discord.com/channels/GUILD_ID/CHANNEL_ID URL from the directory. "
             "Never invent channel IDs, channel URLs, invite links, or claim you opened/verified a link unless you actually did. "
             "You may suggest Discord features such as replies, mentions, embeds, reactions, and links when useful, "
             "but do not claim to have performed an action that the bot has not performed. "
@@ -5239,6 +5240,17 @@ async def _generate_ticket_ai_reply(channel, message, meta, initial_reason=None,
             feedback = result.get("promptFeedback", {})
             print(f"[TICKET AI] Gemini returned no text. Prompt feedback: {feedback}", flush=True)
             return "I couldn't generate a reliable answer for that message. Please add a little more detail or wait for a support team member."
+
+        # Convert channel references written as #channel-name into real Discord
+        # channel mentions. Discord renders <#ID> as a clickable channel link;
+        # allowed_mentions.none() below prevents notifications.
+        if guild is not None:
+            for server_channel in sorted(guild.text_channels, key=lambda item: len(item.name), reverse=True):
+                channel_token = re.compile(
+                    r"(?<![\\w])#" + re.escape(server_channel.name) + r"(?![\\w-])",
+                    flags=re.IGNORECASE,
+                )
+                answer = channel_token.sub(f"<#{server_channel.id}>", answer)
         return answer[:1800]
     except Exception as exc:
         print(f"[TICKET AI] Gemini request failed: {type(exc).__name__}: {exc}", flush=True)
@@ -5399,16 +5411,10 @@ async def on_message(message: discord.Message):
             quick_role = guild.get_role(int(quick_role_id))
             staff_role_id = cfg.get("support_role")
             staff_role = guild.get_role(int(staff_role_id)) if str(staff_role_id or "").isdigit() else None
-            member_role_ids = {role.id for role in getattr(message.author, "roles", [])}
-            # Do not alert the team when a staff member (or administrator) writes
-            # in the Quick Support channel. Also suppress self-pings for the
-            # configured notification role itself.
-            is_staff_member = (
-                message.author.guild_permissions.administrator
-                or (staff_role is not None and staff_role.id in member_role_ids)
-                or (quick_role is not None and quick_role.id in member_role_ids)
-            )
-            if quick_role and not quick_role.is_default() and not quick_role.managed and not is_staff_member:
+            # Every message in the explicitly configured Quick Support channel is a
+            # request, including admin test messages. Staff can still use the button;
+            # the per-user cooldown prevents repeated alerts.
+            if quick_role and not quick_role.is_default() and not quick_role.managed:
                 ping_key = (message.channel.id, message.author.id)
                 now = time.monotonic()
                 if now - _ticket_quick_support_last_ping.get(ping_key, 0) >= 300:
@@ -5433,9 +5439,7 @@ async def on_message(message: discord.Message):
                 else:
                     print(f"[QUICK SUPPORT] Ping skipped in channel {message.channel.id}: cooldown active for user {message.author.id}.", flush=True)
             else:
-                reason = "role_not_found_or_not_configured" if quick_role is None else (
-                    "default_or_managed_role" if quick_role.is_default() or quick_role.managed else "message_author_is_staff"
-                )
+                reason = "role_not_found_or_not_configured" if quick_role is None else "default_or_managed_role"
                 print(f"[QUICK SUPPORT] Ping skipped in channel {message.channel.id}: {reason}; configured_role_id={quick_role_id}.", flush=True)
 
         ticket_meta = data.setdefault("tickets", {}).get(str(message.channel.id))
