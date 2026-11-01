@@ -715,61 +715,69 @@ def roblox_link_callback():
 
 
 class _GamingAccountVerifyView(discord.ui.View):
-    """Gaming provider buttons for official provider-owned account verification flows."""
+    """Persistent gaming provider buttons with defensive interaction handling."""
     def __init__(self, enabled_platforms):
         super().__init__(timeout=None)
         details = {
-            "steam": ("🚂 Steam", discord.ButtonStyle.secondary,
-                "Steam-Verknüpfung ist noch nicht aktiviert. Dafür muss Steam OpenID mit einer sicheren Rückleitungs-URL eingerichtet werden. Gib dein Steam-Passwort niemals im Discord ein."),
-            "roblox": ("🟥 Roblox", discord.ButtonStyle.danger,
-                "Roblox sicher verknüpfen: Melde dich auf der offiziellen Roblox-Seite an. Teile niemals dein Passwort oder einen Login-Code."),
+            "steam": ("🚂 Steam", discord.ButtonStyle.secondary),
+            "roblox": ("🟥 Roblox", discord.ButtonStyle.danger),
         }
-        for key, (label, style, explanation) in details.items():
-            if key not in set(enabled_platforms):
+        enabled = set(enabled_platforms or ())
+        for key, (label, style) in details.items():
+            if key not in enabled:
                 continue
-            button = discord.ui.Button(label=label, style=style, custom_id="gaming_verify:" + key)
-            async def callback(interaction, message=explanation, provider=key):
-                # Acknowledge immediately so Discord's 3-second interaction deadline is met.
-                await interaction.response.defer(ephemeral=True, thinking=True)
-                if provider == "roblox":
-                    try:
+            button = discord.ui.Button(
+                label=label,
+                style=style,
+                custom_id="gaming_verify:" + key,
+            )
+
+            async def callback(interaction, provider=key):
+                log_prefix = f"[GAMING VERIFY] provider={provider} user={interaction.user.id} guild={interaction.guild_id}"
+                print(log_prefix + " interaction received", flush=True)
+                try:
+                    # Discord requires the interaction to be acknowledged within 3 seconds.
+                    await interaction.response.defer(ephemeral=True, thinking=True)
+                except Exception as exc:
+                    print(log_prefix + f" defer failed: {type(exc).__name__}: {exc}", flush=True)
+                    return
+
+                try:
+                    if provider == "roblox":
                         link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
-                    except ValueError as exc:
-                        await interaction.followup.send(str(exc), ephemeral=True)
-                        return
-                    except Exception as exc:
-                        print(f"[ROBLOX LINK] Could not create link: {type(exc).__name__}: {exc}", flush=True)
-                        await interaction.followup.send(
-                            "Der Roblox-Link konnte gerade nicht erstellt werden. Bitte prüfe die Railway-Variablen und versuche es später erneut.",
-                            ephemeral=True,
+                        message = (
+                            "🔐 **Roblox sicher verknüpfen**\\n"
+                            "Öffne den Link und melde dich direkt bei Roblox an. "
+                            "IronWolf fragt nur die Roblox-Profilidentität ab, niemals dein Passwort. "
+                            "Der Link ist 10 Minuten gültig und einmalig.\\n" + link_url
                         )
-                        return
-                    await interaction.followup.send(
-                        "🔐 **Roblox sicher verknüpfen**\nÖffne den Link und melde dich direkt bei Roblox an. IronWolf fragt nur die Roblox-Profilidentität ab, niemals dein Passwort. Der Link ist 10 Minuten gültig und einmalig.\n"
-                        + link_url,
-                        ephemeral=True,
-                    )
-                    return
-                if provider == "steam":
-                    try:
+                    else:
                         link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
-                    except ValueError as exc:
+                        message = (
+                            "🔐 **Steam sicher verknüpfen**\\n"
+                            "Öffne diesen Link und melde dich direkt bei Steam an. "
+                            "Dein Steam-Passwort wird niemals an IronWolf übermittelt. "
+                            "Der Link ist 10 Minuten gültig und kann nur einmal verwendet werden.\\n" + link_url
+                        )
+                    await interaction.followup.send(message, ephemeral=True)
+                    print(log_prefix + " link created and sent", flush=True)
+                except ValueError as exc:
+                    print(log_prefix + f" configuration/input issue: {exc}", flush=True)
+                    try:
                         await interaction.followup.send(str(exc), ephemeral=True)
-                        return
-                    except Exception as exc:
-                        print(f"[STEAM LINK] Could not create link: {type(exc).__name__}: {exc}", flush=True)
+                    except Exception as send_exc:
+                        print(log_prefix + f" error response failed: {type(send_exc).__name__}: {send_exc}", flush=True)
+                except Exception as exc:
+                    print(log_prefix + f" link creation/send failed: {type(exc).__name__}: {exc}", flush=True)
+                    try:
                         await interaction.followup.send(
-                            "Der Steam-Link konnte gerade nicht erstellt werden. Bitte versuche es später erneut.",
+                            "Der Verifizierungslink konnte gerade nicht erstellt werden. "
+                            "Bitte versuche es später erneut oder kontaktiere das Serverteam.",
                             ephemeral=True,
                         )
-                        return
-                    await interaction.followup.send(
-                        "🔐 **Steam sicher verknüpfen**\nÖffne diesen Link und melde dich direkt bei Steam an. Dein Steam-Passwort wird niemals an IronWolf übermittelt. "
-                        "Der Link ist 10 Minuten gültig und kann nur einmal verwendet werden.\n" + link_url,
-                        ephemeral=True,
-                    )
-                    return
-                await interaction.followup.send(message, ephemeral=True)
+                    except Exception as send_exc:
+                        print(log_prefix + f" error response failed: {type(send_exc).__name__}: {send_exc}", flush=True)
+
             button.callback = callback
             self.add_item(button)
 
