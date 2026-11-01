@@ -3716,7 +3716,7 @@ def guild_custom_bot(guild_id):
         '</section>'
         '<div class="cb-actions"><button type="submit">Save profile changes</button><a class="button secondary" href="/guild/' + gid + '/custom-bot">Reload</a></div>'
         '</div><aside class="cb-stack">'
-        '<section class="card cb-section"><h2>Live preview</h2><p class="cb-help">Preview of the profile configured above.</p>'
+        '<section class="card cb-section"><h2>Profile preview</h2><p class="cb-help">Preview of the currently saved profile settings.</p>'
         + ('<img class="cb-preview-banner" src="' + html.escape(banner_src, quote=True) + '" alt="Custom banner">' if banner_src else '<div class="cb-preview-banner" style="display:flex;align-items:center;justify-content:center;color:var(--muted,#9ca3af)">No custom banner</div>') +
         '<div class="cb-preview-user">'
         + ('<img class="cb-preview-avatar" src="' + html.escape(avatar_src, quote=True) + '" alt="Custom bot avatar">' if avatar_src else '<div class="cb-preview-avatar"></div>') +
