@@ -3406,7 +3406,7 @@ def guild_custom_bot_asset(guild_id, asset):
 
 
 async def _apply_custom_bot_profile(guild, profile):
-    """Apply each per-server profile field independently so one invalid field cannot block the others."""
+    """Apply the server profile in one Discord API request to avoid route rate limits."""
     results = []
     custom_name = str(profile.get("bot_name", "")).strip()[:32]
     description = str(profile.get("description", "")).strip()[:190]
@@ -3440,62 +3440,53 @@ async def _apply_custom_bot_profile(guild, profile):
             raise ValueError(asset + " must be PNG, JPG, GIF or WEBP")
         return "data:{};base64,{}".format(mime, base64.b64encode(raw).decode("ascii"))
 
-    async def patch_profile_field(field, value):
-        def send_patch():
-            auth_token = str(token).removeprefix("Bot ").strip()
-            return requests.patch(
-                DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
-                headers={"Authorization": "Bot " + auth_token, "Content-Type": "application/json"},
-                json={field: value},
-                timeout=20,
-            )
-        response = await asyncio.to_thread(send_patch)
-        if response.status_code >= 400:
-            detail = " ".join(response.text.split())[:350]
-            results.append("{} update failed (HTTP {}): {}".format(field, response.status_code, detail))
-            return False
-        results.append("{} updated successfully".format(field))
-        return True
-
     if not token:
         results.append("Discord profile could not be updated: bot token is unavailable")
     else:
-        # Send fields separately: Discord may reject a banner or nickname while still
-        # allowing the avatar (or another field) to be changed.
-        try:
-            if profile.get("remove_avatar"):
-                await patch_profile_field("avatar", None)
-            else:
-                data_uri = await asyncio.to_thread(image_data, "avatar")
-                if data_uri is not None:
-                    await patch_profile_field("avatar", data_uri)
-        except (ValueError, requests.RequestException, OSError) as exc:
-            results.append("avatar update failed: " + str(exc)[:300])
-
-        try:
-            if profile.get("remove_banner"):
-                await patch_profile_field("banner", None)
-            else:
-                data_uri = await asyncio.to_thread(image_data, "banner")
-                if data_uri is not None:
-                    await patch_profile_field("banner", data_uri)
-        except (ValueError, requests.RequestException, OSError) as exc:
-            results.append("banner update failed: " + str(exc)[:300])
-
+        payload = {"nick": custom_name or None, "bio": description or None}
         try:
             me = getattr(guild, "me", None)
             permissions = getattr(me, "guild_permissions", None)
             if custom_name and permissions is not None and not permissions.change_nickname:
                 results.append("nickname update skipped: the bot needs the Change Nickname permission in this server")
-            else:
-                await patch_profile_field("nick", custom_name or None)
-        except (requests.RequestException, OSError) as exc:
-            results.append("nickname update failed: " + str(exc)[:300])
+                payload.pop("nick", None)
 
-        try:
-            await patch_profile_field("bio", description or None)
-        except (requests.RequestException, OSError) as exc:
-            results.append("bio update failed: " + str(exc)[:300])
+            for asset in ("avatar", "banner"):
+                if profile.get("remove_" + asset):
+                    payload[asset] = None
+                else:
+                    data_uri = await asyncio.to_thread(image_data, asset)
+                    if data_uri is not None:
+                        payload[asset] = data_uri
+
+            def update_guild_profile():
+                auth_token = str(token).removeprefix("Bot ").strip()
+                return requests.patch(
+                    DISCORD_API + "/guilds/{}/members/@me".format(guild.id),
+                    headers={"Authorization": "Bot " + auth_token, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=20,
+                )
+
+            response = await asyncio.to_thread(update_guild_profile)
+            if response.status_code == 429:
+                try:
+                    retry_after = float(response.json().get("retry_after", 0))
+                except (ValueError, TypeError, AttributeError):
+                    retry_after = 0
+                results.append(
+                    "Discord rate limit (HTTP 429). No profile fields were applied. "
+                    "Wait approximately {} seconds before saving again.".format(
+                        max(1, int(retry_after + 0.999))
+                    )
+                )
+            elif response.status_code >= 400:
+                detail = " ".join(response.text.split())[:500]
+                results.append("Discord server profile update failed (HTTP {}): {}".format(response.status_code, detail))
+            else:
+                results.append("Discord server profile updated successfully (nickname, avatar, banner and bio submitted together)")
+        except (ValueError, requests.RequestException, OSError) as exc:
+            results.append("Discord server profile update failed: " + str(exc)[:300])
 
     # Keep the optional channel card as a supplemental preview, not as the actual profile.
     channel_id = str(profile.get("profile_channel_id", "")).strip()
