@@ -1192,25 +1192,7 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
             everyone=False,
         ),
     )
-    # If the member submitted a description, let the AI answer it immediately.
-    if (
-        reason.strip()
-        and cfg.get("ai_enabled_global", True)
-        and guild_has_feature(cfg, "ticket")
-        and panel.get("ai_support_enabled", True)
-    ):
-        try:
-            async with channel.typing():
-                ai_answer = await _generate_ticket_ai_reply(
-                    channel, None, ticket_meta, initial_reason=reason, requester=interaction.user
-                )
-            if ai_answer:
-                await channel.send(
-                    f"🤖 **AI Support** (automated reply)\n{discord.utils.escape_mentions(ai_answer)}",
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-        except (discord.Forbidden, discord.HTTPException) as ai_send_error:
-            print(f"[TICKET AI] Could not send initial reply in ticket {channel.id}: {ai_send_error}", flush=True)
+    # Ticket channels are human-support only; AI replies are disabled here.
     _ticket_creations_in_progress.discard(creation_key)
     await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
@@ -5471,42 +5453,14 @@ async def on_message(message: discord.Message):
                         })
                         del entries[:-80]
                         save_json(CONFIG_FILE, config)
-            # Ticket AI is independent from the optional public-channel mode.
-            # The global AI switch and the server's ticket entitlement remain authoritative.
-            if (
-                not is_quick_support_channel
-                and not is_staff
-                and cfg.get("ai_enabled_global", True)
-                and guild_has_feature(cfg, "ticket")
-            ):
-                now = time.monotonic()
-                if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 5:
-                    _ticket_ai_last_reply[message.channel.id] = now
-                    try:
-                        async with message.channel.typing():
-                            answer = await _generate_ticket_ai_reply(message.channel, message, ticket_meta)
-                    except Exception as ai_error:
-                        print(f"[TICKET AI] Unexpected ticket handler error in channel {message.channel.id}: {type(ai_error).__name__}: {ai_error}", flush=True)
-                        answer = None
-                    if answer:
-                        try:
-                            await message.reply(
-                                f"🤖 **AI Support** (automated reply)\n{discord.utils.escape_mentions(answer)}",
-                                mention_author=False,
-                                allowed_mentions=discord.AllowedMentions.none(),
-                            )
-                        except discord.Forbidden:
-                            print(f"[TICKET AI] Missing permission to reply in ticket channel {message.channel.id}.", flush=True)
-                        except discord.HTTPException as send_error:
-                            print(f"[TICKET AI] Could not send reply in ticket channel {message.channel.id}: {send_error}", flush=True)
+            # Ticket support is handled by staff only; no AI replies in ticket channels.
 
         # Public AI mode: answer in the exact channel selected in the dashboard.
         # This is separate from ticket AI and never runs in the Quick Support channel.
-        ai_mode = str(cfg.get("ai_mode", "ticket") or "ticket").lower()
+        # AI is restricted to the one channel selected in the dashboard.
         ai_channel_id = cfg.get("ai_channel_id")
         is_selected_ai_channel = (
-            ai_mode in {"channel", "both"}
-            and str(ai_channel_id or "").isdigit()
+            str(ai_channel_id or "").isdigit()
             and int(ai_channel_id) == message.channel.id
         )
         if (
