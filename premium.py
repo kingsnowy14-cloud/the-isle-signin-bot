@@ -113,7 +113,7 @@ PREMIUM_FEATURES = {
     "automation": "Automation Pro",
     "invite_tracker": "Invite Tracker",
     "server_boost": "Server-Boost-System",
-    "applications": "Pro application system (unlimited panels)",
+    "applications": "Pro application system (unlimited panels and questions)",
 }
 
 PLAN_FEATURES = {
