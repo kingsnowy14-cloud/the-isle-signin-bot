@@ -2216,6 +2216,23 @@ async def ticket_settings(
     )
 
 
+@bot.tree.command(name="ticket-panels", description="List ticket panel IDs and their current settings")
+@app_commands.checks.has_permissions(manage_guild=True)
+async def ticket_panels_list(interaction: discord.Interaction):
+    cfg = guild_config(interaction.guild_id)
+    panels = cfg.get("ticket_panels", {})
+    if not panels:
+        await interaction.response.send_message("No ticket panels are configured.", ephemeral=True)
+        return
+    lines = []
+    for panel_id, panel in list(panels.items())[:20]:
+        title = str(panel.get("title", "Ticket panel"))[:70]
+        ai = "ON" if panel.get("ai_support_enabled", True) else "OFF"
+        form = "ON" if panel.get("ask_before_open", True) else "OFF"
+        required = "YES" if panel.get("reason_required", True) else "NO"
+        lines.append(f"**{title}** — ID: `{panel_id}` · AI: {ai} · Form: {form} · Required: {required}")
+    await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
+
 @bot.tree.command(name="ticket-ai-status", description="Check whether AI replies can run in a ticket panel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(panel_id="Panel ID shown when the ticket panel was created")
