@@ -817,12 +817,15 @@ def _page(title, body):
     try:
         if match and _bot:
             active_guild = _bot.get_guild(int(match.group(1)))
-            if active_guild and active_guild.icon:
-                cursor_url = str(active_guild.icon.with_size(64).url)
-                cursor_css = (
-                    "html,body,body *{cursor:url('" + html.escape(cursor_url, quote=True) +
-                    "') 16 16,auto!important}"
-                )
+            cursor_url = (
+                str(active_guild.icon.with_size(64).url)
+                if active_guild and active_guild.icon
+                else "https://cdn.discordapp.com/embed/avatars/0.png"
+            )
+            cursor_css = (
+                "html,body,body *{cursor:url('" + html.escape(cursor_url, quote=True) +
+                "') 16 16,auto!important}"
+            )
     except Exception as exc:
         print(f"[DASHBOARD] Custom server cursor unavailable: {type(exc).__name__}: {exc}", flush=True)
     nav = (
