@@ -1003,7 +1003,20 @@ nav,main{{position:relative;z-index:1}}
  }}
  let saved='wolf';try{{saved=localStorage.getItem('ironwolf-cursor')||'wolf';}}catch(e){{}}
  apply(saved);
- picker.addEventListener('change',function(){{apply(this.value);try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
+ // Animated DOM cursor keeps the selected artwork visible while moving, including on browsers
+ // that do not support custom SVG cursor images.
+ const follower=document.createElement('div');follower.id='iw-animated-cursor';
+ follower.setAttribute('aria-hidden','true');
+ const followerStyle=document.createElement('style');
+ followerStyle.textContent='#iw-animated-cursor{{position:fixed;left:0;top:0;width:36px;height:36px;z-index:100000;pointer-events:none;transform:translate(-4px,-4px);filter:drop-shadow(0 0 7px rgba(139,157,255,.55));animation:iwCursorFloat 1.25s ease-in-out infinite}}#iw-animated-cursor svg{{display:block;width:36px;height:36px}}@keyframes iwCursorFloat{{0%,100%{{margin-top:0;scale:1;filter:drop-shadow(0 0 5px rgba(139,157,255,.45))}}50%{{margin-top:-3px;scale:1.09;filter:drop-shadow(0 0 12px rgba(139,157,255,.9))}}}}html,html body,html body *{{cursor:none!important}}@media(prefers-reduced-motion:reduce){{#iw-animated-cursor{{animation:none}}}}';
+ document.head.appendChild(followerStyle);document.body.appendChild(follower);
+ let overInteractive=false;
+ function updateFollower(){{follower.innerHTML=overInteractive?hand:art[picker.value]||art.wolf;}}
+ updateFollower();
+ document.addEventListener('pointermove',function(event){{follower.style.left=event.clientX+'px';follower.style.top=event.clientY+'px';}},{{passive:true}});
+ document.addEventListener('pointerover',function(event){{overInteractive=!!(event.target&&event.target.closest&&event.target.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'));updateFollower();}},{{passive:true}});
+ document.addEventListener('pointerout',function(event){{if(event.relatedTarget&&event.relatedTarget.closest&&event.relatedTarget.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'))return;overInteractive=false;updateFollower();}},{{passive:true}});
+ picker.addEventListener('change',function(){{apply(this.value);updateFollower();try{{localStorage.setItem('ironwolf-cursor',this.value);}}catch(e){{}}}});
  // Lightweight sparkle trail; capped and disabled for reduced-motion preferences.
  const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
  const touch=window.matchMedia&&window.matchMedia('(pointer: coarse)').matches;
