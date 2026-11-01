@@ -1462,53 +1462,79 @@ def is_support(member, meta, guild):
 async def close_ticket(channel, closed_by, meta):
     guild = channel.guild
     cfg = guild_config(guild.id)
-    messages = []
+    owner = guild.get_member(meta.get("owner_id")) if meta.get("owner_id") else None
+
+    # Build a readable, paginated Discord-embed transcript. No ZIP/HTML download.
+    transcript_lines = []
     try:
         async for message in channel.history(limit=None, oldest_first=True):
-            content = html.escape(message.content or "")
-            attachments = " ".join(html.escape(a.url) for a in message.attachments)
-            stamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-            messages.append(
-                f"<div class='message'><b>{html.escape(str(message.author))}</b> "
-                f"<small>{stamp}</small><p>{content}</p><p>{attachments}</p></div>"
-            )
-    except discord.HTTPException:
-        messages.append("<p>Could not fetch the full message history.</p>")
+            stamp = message.created_at.strftime("%Y-%m-%d %H:%M UTC")
+            author = discord.utils.escape_markdown(str(message.author))[:100]
+            content = discord.utils.escape_mentions(message.content or "[No text content]")
+            attachments = " | ".join(str(item.url) for item in message.attachments)
+            line = f"**{author}** · {stamp}\n{content}"
+            if attachments:
+                line += f"\nAttachments: {attachments}"
+            if len(line) > 1600:
+                line = line[:1590] + "…"
+            transcript_lines.append(line)
+    except discord.HTTPException as exc:
+        transcript_lines.append(f"[Message history could not be fully retrieved: {type(exc).__name__}]")
 
-    owner = guild.get_member(meta.get("owner_id")) if meta.get("owner_id") else None
-    claimer = guild.get_member(meta.get("claimed_by")) if meta.get("claimed_by") else None
-    transcript = f"""<!doctype html><html><head><meta charset="utf-8">
-<title>Ticket transcript</title><style>
-body{{font-family:Arial,sans-serif;background:#17191c;color:#eee;padding:24px}}
-.message{{background:#24272b;padding:12px;margin:10px 0;border-radius:8px;overflow-wrap:anywhere}}
-small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
-</style></head><body><h1>Ticket transcript: {html.escape(channel.name)}</h1>
-<p>Server: {html.escape(guild.name)}</p>
-<p>Ticket owner: {html.escape(str(owner) if owner else str(meta.get('owner_id')))}</p>
-<p>Claimed by: {html.escape(str(claimer) if claimer else str(meta.get('claimed_by') or 'Nobody'))}</p>
-<p>Closed by: {html.escape(str(closed_by))}</p>
-<p>Reason: {html.escape(meta.get('reason', ''))}</p>
-<h2>Interne Teamnotizen</h2><ul>{''.join("<li><b>" + html.escape(str(note.get("author", "Team"))[:100]) + "</b> <small>" + html.escape(str(note.get("created_at", ""))[:30]) + "</small><p>" + html.escape(str(note.get("text", ""))[:1000]) + "</p></li>" for note in meta.get("internal_notes", []) if isinstance(note, dict)) or "<li>Keine internen Notizen.</li>"}</ul>
-<hr>{''.join(messages)}</body></html>"""
-    # HTML in a ZIP prevents Discord from showing the raw HTML source as a preview.
-    archive_buffer = io.BytesIO()
-    with zipfile.ZipFile(archive_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(f"{channel.name}-transcript.html", transcript.encode("utf-8"))
-    archive_bytes = archive_buffer.getvalue()
-    archive_buffer.seek(0)
-    file = discord.File(archive_buffer, filename=f"{channel.name}-transcript.zip")
+    notes = []
+    for note in meta.get("internal_notes", []):
+        if not isinstance(note, dict):
+            continue
+        author = discord.utils.escape_markdown(str(note.get("author", "Staff")))[:80]
+        text_value = discord.utils.escape_mentions(str(note.get("text", "")))[:800]
+        notes.append(f"**{author}**: {text_value}")
+    if notes:
+        transcript_lines.extend(["", "**Internal staff notes**", *notes])
+    if not transcript_lines:
+        transcript_lines = ["No messages were recorded in this ticket."]
+
+    pages = []
+    current_page = ""
+    for line in transcript_lines:
+        candidate = (current_page + "\n\n" + line).strip()
+        if len(candidate) > 3800 and current_page:
+            pages.append(current_page)
+            current_page = line
+        else:
+            current_page = candidate
+    if current_page:
+        pages.append(current_page)
+
     log_channel_id = cfg.get("ticket_log_channel")
     log_channel = guild.get_channel(log_channel_id) if log_channel_id else None
+
+    def build_transcript_embeds():
+        embeds = []
+        for index, page in enumerate(pages, 1):
+            embed = discord.Embed(
+                title=("🔒 Ticket closed · Transcript" if index == 1 else f"📄 Ticket transcript · Page {index}"),
+                description=page,
+                color=discord.Color.red() if index == 1 else discord.Color.blurple(),
+                timestamp=datetime.now(timezone.utc),
+            )
+            if index == 1:
+                embed.add_field(name="Ticket", value=channel.name[:1024], inline=True)
+                embed.add_field(name="Owner", value=f"<@{meta.get('owner_id')}>" if meta.get("owner_id") else "Unknown", inline=True)
+                embed.add_field(name="Closed by", value=getattr(closed_by, "mention", str(closed_by))[:1024], inline=True)
+                embed.add_field(name="Claimed by", value=f"<@{meta['claimed_by']}>" if meta.get("claimed_by") else "Nobody", inline=True)
+                embed.add_field(name="Reason", value=str(meta.get("reason", "Not specified"))[:1024] or "Not specified", inline=False)
+            embed.set_footer(text=f"Ticket transcript · Page {index}/{len(pages)}")
+            embeds.append(embed)
+        return embeds
+
+    transcript_embeds = build_transcript_embeds()
     if isinstance(log_channel, discord.TextChannel):
-        embed = create_embed(title="🔒 Ticket closed", color=discord.Color.red(), timestamp=datetime.now(timezone.utc))
-        embed.add_field(name="Ticket", value=channel.name, inline=True)
-        embed.add_field(name="Owner", value=f"<@{meta.get('owner_id')}>", inline=True)
-        embed.add_field(name="Closed by", value=closed_by.mention, inline=True)
-        embed.add_field(name="Claimed by", value=f"<@{meta['claimed_by']}>" if meta.get("claimed_by") else "Nobody", inline=True)
-        await log_channel.send(embed=embed, file=file)
-    # Premium Ticket-System: send a second transcript copy to the ticket creator by DM.
+        for embed in transcript_embeds:
+            await log_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+
+    # Premium servers also receive the transcript as embeds in the ticket owner's DMs.
     if guild_has_feature(cfg, "ticket") and meta.get("owner_id"):
-        owner_user = owner or guild.get_member(int(meta["owner_id"]))
+        owner_user = owner
         if owner_user is None:
             try:
                 owner_user = await bot.fetch_user(int(meta["owner_id"]))
@@ -1516,13 +1542,11 @@ small{{color:#aaa;margin-left:12px}}p{{white-space:pre-wrap}}
                 owner_user = None
         if owner_user is not None:
             try:
-                await owner_user.send(
-                    f"Your ticket **{channel.name}** in **{guild.name}** has been closed. Here is your transcript.",
-                    file=discord.File(io.BytesIO(archive_bytes), filename=f"{channel.name}-transcript.zip"),
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
-            except (discord.Forbidden, discord.HTTPException):
-                pass
+                for embed in transcript_embeds:
+                    await owner_user.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[TICKET] Could not DM transcript to ticket owner: {exc}", flush=True)
+
     closed_at = datetime.now(timezone.utc)
     try:
         created_at = datetime.fromisoformat(str(meta.get("created_at", "")).replace("Z", "+00:00"))
