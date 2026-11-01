@@ -135,16 +135,18 @@ def build_status_embed(guild, configured, server_map, error=None):
     total_slots = 0
     online = 0
     embed = discord.Embed(
-        title="🚨 Emergency Hamburg · Öffentliche Server",
-        description="Roblox-Server, die für diesen Discord-Server verbunden wurden.",
-        color=discord.Color.blurple(),
+        title="🚨 EMERGENCY HAMBURG",
+        description="**LIVE-SERVERÜBERSICHT**  ·  Öffentliche Roblox-Server\n"
+                    "Automatischer Statusbericht für diesen Discord-Server.",
+        color=discord.Color.dark_teal(),
         timestamp=datetime.now(timezone.utc),
     )
+    embed.set_author(name="IRONWOLF  /  SERVER MONITOR")
     custom_message = str(configured.get("status_message", "") or "").strip()
     if custom_message:
-        embed.description = (embed.description + "\n\n" + custom_message)[:4096]
+        embed.add_field(name="📢 Mitteilung", value=custom_message[:1024], inline=False)
     if not selected:
-        embed.description = "Noch keine Roblox-Server im Dashboard verbunden." + (("\n\n" + custom_message) if custom_message else "")
+        embed.description += "\n\nNoch keine Roblox-Server im Dashboard verbunden."
     for item in selected[:20]:
         job_id = str(item.get("job_id", ""))
         server_key = str(item.get("server_key") or job_id)
@@ -152,9 +154,9 @@ def build_status_embed(guild, configured, server_map, error=None):
         name = str(item.get("name") or ("Server " + (job_id or server_key)[:8]))[:100]
         owner = str(item.get("owner") or "").strip()[:80]
         if stats is None:
-            value = ("🔗 **Join-Link gespeichert · Live-Spielerdaten nicht verfügbar**"
+            value = ("🔗 **JOIN-LINK HINTERLEGT**\nLive-Spielerdaten sind über einen Join-Link allein nicht abrufbar."
                      if item.get("join_link") and not job_id
-                     else "🔴 **Offline / nicht in der öffentlichen Liste gefunden**")
+                     else "🔴 **OFFLINE / NICHT GEFUNDEN**\nNicht in der öffentlichen Roblox-Serverliste gefunden.")
         else:
             playing = int(stats.get("playing", 0) or 0)
             maximum = int(stats.get("maxPlayers", 0) or 0)
@@ -168,10 +170,12 @@ def build_status_embed(guild, configured, server_map, error=None):
             states[job_id] = bool(is_online)
             if is_online:
                 online += 1
-            status_label = ("🟡 Letzter bekannter Status" if error else "🟢 Online") if is_online else "🔴 Offline"
-            parts = [f"{status_label} · {playing}/{maximum} Spieler"]
+            status_label = ("🟡 LETZTER STATUS" if error else "🟢 ONLINE") if is_online else "🔴 OFFLINE"
+            filled = min(10, round((playing / maximum) * 10)) if maximum > 0 else 0
+            bar = "▰" * filled + "▱" * (10 - filled)
+            parts = [f"**{status_label}**", f"👥 **{playing} / {maximum} Spieler**", f"`{bar}`"]
             if owner:
-                parts.append(f"Besitzer: {owner}")
+                parts.append(f"👑 Besitzer: **{owner}**")
             if stats.get("ping") is not None:
                 try:
                     parts.append(f"Ping: {round(float(stats['ping']))} ms")
@@ -188,22 +192,14 @@ def build_status_embed(guild, configured, server_map, error=None):
         if item.get("join_link"):
             join_link = str(item.get("join_link"))[:500]
             value += f"\n[Roblox-Server beitreten]({join_link})"
-        embed.add_field(name=name, value=value[:1024], inline=False)
+        embed.add_field(name=f"🖥️  {name}", value=value[:1024], inline=False)
     if selected:
-        embed.add_field(
-            name="Zusammenfassung",
-            value=(
-                f"**Online:** {online}/{len(selected)} verbundene Server\n"
-                f"**Spieler:** {total_players}\n"
-                f"**Auslastung:** {total_players}/{total_slots} Plätze"
-                if total_slots else
-                f"**Online:** {online}/{len(selected)} verbundene Server\n**Spieler:** {total_players}"
-            ),
-            inline=False,
-        )
+        embed.add_field(name="🟢 ONLINE", value=f"**{online} / {len(selected)}**", inline=True)
+        embed.add_field(name="👥 SPIELER GESAMT", value=f"**{total_players}**", inline=True)
+        embed.add_field(name="🎮 PLÄTZE", value=f"**{total_players} / {total_slots}**" if total_slots else "**—**", inline=True)
     if error:
         embed.add_field(name="API-Hinweis", value="Die letzte Aktualisierung war nicht vollständig. Vorhandene Werte können veraltet sein.\n" + str(error)[:500], inline=False)
-    embed.set_footer(text="IronWolf · Automatische Aktualisierung alle 5 Minuten")
+    embed.set_footer(text="IRONWOLF  •  Aktualisierung alle 5 Minuten  •  /eh-refresh für Sofort-Update")
     return embed
 
 
