@@ -4016,6 +4016,9 @@ def guild_message_builder(guild_id):
         content = request.form.get("message", "").strip()
         title = request.form.get("embed_title", "").strip()[:256]
         description = request.form.get("embed_description", "").strip()[:4000]
+        embed_color = request.form.get("embed_color", "5865F2").strip().lstrip("#")
+        if not re.fullmatch(r"[0-9a-fA-F]{6}", embed_color):
+            abort(400, "Bitte eine gültige Embed-Farbe auswählen.")
         if len(content) > 2000:
             abort(400, "Die Nachricht darf höchstens 2000 Zeichen haben.")
         if not content and not title and not description:
@@ -4025,6 +4028,7 @@ def guild_message_builder(guild_id):
         types = request.form.getlist("button_type")
         urls = request.form.getlist("button_url")
         role_ids = request.form.getlist("button_role")
+        button_styles = request.form.getlist("button_style")
         if len(types) > 5:
             abort(400, "Pro Nachricht sind maximal 5 Buttons erlaubt.")
         for idx, kind in enumerate(types):
@@ -4064,10 +4068,13 @@ def guild_message_builder(guild_id):
                     abort(400, "Diese Rolle liegt über der höchsten Bot-Rolle. Verschiebe die Bot-Rolle in den Servereinstellungen höher.")
                 if not bot_member.guild_permissions.manage_roles:
                     abort(400, "The bot needs the “Manage Roles” permission, damit Rollen-Buttons funktionieren.")
-                button_records.append({"type": "role", "label": label, "role_id": role.id})
+                style = button_styles[idx] if idx < len(button_styles) else "primary"
+                if style not in {"primary", "secondary", "success", "danger"}:
+                    abort(400, "Ungültige Button-Farbe.")
+                button_records.append({"type": "role", "label": label, "role_id": role.id, "style": style})
         embed = None
         if title or description:
-            embed = discord.Embed(title=title or None, description=description or None, color=discord.Color.blurple())
+            embed = discord.Embed(title=title or None, description=description or None, color=int(embed_color, 16))
             embed.set_footer(text="IronWolf · Created by KingSnowy")
         view = _bot.build_dashboard_message_view(guild.id, button_records) if _bot and hasattr(_bot, "build_dashboard_message_view") else None
         async def _send():
@@ -4092,7 +4099,7 @@ def guild_message_builder(guild_id):
     for index in range(1, 6):
         default_type = "role" if index == 1 else "link"
         hidden = "" if index == 1 else ' hidden'
-        button_fields += f'<div class="scnx-button-item manual-button-row" data-button-row="{index}"{hidden}><div class="scnx-button-heading"><strong><span class="scnx-button-number">{index}</span> Button {index}</strong><button type="button" class="secondary scnx-remove-button" onclick="removeManualButton({index})">Entfernen</button></div><label>Button-Typ</label><select name="button_type" class="scnx-button-type" onchange="updateButtonType(this)"><option value="role" {"selected" if default_type == "role" else ""}>🎭 Rolle vergeben</option><option value="link" {"selected" if default_type == "link" else ""}>🔗 Link öffnen</option></select><label>Button-Text</label><input name="button_label" maxlength="80" placeholder="z. B. Jetzt verifizieren"><div class="scnx-link-fields"><label>HTTPS-Link</label><input name="button_url" type="url" placeholder="https://deine-seite.de" disabled></div><div class="scnx-role-fields"><label>Rolle auswählen (optional)</label><select name="button_role" disabled>{roles}</select></div></div>'
+        button_fields += f'<div class="scnx-button-item manual-button-row" data-button-row="{index}"{hidden}><div class="scnx-button-heading"><strong><span class="scnx-button-number">{index}</span> Button {index}</strong><button type="button" class="secondary scnx-remove-button" onclick="removeManualButton({index})">Entfernen</button></div><label>Button-Typ</label><select name="button_type" class="scnx-button-type" onchange="updateButtonType(this)"><option value="role" {"selected" if default_type == "role" else ""}>🎭 Rolle vergeben</option><option value="link" {"selected" if default_type == "link" else ""}>🔗 Link öffnen</option></select><label>Button-Text</label><input name="button_label" maxlength="80" placeholder="z. B. Jetzt verifizieren"><div class="scnx-link-fields"><label>HTTPS-Link</label><input name="button_url" type="url" placeholder="https://deine-seite.de" disabled></div><div class="scnx-role-fields"><label>Rolle auswählen (optional)</label><select name="button_role" disabled>{roles}</select></div><label>Button-Farbe</label><select name="button_style"><option value="primary">Blau</option><option value="secondary">Grau</option><option value="success">Grün</option><option value="danger">Rot</option></select></div>'
     button_fields += '</div><button type="button" id="add-button-row" class="secondary" onclick="addManualButton()">＋ Weiteren Button hinzufügen</button><p class="muted">Bis zu 5 Buttons. Rollen-Buttons sind optional und benötigen „Rollen verwalten“ für den Bot. Du kannst die Nachricht auch ganz ohne Buttons senden. Link-Buttons öffnen eine HTTPS-Seite.</p>'
     button_fields += """<style>
 .scnx-builder{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(260px,.75fr);gap:18px;align-items:start}
