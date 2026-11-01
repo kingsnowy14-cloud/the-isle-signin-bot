@@ -450,6 +450,7 @@ def format_duration(seconds):
 # unknown keys and module-specific configuration are deliberately never overwritten.
 DEFAULT_GUILD_CONFIG = {
     "bot_language": "auto",
+    "channel_translations": {},
     "registration_channel": None,
     "ticket_category": None,
     "ticket_log_channel": None,
@@ -5762,6 +5763,28 @@ async def on_message(message: discord.Message):
                     pass
                 return
 
+    # Automatically mirror ordinary messages in configured translation channels.
+    if message.guild and not message.author.bot:
+        translation_target = guild_config(message.guild.id).get("channel_translations", {}).get(str(message.channel.id))
+        content_to_translate = (message.content or "").strip()
+        is_prefix_command = content_to_translate.startswith(("!", "."))
+        if translation_target in {"de", "en"} and content_to_translate and not is_prefix_command:
+            try:
+                from deep_translator import MyMemoryTranslator
+                translated_text = await asyncio.to_thread(
+                    MyMemoryTranslator(source="auto", target=translation_target).translate,
+                    content_to_translate[:4000],
+                )
+                if translated_text and translated_text.strip() and translated_text.strip() != content_to_translate:
+                    language_name = "🇩🇪 Deutsch" if translation_target == "de" else "🇬🇧 English"
+                    await message.reply(
+                        f"🌐 **{language_name}:**\n{translated_text[:1900]}",
+                        mention_author=False,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+            except Exception as exc:
+                print(f"[CHANNEL TRANSLATE] Failed in channel {message.channel.id}: {type(exc).__name__}: {exc}", flush=True)
+
     await bot.process_commands(message)
 
 
@@ -8862,52 +8885,50 @@ async def wolfcheck_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.command(name="translate", aliases=["tr"])
-@commands.cooldown(3, 10, commands.BucketType.user)
-async def translate_command(ctx, target: str, *, text: str):
-    """Translate text to German or English; source language is detected automatically."""
+@bot.command(name="translate")
+@commands.guild_only()
+@commands.has_guild_permissions(manage_channels=True)
+async def translate_command(ctx, channel: discord.TextChannel, target: str):
+    """Enable automatic translation of every new message in a selected text channel."""
     target = target.lower()
-    if target not in {"de", "en"}:
-        await ctx.reply("🌐 Usage: `!translate en <text>` or `!translate de <text>`.", mention_author=False)
+    if target not in {"de", "en", "off"}:
+        await ctx.reply("🌐 Verwendung: `!translate #kanal de`, `!translate #kanal en` oder `!translate #kanal off`.", mention_author=False)
         return
-    source_text = text.strip()
-    if not source_text:
-        await ctx.reply("Please provide text to translate.", mention_author=False)
+    if channel.guild.id != ctx.guild.id:
+        await ctx.reply("❌ Bitte wähle einen Kanal dieses Servers.", mention_author=False)
         return
-    if len(source_text) > 4000:
-        await ctx.reply("Please keep translations under 4,000 characters.", mention_author=False)
+    if target == "off":
+        cfg = guild_config(ctx.guild.id)
+        cfg.setdefault("channel_translations", {}).pop(str(channel.id), None)
+        save_json(CONFIG_FILE, config)
+        await ctx.reply(f"✅ Automatische Übersetzung in {channel.mention} wurde deaktiviert.", mention_author=False)
         return
-    try:
-        from deep_translator import MyMemoryTranslator
-        translator = MyMemoryTranslator(source="auto", target=target)
-        translated = await asyncio.to_thread(translator.translate, source_text)
-        if not translated:
-            raise ValueError("The translation provider returned an empty result.")
-        source_label = "automatically detected"
-        target_label = "German" if target == "de" else "English"
-        embed = discord.Embed(
-            title="🌐 IronWolf · Translation",
-            description=translated[:4000],
-            color=discord.Color.blurple(),
-        )
-        embed.add_field(name="Target language", value=target_label, inline=True)
-        embed.add_field(name="Source language", value=source_label, inline=True)
-        await ctx.reply(embed=embed, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
-    except Exception as exc:
-        print(f"[TRANSLATE] Translation failed: {type(exc).__name__}: {exc}", flush=True)
-        await ctx.reply("❌ Translation is temporarily unavailable. Please try again later.", mention_author=False)
+    if not channel.permissions_for(ctx.guild.me).send_messages:
+        await ctx.reply(f"❌ Ich darf in {channel.mention} keine Nachrichten senden.", mention_author=False)
+        return
+    cfg = guild_config(ctx.guild.id)
+    cfg.setdefault("channel_translations", {})[str(channel.id)] = target
+    save_json(CONFIG_FILE, config)
+    language_name = "Deutsch" if target == "de" else "Englisch"
+    await ctx.reply(
+        f"✅ Automatische Übersetzung ist in {channel.mention} aktiviert. Neue Nachrichten werden nach **{language_name}** übersetzt.\n"
+        f"Deaktivieren mit `!translate {channel.mention} off`.",
+        mention_author=False,
+    )
 
 
 @translate_command.error
 async def translate_command_error(ctx, error):
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.reply(f"⏳ Please wait {error.retry_after:.1f}s before translating again.", mention_author=False)
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.reply("❌ Dafür benötigst du die Berechtigung **Kanäle verwalten**.", mention_author=False)
+    elif isinstance(error, commands.BadArgument):
+        await ctx.reply("🌐 Verwendung: `!translate #kanal de` oder `!translate #kanal en`.", mention_author=False)
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.reply("🌐 Usage: `!translate en <text>` or `!translate de <text>`.", mention_author=False)
+        await ctx.reply("🌐 Verwendung: `!translate #kanal de`, `!translate #kanal en` oder `!translate #kanal off`.", mention_author=False)
     else:
         original = getattr(error, "original", error)
         print(f"[TRANSLATE] Command error: {type(original).__name__}: {original}", flush=True)
-        await ctx.reply("❌ The translation command failed.", mention_author=False)
+        await ctx.reply("❌ Der Übersetzungskanal konnte nicht eingerichtet werden.", mention_author=False)
 
 
 @bot.command(name="language", aliases=["lang"])
