@@ -3406,16 +3406,17 @@ def guild_custom_bot_asset(guild_id, asset):
 
 
 async def _apply_custom_bot_profile(guild, profile):
-    """Apply the server profile in one Discord API request to avoid route rate limits."""
+    """Apply the current bot's per-server profile in one Discord API request."""
     results = []
     custom_name = str(profile.get("bot_name", "")).strip()[:32]
     description = str(profile.get("description", "")).strip()[:190]
     token = getattr(getattr(_bot, "http", None), "token", None) or os.getenv("DISCORD_TOKEN")
+    premium_nickname = guild_has_feature(_guild_config(guild.id), "custom_bot")
 
-    def image_data(asset, image_url_override=None):
+    def image_data(asset):
         stored = profile.get(asset + "_file")
-        image_url = str(image_url_override or profile.get(asset + "_url", "")).strip()
-        if not image_url_override and stored and Path(stored).is_file():
+        image_url = str(profile.get(asset + "_url", "")).strip()
+        if stored and Path(stored).is_file():
             raw = Path(stored).read_bytes()
             mime = profile.get(asset + "_mime", "application/octet-stream")
         elif image_url:
@@ -3443,31 +3444,25 @@ async def _apply_custom_bot_profile(guild, profile):
     if not token:
         results.append("Discord profile could not be updated: bot token is unavailable")
     else:
-        payload = {"nick": custom_name or None, "bio": description or None}
+        # Only include fields that are intentionally being changed. The nickname
+        # is Premium-gated independently and is never sent for non-Premium servers.
+        payload = {"bio": description or None}
         try:
             me = getattr(guild, "me", None)
             permissions = getattr(me, "guild_permissions", None)
-            if custom_name and permissions is not None and not permissions.change_nickname:
-                results.append("nickname update skipped: the bot needs the Change Nickname permission in this server")
-                payload.pop("nick", None)
+            if premium_nickname:
+                if permissions is not None and not permissions.change_nickname:
+                    results.append("Nickname not changed: give the bot the Change Nickname permission.")
+                else:
+                    payload["nick"] = custom_name or None
+            else:
+                results.append("Nickname unchanged: an active Premium plan is required.")
 
             for asset in ("avatar", "banner"):
                 if profile.get("remove_" + asset):
-                    if asset == "avatar":
-                        # Restore the bot account's original global avatar on this server.
-                        original_avatar_url = getattr(
-                            getattr(getattr(_bot, "user", None), "display_avatar", None),
-                            "url",
-                            None,
-                        )
-                        if original_avatar_url:
-                            payload[asset] = await asyncio.to_thread(
-                                image_data, asset, str(original_avatar_url)
-                            )
-                        else:
-                            payload[asset] = None
-                    else:
-                        payload[asset] = None
+                    # Discord's documented reset operation is null; uploading the
+                    # global avatar as a new guild avatar would not restore inheritance.
+                    payload[asset] = None
                 else:
                     data_uri = await asyncio.to_thread(image_data, asset)
                     if data_uri is not None:
@@ -3498,7 +3493,29 @@ async def _apply_custom_bot_profile(guild, profile):
                 detail = " ".join(response.text.split())[:500]
                 results.append("Discord server profile update failed (HTTP {}): {}".format(response.status_code, detail))
             else:
-                results.append("Discord server profile updated successfully (nickname, avatar, banner and bio submitted together)")
+                try:
+                    updated = response.json()
+                except ValueError:
+                    updated = {}
+                changed = []
+                if "nick" in payload:
+                    if updated.get("nick") == payload["nick"]:
+                        changed.append("nickname")
+                    else:
+                        results.append("Discord accepted the request but did not confirm the requested nickname.")
+                for asset in ("avatar", "banner"):
+                    if asset in payload:
+                        if updated.get(asset) == (None if payload[asset] is None else updated.get(asset)):
+                            changed.append(asset)
+                        elif payload[asset] is not None and updated.get(asset):
+                            changed.append(asset)
+                        else:
+                            results.append("Discord did not confirm the {} update.".format(asset))
+                if "bio" in payload:
+                    changed.append("bio")
+                results.append(
+                    "Discord confirmed profile update: " + (", ".join(changed) if changed else "no changed fields")
+                )
         except (ValueError, requests.RequestException, OSError) as exc:
             results.append("Discord server profile update failed: " + str(exc)[:300])
 
@@ -3509,38 +3526,35 @@ async def _apply_custom_bot_profile(guild, profile):
             channel = guild.get_channel(int(channel_id))
         except (TypeError, ValueError):
             channel = None
-        if channel is None or not hasattr(channel, "send"):
-            results.append("profile channel not found")
+        if channel is None:
+            results.append("profile card could not be published: selected channel was not found")
         else:
             try:
                 embed = discord.Embed(
-                    title=custom_name or (guild.me.display_name if guild.me else "IronWolf"),
-                    description=description or "Server bot profile",
+                    title="Custom Bot Profile",
+                    description=description or "No server-specific description set.",
                     color=discord.Color.blurple(),
                 )
-                embed.set_footer(text=guild.name + " · IronWolf")
-                files = []
-                for asset, setter in (("avatar", embed.set_thumbnail), ("banner", embed.set_image)):
-                    asset_path = profile.get(asset + "_file")
-                    asset_url = profile.get(asset + "_url")
-                    if asset_path and Path(asset_path).is_file():
-                        asset_file = discord.File(asset_path, filename=Path(asset_path).name)
-                        files.append(asset_file)
-                        setter(url="attachment://" + asset_file.filename)
-                    elif asset_url:
-                        setter(url=asset_url)
-                sent = await channel.send(embed=embed, files=files)
-                old_message_id = profile.get("profile_message_id")
-                if old_message_id:
-                    try:
-                        old_message = await channel.fetch_message(int(old_message_id))
-                        await old_message.delete()
-                    except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
-                        pass
-                profile["profile_message_id"] = str(sent.id)
-                results.append("supplemental profile card published in #" + getattr(channel, "name", "channel"))
-            except discord.Forbidden:
-                results.append("profile card could not be published: check View Channel, Send Messages, Embed Links and Attach Files permissions")
+                embed.set_author(name=custom_name or getattr(_bot.user, "name", "Bot"))
+                if profile.get("avatar_file") and Path(profile["avatar_file"]).is_file():
+                    embed.set_thumbnail(url="attachment://avatar" + Path(profile["avatar_file"]).suffix)
+                    avatar_upload = discord.File(profile["avatar_file"], filename="avatar" + Path(profile["avatar_file"]).suffix)
+                elif profile.get("avatar_url"):
+                    embed.set_thumbnail(url=profile["avatar_url"])
+                    avatar_upload = None
+                else:
+                    avatar_upload = None
+                if profile.get("banner_file") and Path(profile["banner_file"]).is_file():
+                    embed.set_image(url="attachment://banner" + Path(profile["banner_file"]).suffix)
+                    banner_upload = discord.File(profile["banner_file"], filename="banner" + Path(profile["banner_file"]).suffix)
+                elif profile.get("banner_url"):
+                    embed.set_image(url=profile["banner_url"])
+                    banner_upload = None
+                else:
+                    banner_upload = None
+                files = [item for item in (avatar_upload, banner_upload) if item is not None]
+                await channel.send(embed=embed, files=files)
+                results.append("profile card published")
             except discord.HTTPException as exc:
                 results.append("profile card publishing failed: " + str(exc)[:180])
     return results
