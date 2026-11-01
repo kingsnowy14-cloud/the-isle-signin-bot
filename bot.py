@@ -1177,6 +1177,25 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
             everyone=False,
         ),
     )
+    # If the member submitted a description, let the AI answer it immediately.
+    if (
+        reason.strip()
+        and cfg.get("ai_enabled_global", True)
+        and guild_has_feature(cfg, "ticket")
+        and panel.get("ai_support_enabled", True)
+    ):
+        try:
+            async with channel.typing():
+                ai_answer = await _generate_ticket_ai_reply(
+                    channel, None, ticket_meta, initial_reason=reason, requester=interaction.user
+                )
+            if ai_answer:
+                await channel.send(
+                    f"🤖 **AI Support** (automated reply)\\n{discord.utils.escape_mentions(ai_answer)}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+        except (discord.Forbidden, discord.HTTPException) as ai_send_error:
+            print(f"[TICKET AI] Could not send initial reply in ticket {channel.id}: {ai_send_error}", flush=True)
     _ticket_creations_in_progress.discard(creation_key)
     await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
@@ -5048,7 +5067,7 @@ async def honeypot_publish(interaction: discord.Interaction):
         await interaction.response.send_message("The message could not be sent. Please check channel permissions.", ephemeral=True)
 
 
-async def _generate_ticket_ai_reply(channel, message, meta):
+async def _generate_ticket_ai_reply(channel, message, meta, initial_reason=None, requester=None):
     """Generate a concise support reply with Gemini, even if history access is unavailable."""
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -5058,21 +5077,23 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         # Public AI channel: use the current message directly to avoid an extra Discord
         # history request. Ticket support keeps a short context window for continuity.
         recent_messages = []
-        try:
-            async for item in channel.history(limit=8, oldest_first=False):
-                if item.author.bot and item.author.id != bot.user.id:
-                    continue
-                if (item.content or "").strip() or item.attachments or item.embeds:
-                    recent_messages.append(item)
-        except (discord.Forbidden, discord.HTTPException) as history_error:
-            print(f"[AI] Could not read channel history; using the latest message only: {history_error}", flush=True)
+        if initial_reason:
+            history = [{"role": "user", "parts": [{"text": str(initial_reason).strip()[:1200]}]}]
+        else:
+            try:
+                async for item in channel.history(limit=8, oldest_first=False):
+                    if item.author.bot and item.author.id != bot.user.id:
+                        continue
+                    if (item.content or "").strip() or item.attachments or item.embeds:
+                        recent_messages.append(item)
+            except (discord.Forbidden, discord.HTTPException) as history_error:
+                print(f"[AI] Could not read channel history; using the latest message only: {history_error}", flush=True)
+            recent_messages = list(reversed(recent_messages))
+            if message is not None and not any(item.id == message.id for item in recent_messages):
+                recent_messages.append(message)
 
-        recent_messages = list(reversed(recent_messages))
-        if not any(item.id == message.id for item in recent_messages):
-            recent_messages.append(message)
-
-        # Gemini expects valid user/model turns; merge adjacent messages from the same role.
-        history = []
+            # Gemini expects valid user/model turns; merge adjacent messages from the same role.
+            history = []
         for item in recent_messages[-5:]:
             content = (item.content or "").strip()
             if item.attachments:
@@ -5099,7 +5120,8 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         while history and history[0]["role"] == "model":
             history.pop(0)
         if not history or history[-1]["role"] != "user":
-            history.append({"role": "user", "parts": [{"text": (message.content or "").strip()[:1200]}]})
+            latest_text = (getattr(message, "content", "") or "").strip()
+            history.append({"role": "user", "parts": [{"text": latest_text[:1200]}]})
 
         guild = getattr(channel, "guild", None)
         guild_id = getattr(guild, "id", None)
@@ -5107,10 +5129,11 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         # Give the model a verified directory of channels visible to the member.
         # This lets it create real Discord channel mentions/links without guessing IDs.
         channel_directory = []
-        if guild is not None:
+        member_for_permissions = requester or getattr(message, "author", None)
+        if guild is not None and member_for_permissions is not None:
             for server_channel in sorted(guild.text_channels, key=lambda item: item.position):
                 try:
-                    if not message.author.guild_permissions.administrator and not server_channel.permissions_for(message.author).view_channel:
+                    if not member_for_permissions.guild_permissions.administrator and not server_channel.permissions_for(member_for_permissions).view_channel:
                         continue
                 except (AttributeError, TypeError):
                     continue
