@@ -146,6 +146,7 @@ def build_status_embed(guild, configured, server_map, error=None):
         job_id = str(item.get("job_id", ""))
         stats = server_map.get(job_id)
         name = str(item.get("name") or ("Server " + job_id[:8]))[:100]
+        owner = str(item.get("owner") or "").strip()[:80]
         if stats is None:
             value = "🔴 **Offline / nicht in der öffentlichen Liste gefunden**"
         else:
@@ -153,9 +154,18 @@ def build_status_embed(guild, configured, server_map, error=None):
             maximum = int(stats.get("maxPlayers", 0) or 0)
             total_players += playing
             total_slots += maximum
-            online += 1
-            status_label = "🟡 Letzter bekannter Status" if error else "🟢 Online"
+            online_min = max(0, int(configured.get("online_min_players", 1) or 0))
+            offline_max = max(0, int(configured.get("offline_max_players", 0) or 0))
+            states = configured.setdefault("server_states", {})
+            previous = states.get(job_id)
+            is_online = (playing > offline_max) if previous is True else (playing >= online_min)
+            states[job_id] = bool(is_online)
+            if is_online:
+                online += 1
+            status_label = ("🟡 Letzter bekannter Status" if error else "🟢 Online") if is_online else "🔴 Offline"
             parts = [f"{status_label} · {playing}/{maximum} Spieler"]
+            if owner:
+                parts.append(f"Besitzer: {owner}")
             if stats.get("ping") is not None:
                 try:
                     parts.append(f"Ping: {round(float(stats['ping']))} ms")
@@ -167,6 +177,8 @@ def build_status_embed(guild, configured, server_map, error=None):
                 except (TypeError, ValueError):
                     pass
             value = "\n".join(parts)
+        if owner and stats is None:
+            value += f"\nBesitzer: {owner}"
         embed.add_field(name=name, value=value, inline=False)
     if selected:
         embed.add_field(
