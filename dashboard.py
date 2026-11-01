@@ -3595,7 +3595,7 @@ def guild_custom_bot(guild_id):
         '<form method="post" enctype="multipart/form-data">' + _csrf_field() +
         '<label>Bot name in this server (nickname, max. 32 characters)</label><input type="text" name="bot_name" maxlength="32" value="' + html.escape(bot_name, quote=True) + '" placeholder="IronWolf">'
         + '<label>Publish profile card in Discord</label><select name="profile_channel_id">' + channel_options + '</select>'
-        '<label>Upload avatar from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp">'
+        + '<label>Upload avatar from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="avatar_file" accept="image/png,image/jpeg,image/gif,image/webp">'
         + '<label>Or use an avatar image URL (HTTPS)</label><input type="url" name="avatar_url" maxlength="500" value="' + html.escape(avatar_url, quote=True) + '" placeholder="https://example.com/avatar.png">'
         + ('<label><input type="checkbox" name="remove_avatar"> Remove uploaded avatar</label>' if avatar_file else '')
         + '<label>Upload banner from your device (PNG, JPG, GIF, WEBP · max 5 MB)</label><input type="file" name="banner_file" accept="image/png,image/jpeg,image/gif,image/webp">'
