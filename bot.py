@@ -611,6 +611,19 @@ def bot_text(guild_id, text):
 def migrate_all_guild_configs():
     """Apply new defaults to every known server while preserving existing settings."""
     changed = False
+    # One-time global migration: disable the pre-ticket form on every existing panel.
+    # Server admins can re-enable it later with /ticket-settings.
+    if not config.get("_ticket_form_default_off_v1"):
+        for server_cfg in config.values():
+            if not isinstance(server_cfg, dict):
+                continue
+            panels = server_cfg.get("ticket_panels", {})
+            if isinstance(panels, dict):
+                for panel in panels.values():
+                    if isinstance(panel, dict):
+                        panel["ask_before_open"] = False
+        config["_ticket_form_default_off_v1"] = True
+        changed = True
     for guild_id, cfg in list(config.items()):
         if not str(guild_id).isdigit():
             continue
@@ -1227,7 +1240,7 @@ async def _open_ticket_flow(interaction: discord.Interaction, panel_key: str, bu
     if not panel:
         await interaction.response.send_message("This ticket panel is no longer configured.", ephemeral=True)
         return
-    if panel.get("ask_before_open", True):
+    if panel.get("ask_before_open", False):
         await interaction.response.send_modal(
             TicketCreateModal(
                 panel_key, button_index, button_label,
@@ -2176,6 +2189,8 @@ async def ticketcreat(
         "support_role_id": support_rolle.id if support_rolle else cfg.get("support_role"),
         "channel_id": kanal.id,
         "ai_support_enabled": True,
+        "ask_before_open": False,
+        "reason_required": True,
     }
     save_json(CONFIG_FILE, config)
     embed = create_embed(title=titel, description=beschreibung, color=discord.Color.blurple())
@@ -2228,7 +2243,7 @@ async def ticket_panels_list(interaction: discord.Interaction):
     for panel_id, panel in list(panels.items())[:20]:
         title = str(panel.get("title", "Ticket panel"))[:70]
         ai = "ON" if panel.get("ai_support_enabled", True) else "OFF"
-        form = "ON" if panel.get("ask_before_open", True) else "OFF"
+        form = "ON" if panel.get("ask_before_open", False) else "OFF"
         required = "YES" if panel.get("reason_required", True) else "NO"
         lines.append(f"**{title}** — ID: `{panel_id}` · AI: {ai} · Form: {form} · Required: {required}")
     await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
