@@ -17,6 +17,7 @@ import urllib.request
 import urllib.error
 from PIL import Image, ImageDraw, ImageFont
 from storage import data_path
+from guild_announcement import send_mainserver_announcement
 from premium import guild_has_feature, account_plan, expired_grants, mark_expiry_dm_sent, grant_server_boost_premium
 from collections import defaultdict, deque
 import discord
@@ -53,6 +54,7 @@ bot = GuildGateBot(command_prefix=("!", "."), intents=intents, case_insensitive=
 _automation_worker_task = None
 _birthday_worker_task = None
 _historical_main_server_invite_task = None
+_mainserver_announcement_task = None
 
 
 async def dashboard_command_enabled(guild_id, key):
@@ -8375,6 +8377,12 @@ async def the_isle_bau_error(ctx, error):
 @bot.event
 async def on_ready():
     migrate_all_guild_configs()
+    global _mainserver_announcement_task
+    if _mainserver_announcement_task is None or _mainserver_announcement_task.done():
+        _mainserver_announcement_task = asyncio.create_task(
+            send_mainserver_announcement(bot),
+            name="one-time-mainserver-announcement",
+        )
     global _historical_main_server_invite_task
     if _historical_main_server_invite_task is None or _historical_main_server_invite_task.done():
         _historical_main_server_invite_task = asyncio.create_task(
