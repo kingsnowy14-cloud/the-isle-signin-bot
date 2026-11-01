@@ -4882,7 +4882,7 @@ def guild_ai_knowledge(guild_id):
             elif ai_channel_raw and ai_channel_raw not in {str(channel.id) for channel in guild.text_channels}:
                 abort(400, "Bitte wähle einen gültigen Textkanal.")
             cfg["ai_enabled_global"] = ai_enabled
-            cfg["ai_mode"] = ai_mode
+            cfg["ai_mode"] = "both" if ai_enabled and ai_channel_raw else ai_mode
             cfg["ai_channel_id"] = int(ai_channel_raw) if ai_channel_raw else None
             cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
             cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
@@ -4919,7 +4919,7 @@ def guild_ai_knowledge(guild_id):
         + ('<p class="muted">KI ist Premium. Wähle, wo der Assistent antworten soll. Im Ticket-Modus muss zusätzlich die KI-Option im jeweiligen Ticket-Panel aktiviert sein.</p>' if guild_has_feature(cfg, "ticket") else '<p class="notice">🔒 KI-Assistent und KI-Ticketsupport sind Premium-Funktionen. Verknüpfe Premium auf der Premium-Seite.</p>')
         + '<label for="ai_mode">KI-Einsatzort (Premium)</label><select id="ai_mode" name="ai_mode"><option value="ticket"' + (' selected' if cfg.get("ai_mode", "ticket") == "ticket" else '') + '>Nur in Tickets</option><option value="channel"' + (' selected' if cfg.get("ai_mode") == "channel" else '') + '>In einem bestimmten Kanal</option><option value="both"' + (' selected' if cfg.get("ai_mode") == "both" else '') + '>In Tickets und im Kanal</option></select>'
         + '<label for="ai_channel_id">KI-Kanal (für Kanal-Modus)</label><select id="ai_channel_id" name="ai_channel_id"><option value="">— Textkanal auswählen —</option>' + ''.join('<option value="' + str(channel.id) + '"' + (' selected' if str(cfg.get("ai_channel_id") or "") == str(channel.id) else '') + '>#' + html.escape(channel.name) + '</option>' for channel in guild.text_channels) + '</select>'
-        + '<p class="muted">Im Kanal-Modus antwortet die KI auf normale Nachrichten im ausgewählten Kanal. Ticket-Antworten funktionieren weiterhin nur, wenn das jeweilige Ticket-Panel KI-Support aktiviert hat.</p>'
+        + '<p class="muted">Wenn ein Kanal ausgewählt ist, antwortet die KI sowohl dort als auch in Tickets (sofern die KI aktiviert ist).</p>'
         + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
         + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
         + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
