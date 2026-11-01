@@ -1332,7 +1332,16 @@ class TicketControlView(discord.ui.View):
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         await close_ticket(interaction.channel, interaction.user, meta)
-        await interaction.followup.send("Ticket closed and transcript logged (if a log channel is configured).", ephemeral=True)
+        try:
+            await interaction.followup.send(
+                "Ticket closed and transcript logged (if a log channel is configured).",
+                ephemeral=True,
+            )
+        except discord.NotFound:
+            # The ticket channel may already be deleted and Discord can invalidate
+            # the interaction message before the ephemeral confirmation is delivered.
+            # Closing, transcript logging, and history persistence have already completed.
+            pass
 
 
 def is_support(member, meta, guild):
