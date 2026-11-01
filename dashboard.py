@@ -6282,33 +6282,25 @@ def guild_emergency_hamburg(guild_id):
         current.setdefault("allowed_role_ids", [])
 
         if action == "add_server":
-            job_id = str(request.form.get("manual_job_id", "")).strip() or str(request.form.get("job_id", "")).strip()
-            join_link = str(request.form.get("join_link", "")).strip()
+            private_server_id = str(request.form.get("private_server_id", "")).strip()
             custom_name = str(request.form.get("display_name", "")).strip()[:80]
             owner_name = str(request.form.get("owner_name", "")).strip()[:80]
-            if job_id and (len(job_id) > 80 or not re.fullmatch(r"[A-Za-z0-9-]+", job_id)):
-                abort(400, "Ungültige Roblox-Server-ID.")
-            if join_link:
-                parsed_link = urlparse(join_link)
-                if parsed_link.scheme != "https" or parsed_link.hostname not in {"roblox.com", "www.roblox.com"} or parsed_link.username or parsed_link.password:
-                    abort(400, "Bitte einen gültigen HTTPS-Roblox-Join-Link eintragen.")
-            if not job_id and not join_link:
-                abort(400, "Bitte eine Server-ID oder einen Roblox-Join-Link eintragen.")
-            import hashlib
-            server_key = job_id or ("link-" + hashlib.sha256(join_link.encode("utf-8")).hexdigest()[:24])
-            if any((item.get("job_id") == job_id and job_id) or item.get("server_key") == server_key or (join_link and item.get("join_link") == join_link) for item in current["servers"]):
-                abort(400, "Dieser Roblox-Server ist bereits verbunden.")
+            if not private_server_id or len(private_server_id) > 128 or not re.fullmatch(r"[A-Za-z0-9_-]+", private_server_id):
+                abort(400, "Bitte eine gültige private Emergency-Hamburg-Server-ID eingeben.")
+            server_key = "private-" + private_server_id
+            if any(str(item.get("private_server_id", "")).strip() == private_server_id for item in current["servers"]):
+                abort(400, "Diese private Server-ID ist bereits verbunden.")
             if len(current["servers"]) >= limit:
                 abort(403, "Das Serverlimit deines aktuellen Plans ist erreicht.")
             current["servers"].append({
-                "job_id": job_id,
+                "job_id": "",
+                "private_server_id": private_server_id,
                 "server_key": server_key,
-                "join_link": join_link,
-                "name": custom_name or ("Emergency Hamburg · " + (job_id or "Privatserver")[:8]),
+                "name": custom_name or ("Emergency Hamburg · " + private_server_id[:8]),
                 "owner": owner_name,
             })
             save_monitor_config(all_configs)
-            _audit_dashboard_change(guild.id, "emergency_hamburg.add_server", session.get("user_id"), "Roblox-Server/Join-Link verbunden: " + server_key[:24])
+            _audit_dashboard_change(guild.id, "emergency_hamburg.add_server", session.get("user_id"), "Private Emergency-Hamburg-Server-ID verbunden: " + server_key[:24])
             _trigger_emergency_hamburg_update(guild)
             return redirect(url_for("guild_emergency_hamburg", guild_id=guild.id))
 
@@ -6405,9 +6397,10 @@ def guild_emergency_hamburg(guild_id):
     connected_cards = []
     for item in servers:
         job_id = str(item.get("job_id", ""))
-        server_key = str(item.get("server_key") or job_id)
-        name = html.escape(str(item.get("name") or ("Emergency Hamburg · " + (job_id or "Privatserver")[:8])))
-        detail = ("Job ID: " + job_id) if job_id else "Join-Link · keine Live-Abfrage"
+        private_server_id = str(item.get("private_server_id", ""))
+        server_key = str(item.get("server_key") or private_server_id or job_id)
+        name = html.escape(str(item.get("name") or ("Emergency Hamburg · " + (private_server_id or job_id or "Privatserver")[:8])))
+        detail = ("Private Server-ID: " + private_server_id) if private_server_id else ("Job ID: " + job_id)
         connected_cards.append(
             '<div class="row"><div><strong>' + name + '</strong><br><small>' +
             html.escape(detail) + '</small></div><form method="post">' + _csrf_field() +
@@ -6434,7 +6427,7 @@ def guild_emergency_hamburg(guild_id):
     )
     body = (
         '<section class="card"><h1>🚨 Emergency Hamburg · Roblox Monitor</h1>'
-        '<p>Verbinde nur die öffentlichen Emergency-Hamburg-Server, die dieser Discord-Server anzeigen soll. Jede Discord-Guild besitzt eine vollständig getrennte Auswahl und Statusnachricht.</p>'
+        '<p>Verbinde private Emergency-Hamburg-Server über ihre private Server-ID. Jede Discord-Guild besitzt eine vollständig getrennte Auswahl und Statusnachricht.</p>'
         + notice +
         '<div class="grid"><div class="stat"><strong>' + str(len(servers)) + ' / ' + str(limit) +
         '</strong><small>Verbundene Roblox-Server · Planlimit</small></div><div class="stat"><strong>5 Min.</strong><small>Aktualisierungsintervall</small></div></div>'
@@ -6442,14 +6435,12 @@ def guild_emergency_hamburg(guild_id):
         '<form method="post" class="card">' + _csrf_field() +
         '<input type="hidden" name="action" value="add_server">'
         '<input type="hidden" name="cursor" value="' + html.escape(page_cursor, quote=True) + '">'
-        '<h2>＋ Öffentlichen Server verbinden</h2>'
-        '<label>Server aus der öffentlichen Liste<select name="job_id"><option value="">— oder unten Server-ID eingeben —</option>' + options_html + '</select></label>'
-        '<label>Roblox-Server-ID / JobId<input name="manual_job_id" maxlength="80" pattern="[A-Za-z0-9-]+" placeholder="Server-JobId (optional)"></label>'
-        '<label>Eigener Servername<input name="display_name" maxlength="80" placeholder="z. B. Polizei Roleplay"></label>'
-        '<label>Roblox-Join-Link (optional, auch ohne JobId)<input type="url" name="join_link" maxlength="500" placeholder="https://www.roblox.com/share?code=..."></label>'
-        '<label>Serverbesitzer (manuelle Angabe)<input name="owner_name" maxlength="80" placeholder="Roblox-Name des Besitzers"></label>'
-        '<button type="submit"' + (' disabled' if len(servers) >= limit else '') + '>Roblox-Server hinzufügen</button>'
-        '<p class="muted">Du kannst eine öffentliche JobId oder einen HTTPS-Roblox-Join-Link speichern. Ein Join-Link dient zum Beitreten und Anzeigen im Embed, liefert allein aber keine Live-Spieler- oder Teamdaten.</p>' + next_page_html + '</form></section>'
+        '<h2>＋ Privaten Server per ID verbinden</h2>'
+        '<label>Private Emergency-Hamburg-Server-ID<input name="private_server_id" maxlength="128" pattern="[A-Za-z0-9_-]+" placeholder="ID aus dem Spiel (server getid)" required></label>'
+        '<label>Servername (optional)<input name="display_name" maxlength="80" placeholder="z. B. IronWolf Roleplay"></label>'
+        '<label>Serverbesitzer (optional)<input name="owner_name" maxlength="80" placeholder="Roblox-Name des Besitzers"></label>'
+        '<button type="submit"' + (' disabled' if len(servers) >= limit else '') + '>Privaten Server verbinden</button>'
+        '<p class="muted">Es wird ausschließlich die private Server-ID gespeichert. Eine vollständige globale Suche aller privaten Server ist nicht verfügbar. Die ID allein liefert keine Live-Spielerzahlen, Teamverteilung oder Paketinformationen.</p></form></section>'
         '<section class="card"><h2>⚙️ Statusnachricht & Berechtigungen</h2>'
         '<form method="post">' + _csrf_field() +
         '<input type="hidden" name="action" value="save_settings">'
@@ -6467,10 +6458,9 @@ def guild_emergency_hamburg(guild_id):
         '<input type="hidden" name="action" value="reset_message">'
         '<button class="secondary" type="submit">Statusnachricht neu erstellen</button></form></section>'
         '<section class="card"><h2>ℹ️ Daten & Grenzen</h2>'
-        '<ul><li>Spielerzahl, maximale Plätze, Ping und FPS stammen aus öffentlich verfügbaren Roblox-Serverdaten.</li>'
-        '<li>Spielerrollen wie Polizei, Feuerwehr oder Rettungsdienst sowie private Servernamen und Besitzer sind nicht über diese öffentliche API verfügbar. Namen und Besitzer können manuell hinterlegt werden. Join-Links werden nur gespeichert und im Embed verlinkt, nicht zur Live-Abfrage genutzt.</li>'
-        '<li>Ein Server kann offline gehen oder aus der öffentlichen Liste verschwinden. Eine nicht gefundene JobId wird als offline/nicht öffentlich gefunden angezeigt; das beweist nicht, dass ein privater Server offline ist.</li>'
-        '<li>Die Roblox-API kann Ergebnisse begrenzen oder vorübergehend nicht erreichbar sein. Der Monitor zeigt dann den letzten Status mit Fehlerhinweis.</li></ul>'
+        '<ul><li>Private Server-IDs identifizieren einen privaten Server, stellen aber keine Live-Telemetrie-Schnittstelle dar.</li>'
+        '<li>Roblox stellt keine vollständige öffentliche Liste aller privaten Emergency-Hamburg-Server mit Sprache, Namen und aktivierten Paketen bereit.</li>'
+        '<li>Spielerzahlen, Teammitglieder, Online-Status und Paketangaben können nur angezeigt werden, wenn eine offizielle Datenquelle diese Werte bereitstellt.</li></ul>'
         '</section>'
     )
     return _page("Emergency Hamburg Monitor", body)
