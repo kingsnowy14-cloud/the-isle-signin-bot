@@ -64,10 +64,10 @@ def premium_servers_admin():
     if not session.get("access_token"):
         return redirect(url_for("login"))
     if not _is_dashboard_owner(session.get("user_id", "")):
-        abort(403, "Nur der Bot-Besitzer (DASHBOARD_ADMIN_USER_IDS) darf Premium-Server auswählen.")
+        abort(403, "Only the bot owner (DASHBOARD_ADMIN_USER_IDS) can select Premium servers.")
     if request.method == "POST":
         if not _csrf_ok():
-            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte lade die Seite neu.")
+            abort(400, "CSRF validation failed. Please reload the page.")
         submitted = {
             item for item in request.form.getlist("guild_ids")
             if item.isdigit() and _bot.get_guild(int(item)) is not None
@@ -88,8 +88,8 @@ def premium_servers_admin():
         rows.append('<p class="muted">Der Bot ist aktuell auf keinem Server.</p>')
     body = (
         '<section class="card"><span class="pill">OWNER · PREMIUM</span><h1 style="margin-top:12px">Premium-Server manuell verwalten</h1>'
-        '<p>Wähle aus, welche Server die Premium-Serverbanner-Funktion verwenden dürfen. Diese Freischaltung ist unabhängig von Nutzer-Premium und wird in Railway/Storage gespeichert.</p>'
-        '<div class="notice">Nur dein Dashboard-Konto, das in <code>DASHBOARD_ADMIN_USER_IDS</code> eingetragen ist, kann diese Liste ändern.</div>'
+        '<p>Choose which servers may use the Premium server banner feature. This authorization is independent of user Premium and is stored in Railway/storage.</p>'
+        '<div class="notice">Only your dashboard account listed in <code>DASHBOARD_ADMIN_USER_IDS</code>  can modify this list.</div>'
         '<form method="post">' + _csrf_field() + ''.join(rows)
         + '<button type="submit">Premium-Server speichern</button></form>'
         '<p><a class="button secondary" href="/">Zurück zum Dashboard</a></p></section>'
@@ -105,11 +105,11 @@ def guild_server_banner(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     if gid not in _load_premium_guilds() and not guild_has_feature(cfg, "branding"):
-        abort(403, "Custom Branding benötigt ein verknüpftes Premium-Konto oder eine manuelle Serverbanner-Freischaltung.")
+        abort(403, "Custom branding requires a linked Premium account or manual server banner authorization.")
     actor_id = str(session.get("user_id", ""))
     actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
     if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
-        abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        abort(403, "You need Administrator or Manage Server permissions.")
     bot_member = guild.me
     if bot_member is None or not bot_member.guild_permissions.manage_guild:
         abort(403, "Der Bot benötigt die Discord-Berechtigung „Server verwalten“.")
@@ -118,10 +118,10 @@ def guild_server_banner(guild_id):
     result_html = ""
     if request.method == "POST":
         if not _csrf_ok():
-            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte lade die Seite neu.")
+            abort(400, "CSRF validation failed. Please reload the page.")
         upload = request.files.get("banner")
         if upload is None or not upload.filename:
-            abort(400, "Bitte wähle ein Bild aus.")
+            abort(400, "Please select an image.")
         raw = upload.read(_MAX_IMAGE_BYTES + 1)
         if not raw or len(raw) > _MAX_IMAGE_BYTES:
             abort(400, "Das Bild darf maximal 8 MB groß sein.")
@@ -132,7 +132,7 @@ def guild_server_banner(guild_id):
             if image_format not in _ALLOWED_IMAGE_TYPES:
                 abort(400, "Erlaubte Bildformate: PNG, JPEG, GIF oder WEBP.")
             if image_format == "GIF" and "ANIMATED_BANNER" not in guild.features:
-                abort(400, "Animierte GIF-Banner sind für diesen Server nicht freigeschaltet. Lade bitte ein statisches PNG-, JPEG- oder WEBP-Bild hoch.")
+                abort(400, "Animated GIF banners are not enabled for this server. Please upload a static PNG, JPEG, or WEBP image.")
         except (UnidentifiedImageError, OSError, ValueError):
             abort(400, "Die hochgeladene Datei ist kein gültiges Bild.")
         try:
@@ -141,7 +141,7 @@ def guild_server_banner(guild_id):
                 _bot.loop,
             )
             future.result(timeout=30)
-            result_html = '<div class="notice">✅ Das Serverbanner wurde erfolgreich geändert.</div>'
+            result_html = '<div class="notice">✅ The server banner was updated successfully.</div>'
         except discord.Forbidden:
             result_html = '<div class="notice">⚠️ Discord hat die Änderung verweigert. Prüfe die Bot-Berechtigung „Server verwalten“.</div>'
         except (discord.HTTPException, asyncio.TimeoutError, ValueError, TypeError) as exc:
@@ -155,7 +155,7 @@ def guild_server_banner(guild_id):
         f'<h1 style="margin-top:12px">Serverbanner ändern · {html.escape(guild.name)}</h1>'
         '<p>Das Banner wird für den gesamten Discord-Server geändert. Discord muss die Banner-Funktion für diesen Server freigeschaltet haben.</p>'
         + result_html + current_banner
-        + ('<div class="notice">⚠️ Discord hat das Serverbanner-Feature für diesen Server nicht freigeschaltet. Dein Premium-Plan ist aktiv, aber Discord kann das Banner-Ändern trotzdem ablehnen.</div>' if not banner_feature_available else '<div class="notice">Empfohlen: 960 × 540 Pixel (16:9). Maximal 8 MB.</div>')
+        + ('<div class="notice">⚠️ Discord has not enabled the server banner feature for this server. Your Premium plan is active, but Discord may still reject banner updates.</div>' if not banner_feature_available else '<div class="notice">Recommended: 960 × 540 pixels (16:9). Maximum 8 MB.</div>')
         + '<form method="post" enctype="multipart/form-data">' + _csrf_field()
         + '<label for="banner">Neues Banner (PNG, JPEG, GIF oder WEBP)</label>'
         + '<input id="banner" type="file" name="banner" accept="image/png,image/jpeg,image/gif,image/webp" required>'
