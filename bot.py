@@ -5378,8 +5378,7 @@ async def on_message(message: discord.Message):
                         except discord.HTTPException as send_error:
                             print(f"[TICKET AI] Could not send reply in ticket channel {message.channel.id}: {send_error}", flush=True)
 
-        # Public AI can answer questions th        # AI is intentionally ticket-only; no automatic replies in public channels.
-ted roles or members.
+        # Ping protection applies to configured protected roles or members.
         if cfg.get("ping_protection_enabled", False) and not message.author.guild_permissions.manage_messages:
             protected_role_ids = {int(value) for value in cfg.get("ping_protected_role_ids", []) if str(value).isdigit()}
             protected_member_ids = {int(value) for value in cfg.get("ping_protected_member_ids", []) if str(value).isdigit()}
