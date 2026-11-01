@@ -1497,7 +1497,7 @@ async def close_ticket(channel, closed_by, meta):
     current_page = ""
     for line in transcript_lines:
         candidate = (current_page + "\n\n" + line).strip()
-        if len(candidate) > 3800 and current_page:
+        if len(candidate) > 2600 and current_page:
             pages.append(current_page)
             current_page = line
         else:
@@ -1518,11 +1518,11 @@ async def close_ticket(channel, closed_by, meta):
                 timestamp=datetime.now(timezone.utc),
             )
             if index == 1:
-                embed.add_field(name="Ticket", value=channel.name[:1024], inline=True)
+                embed.add_field(name="Ticket", value=channel.name[:256], inline=True)
                 embed.add_field(name="Owner", value=f"<@{meta.get('owner_id')}>" if meta.get("owner_id") else "Unknown", inline=True)
-                embed.add_field(name="Closed by", value=getattr(closed_by, "mention", str(closed_by))[:1024], inline=True)
+                embed.add_field(name="Closed by", value=getattr(closed_by, "mention", str(closed_by))[:256], inline=True)
                 embed.add_field(name="Claimed by", value=f"<@{meta['claimed_by']}>" if meta.get("claimed_by") else "Nobody", inline=True)
-                embed.add_field(name="Reason", value=str(meta.get("reason", "Not specified"))[:1024] or "Not specified", inline=False)
+                embed.add_field(name="Reason", value=str(meta.get("reason", "Not specified"))[:256] or "Not specified", inline=False)
             embed.set_footer(text=f"Ticket transcript · Page {index}/{len(pages)}")
             embeds.append(embed)
         return embeds
@@ -4966,7 +4966,7 @@ async def _generate_ticket_ai_reply(channel, message, meta):
     try:
         recent_messages = []
         try:
-            async for item in channel.history(limit=8, oldest_first=True):
+            async for item in channel.history(limit=8, oldest_first=False):
                 if item.author.bot and item.author.id != bot.user.id:
                     continue
                 if (item.content or "").strip():
@@ -4974,6 +4974,7 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         except (discord.Forbidden, discord.HTTPException) as history_error:
             print(f"[TICKET AI] Could not read channel history; using the latest message only: {history_error}", flush=True)
 
+        recent_messages = list(reversed(recent_messages))
         if not any(item.id == message.id for item in recent_messages):
             recent_messages.append(message)
 
@@ -4988,6 +4989,8 @@ async def _generate_ticket_ai_reply(channel, message, meta):
                 history[-1]["parts"][0]["text"] += "\n" + content[:1200]
             else:
                 history.append({"role": role, "parts": [{"text": content[:1200]}]})
+        while history and history[0]["role"] == "model":
+            history.pop(0)
         if not history or history[-1]["role"] != "user":
             history.append({"role": "user", "parts": [{"text": (message.content or "").strip()[:1200]}]})
 
