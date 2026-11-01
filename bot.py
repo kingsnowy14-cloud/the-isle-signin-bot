@@ -6755,7 +6755,7 @@ class ControlTools(commands.Cog):
         await interaction.response.send_message("**Datenstatus**\n" + "\n".join(f"{p.name}: {'vorhanden' if p.exists() else 'noch nicht erstellt'}" for p in paths), ephemeral=True)
 
 class ServerLogs(commands.Cog):
-    """Konfigurierbare Aktivitätslogs mit betroffenen Objekten und Audit-Log-Akteuren."""
+    """Configurable activity logs with affected objects and audit-log actors."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -6777,14 +6777,14 @@ class ServerLogs(commands.Cog):
             actor_text = f"{actor} (ID: {actor.id})"
             if isinstance(actor, discord.Member):
                 actor_text = f"{actor.mention} · {actor} (ID: {actor.id})"
-            embed.add_field(name="Ausgeführt von", value=actor_text[:1024], inline=True)
+            embed.add_field(name="Performed by", value=actor_text[:1024], inline=True)
         else:
-            embed.add_field(name="Ausgeführt von", value="Nicht eindeutig ermittelbar", inline=True)
+            embed.add_field(name="Performed by", value="Could not be determined", inline=True)
         if target is not None:
             target_text = str(target)
             if hasattr(target, "id"):
                 target_text += f" (ID: {target.id})"
-            embed.add_field(name="Betroffen", value=target_text[:1024], inline=True)
+            embed.add_field(name="Target", value=target_text[:1024], inline=True)
         embed.set_footer(text="IronWolf Server-Logs")
         try:
             await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
@@ -6816,12 +6816,12 @@ class ServerLogs(commands.Cog):
         db[str(interaction.guild_id)] = {"channel_id": kanal.id}
         write(SERVER_LOGS, db)
         await interaction.response.send_message(
-            f"Server-Logs werden ab jetzt in {kanal.mention} gespeichert. Die Einstellung bleibt nach Neustarts erhalten.",
+            f"Server logs will now be posted in {kanal.mention} This setting persists across restarts.",
             ephemeral=True,
         )
         await self.log(
-            interaction.guild, "Server-Logs aktiviert",
-            f"Log-Kanal: {kanal.mention} · ID {kanal.id}",
+            interaction.guild, "Server logs enabled",
+            f"Log channel: {kanal.mention} · ID {kanal.id}",
             discord.Color.green(), actor=interaction.user, target=kanal,
         )
 
@@ -6835,16 +6835,16 @@ class ServerLogs(commands.Cog):
         # Write the disabled setting first, then report directly to the previous log channel.
         db.pop(str(interaction.guild_id), None)
         write(SERVER_LOGS, db)
-        await interaction.response.send_message("Server-Logs wurden deaktiviert.", ephemeral=True)
+        await interaction.response.send_message("Server logs have been disabled.", ephemeral=True)
         if isinstance(old_channel, discord.TextChannel):
             embed = discord.Embed(
-                title="Server-Logs deaktiviert",
-                description=f"Deaktiviert von {interaction.user.mention} · ID {interaction.user.id}",
+                title="Server logs disabled",
+                description=f"Disabled by {interaction.user.mention} · ID {interaction.user.id}",
                 color=discord.Color.orange(),
                 timestamp=datetime.now(timezone.utc),
             )
             embed.add_field(name="Server", value=f"{interaction.guild.name} (ID: {interaction.guild.id})", inline=False)
-            embed.add_field(name="Betroffen", value=f"Log-Konfiguration für {old_channel.mention} (ID: {old_channel.id})", inline=False)
+            embed.add_field(name="Target", value=f"Log configuration for {old_channel.mention} (ID: {old_channel.id})", inline=False)
             try:
                 await old_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
             except (discord.Forbidden, discord.HTTPException):
@@ -6852,13 +6852,13 @@ class ServerLogs(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        await self.log(member.guild, "Mitglied beigetreten", f"Mitglied: {member.mention}\nName: {member}\nBenutzer-ID: {member.id}\nAccount erstellt: <t:{int(member.created_at.timestamp())}:F>", discord.Color.green(), target=member)
+        await self.log(member.guild, "Member joined", f"Member: {member.mention}\nName: {member}\nUser ID: {member.id}\nAccount created: <t:{int(member.created_at.timestamp())}:F>", discord.Color.green(), target=member)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         actor = await self.audit_actor(member.guild, discord.AuditLogAction.kick, member.id)
-        title = "Mitglied entfernt (Kick möglich)" if actor else "Mitglied verlassen"
-        details = f"Mitglied: {member}\nBenutzer-ID: {member.id}\nLetzter bekannter Nickname: {member.nick or 'Keiner'}"
+        title = "Member removed (possibly kicked)" if actor else "Member left"
+        details = f"Member: {member}\nUser ID: {member.id}\nLast known nickname: {member.nick or 'None'}"
         await self.log(member.guild, title, details, discord.Color.red(), actor=actor, target=member)
 
     @commands.Cog.listener()
@@ -6866,7 +6866,7 @@ class ServerLogs(commands.Cog):
         if message.guild is None or (message.author and message.author.bot):
             return
         author = f"{message.author} · ID {message.author.id}" if message.author else "Unbekannt"
-        content = discord.utils.escape_mentions(message.content or "[Text nicht im Cache verfügbar]")
+        content = discord.utils.escape_mentions(message.content or "[Text unavailable in cache]")
         actor = None
         if message.author:
             actor = await self.audit_actor(
@@ -6874,10 +6874,10 @@ class ServerLogs(commands.Cog):
                 message.author.id, channel_id=message.channel.id,
             )
         await self.log(
-            message.guild, "Nachricht gelöscht",
-            f"Kanal: {message.channel.mention} · ID {message.channel.id}\nNachrichtenautor: {author}\n"
-            f"Nachrichten-ID: {message.id}\nInhalt:\n{content}",
-            discord.Color.red(), actor=actor, target=f"Nachricht von {author} in #{message.channel.name}",
+            message.guild, "Message deleted",
+            f"Channel: {message.channel.mention} · ID {message.channel.id}\nMessage author: {author}\n"
+            f"Message ID: {message.id}\nContent:\n{content}",
+            discord.Color.red(), actor=actor, target=f"Message by {author} in #{message.channel.name}",
         )
 
     @commands.Cog.listener()
@@ -6891,8 +6891,8 @@ class ServerLogs(commands.Cog):
         channel = messages[0].channel
         actor = await self.audit_actor(guild, discord.AuditLogAction.message_bulk_delete, channel_id=channel.id)
         await self.log(
-            guild, "Mehrere Nachrichten gelöscht",
-            f"Kanal: {channel.mention} · ID {channel.id}\nAnzahl Nachrichten: {len(messages)}",
+            guild, "Multiple messages deleted",
+            f"Channel: {channel.mention} · ID {channel.id}\nMessage count: {len(messages)}",
             discord.Color.red(), actor=actor, target=f"{len(messages)} Nachrichten in #{channel.name}",
         )
 
@@ -6900,12 +6900,12 @@ class ServerLogs(commands.Cog):
     async def on_message_edit(self, before, after):
         if after.guild is None or (after.author and after.author.bot) or before.content == after.content:
             return
-        old = discord.utils.escape_mentions(before.content or "[leer/nicht verfügbar]")
-        new = discord.utils.escape_mentions(after.content or "[leer/nicht verfügbar]")
+        old = discord.utils.escape_mentions(before.content or "[empty/unavailable]")
+        new = discord.utils.escape_mentions(after.content or "[empty/unavailable]")
         await self.log(
-            after.guild, "Nachricht bearbeitet",
-            f"Kanal: {after.channel.mention} · ID {after.channel.id}\nAutor: {after.author} · ID {after.author.id}\n"
-            f"Nachrichten-ID: {after.id}\nVorher: {old}\nNachher: {new}",
+            after.guild, "Message edited",
+            f"Channel: {after.channel.mention} · ID {after.channel.id}\nAuthor: {after.author} · ID {after.author.id}\n"
+            f"Message ID: {after.id}\nBefore: {old}\nAfter: {new}",
             actor=after.author, target=f"Nachricht {after.id} in #{after.channel.name}",
         )
 
@@ -6914,37 +6914,37 @@ class ServerLogs(commands.Cog):
         if before.nick != after.nick:
             actor = await self.audit_actor(after.guild, discord.AuditLogAction.member_update, after.id)
             await self.log(
-                after.guild, "Nickname geändert",
-                f"Mitglied: {after.mention} · ID {after.id}\nVorher: {before.nick or 'Kein Nickname'}\nNachher: {after.nick or 'Kein Nickname'}",
+                after.guild, "Nickname changed",
+                f"Member: {after.mention} · ID {after.id}\nBefore: {before.nick or 'No nickname'}\nAfter: {after.nick or 'No nickname'}",
                 actor=actor, target=after,
             )
         added = [role for role in after.roles if role not in before.roles and not role.is_default()]
         removed = [role for role in before.roles if role not in after.roles and not role.is_default()]
         if added or removed:
-            changes = ["+ Rolle hinzugefügt: " + role.name + f" (ID: {role.id})" for role in added]
-            changes += ["- Rolle entfernt: " + role.name + f" (ID: {role.id})" for role in removed]
+            changes = ["+ Role added: " + role.name + f" (ID: {role.id})" for role in added]
+            changes += ["- Role removed: " + role.name + f" (ID: {role.id})" for role in removed]
             actor = await self.audit_actor(after.guild, discord.AuditLogAction.member_role_update, after.id)
-            await self.log(after.guild, "Mitgliedsrollen geändert", f"Mitglied: {after.mention} · ID {after.id}\n" + "\n".join(changes), actor=actor, target=after)
+            await self.log(after.guild, "Member roles changed", f"Member: {after.mention} · ID {after.id}\n" + "\n".join(changes), actor=actor, target=after)
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
         actor = await self.audit_actor(guild, discord.AuditLogAction.ban, user.id)
-        await self.log(guild, "Mitglied gebannt", f"Benutzer: {user} · ID {user.id}", discord.Color.red(), actor=actor, target=user)
+        await self.log(guild, "Member banned", f"User: {user} · ID {user.id}", discord.Color.red(), actor=actor, target=user)
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild, user):
         actor = await self.audit_actor(guild, discord.AuditLogAction.unban, user.id)
-        await self.log(guild, "Mitglied entbannt", f"Benutzer: {user} · ID {user.id}", discord.Color.green(), actor=actor, target=user)
+        await self.log(guild, "Member unbanned", f"User: {user} · ID {user.id}", discord.Color.green(), actor=actor, target=user)
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
         actor = await self.audit_actor(channel.guild, discord.AuditLogAction.channel_create, channel.id)
-        await self.log(channel.guild, "Kanal erstellt", f"Name: #{channel.name}\nTyp: {type(channel).__name__}\nKategorie: {getattr(getattr(channel, 'category', None), 'name', 'Keine')}\nKanal-ID: {channel.id}", discord.Color.green(), actor=actor, target=channel)
+        await self.log(channel.guild, "Channel created", f"Name: #{channel.name}\nType: {type(channel).__name__}\nCategory: {getattr(getattr(channel, 'category', None), 'name', 'None')}\nChannel ID: {channel.id}", discord.Color.green(), actor=actor, target=channel)
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
         actor = await self.audit_actor(channel.guild, discord.AuditLogAction.channel_delete, channel.id)
-        await self.log(channel.guild, "Kanal gelöscht", f"Name: {channel.name}\nTyp: {type(channel).__name__}\nKanal-ID: {channel.id}", discord.Color.red(), actor=actor, target=f"#{channel.name}")
+        await self.log(channel.guild, "Channel deleted", f"Name: {channel.name}\nType: {type(channel).__name__}\nChannel ID: {channel.id}", discord.Color.red(), actor=actor, target=f"#{channel.name}")
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before, after):
@@ -6952,22 +6952,22 @@ class ServerLogs(commands.Cog):
         if before.name != after.name:
             changes.append(f"Name: {before.name} → {after.name}")
         if getattr(before, "category_id", None) != getattr(after, "category_id", None):
-            changes.append(f"Kategorie: {getattr(getattr(before, 'category', None), 'name', 'Keine')} → {getattr(getattr(after, 'category', None), 'name', 'Keine')}")
+            changes.append(f"Category: {getattr(getattr(before, 'category', None), 'name', 'None')} → {getattr(getattr(after, 'category', None), 'name', 'None')}")
         if getattr(before, "topic", None) != getattr(after, "topic", None):
-            changes.append(f"Thema: {getattr(before, 'topic', None) or 'Keins'} → {getattr(after, 'topic', None) or 'Keins'}")
+            changes.append(f"Topic: {getattr(before, 'topic', None) or 'Keins'} → {getattr(after, 'topic', None) or 'Keins'}")
         if changes:
             actor = await self.audit_actor(after.guild, discord.AuditLogAction.channel_update, after.id)
-            await self.log(after.guild, "Kanal geändert", "\n".join(changes) + f"\nKanal-ID: {after.id}", actor=actor, target=after)
+            await self.log(after.guild, "Channel updated", "\n".join(changes) + f"\nChannel ID: {after.id}", actor=actor, target=after)
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role):
         actor = await self.audit_actor(role.guild, discord.AuditLogAction.role_create, role.id)
-        await self.log(role.guild, "Rolle erstellt", f"Name: {role.name}\nFarbe: {role.colour}\nBerechtigungen: {', '.join(p for p, enabled in role.permissions if enabled) or 'Keine'}\nRollen-ID: {role.id}", discord.Color.green(), actor=actor, target=role)
+        await self.log(role.guild, "Role created", f"Name: {role.name}\nColor: {role.colour}\nPermissions: {', '.join(p for p, enabled in role.permissions if enabled) or 'None'}\nRole ID: {role.id}", discord.Color.green(), actor=actor, target=role)
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role):
         actor = await self.audit_actor(role.guild, discord.AuditLogAction.role_delete, role.id)
-        await self.log(role.guild, "Rolle gelöscht", f"Name: {role.name}\nRollen-ID: {role.id}", discord.Color.red(), actor=actor, target=role.name)
+        await self.log(role.guild, "Role deleted", f"Name: {role.name}\nRole ID: {role.id}", discord.Color.red(), actor=actor, target=role.name)
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before, after):
@@ -6975,30 +6975,30 @@ class ServerLogs(commands.Cog):
         if before.name != after.name:
             changes.append(f"Name: {before.name} → {after.name}")
         if before.colour != after.colour:
-            changes.append(f"Farbe: {before.colour} → {after.colour}")
+            changes.append(f"Color: {before.colour} → {after.colour}")
         if before.permissions != after.permissions:
-            changes.append("Berechtigungen wurden geändert")
+            changes.append("Permissions changed")
         if before.hoist != after.hoist:
-            changes.append(f"Separat anzeigen: {before.hoist} → {after.hoist}")
+            changes.append(f"Display separately: {before.hoist} → {after.hoist}")
         if before.mentionable != after.mentionable:
-            changes.append(f"Erwähnbar: {before.mentionable} → {after.mentionable}")
+            changes.append(f"Mentionable: {before.mentionable} → {after.mentionable}")
         if changes:
             actor = await self.audit_actor(after.guild, discord.AuditLogAction.role_update, after.id)
-            await self.log(after.guild, "Rolle geändert", "\n".join(changes) + f"\nRollen-ID: {after.id}", actor=actor, target=after)
+            await self.log(after.guild, "Role updated", "\n".join(changes) + f"\nRole ID: {after.id}", actor=actor, target=after)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if before.channel == after.channel:
             return
         if before.channel is None and after.channel is not None:
-            title = "Voice-Kanal betreten"
-            details = f"Mitglied: {member.mention} · ID {member.id}\nKanal: {after.channel.name} · ID {after.channel.id}"
+            title = "Joined voice channel"
+            details = f"Member: {member.mention} · ID {member.id}\nChannel: {after.channel.name} · ID {after.channel.id}"
         elif before.channel is not None and after.channel is None:
-            title = "Voice-Kanal verlassen"
-            details = f"Mitglied: {member.mention} · ID {member.id}\nKanal: {before.channel.name} · ID {before.channel.id}"
+            title = "Left voice channel"
+            details = f"Member: {member.mention} · ID {member.id}\nChannel: {before.channel.name} · ID {before.channel.id}"
         else:
             title = "Voice-Kanal gewechselt"
-            details = f"Mitglied: {member.mention} · ID {member.id}\nVon: {before.channel.name} · ID {before.channel.id}\nNach: {after.channel.name} · ID {after.channel.id}"
+            details = f"Member: {member.mention} · ID {member.id}\nVon: {before.channel.name} · ID {before.channel.id}\nNach: {after.channel.name} · ID {after.channel.id}"
         await self.log(member.guild, title, details, actor=member, target=member)
 
 
