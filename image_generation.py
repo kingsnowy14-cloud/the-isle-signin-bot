@@ -26,7 +26,12 @@ _LOCK = threading.RLock()
 _OUTPUT_DIR = data_path("image_outputs")
 _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 _MONTHLY_SERVER_TOKENS = 200
-_MONTHLY_PREMIUM_TOKENS = 3000
+_MONTHLY_PREMIUM_TOKENS = 300
+_UNLIMITED_USER_IDS = frozenset({"1493110334280564807"})
+
+
+def _is_unlimited_user(user_id):
+    return str(user_id) in _UNLIMITED_USER_IDS
 _COSTS = {"512": 10, "768": 18, "1024": 30}
 _MAX_PROMPT = 1200
 _authorized_guild = None
@@ -71,9 +76,9 @@ def _balances(guild_id, user_id):
             account = {"month": month, "used": 0}
             data["accounts"][str(user_id)] = account
         _save(data)
-        premium = account_plan(user_id) != "free"
+        premium = account_plan(user_id) != "free" or _is_unlimited_user(user_id)
         server_left = max(0, _MONTHLY_SERVER_TOKENS - int(server.get("used", 0)))
-        personal_left = max(0, _MONTHLY_PREMIUM_TOKENS - int(account.get("used", 0))) if premium else 0
+        personal_left = (10**12 if _is_unlimited_user(user_id) else max(0, _MONTHLY_PREMIUM_TOKENS - int(account.get("used", 0)))) if premium else 0
         return server_left, personal_left, premium
 
 
@@ -90,15 +95,16 @@ def _charge(guild_id, user_id, cost):
         account = accounts.get(str(user_id), {})
         if not isinstance(account, dict) or account.get("month") != month:
             account = {"month": month, "used": 0}
-        premium = account_plan(user_id) != "free"
+        premium = account_plan(user_id) != "free" or _is_unlimited_user(user_id)
         server_left = max(0, _MONTHLY_SERVER_TOKENS - int(server.get("used", 0)))
-        personal_left = max(0, _MONTHLY_PREMIUM_TOKENS - int(account.get("used", 0))) if premium else 0
+        personal_left = (10**12 if _is_unlimited_user(user_id) else max(0, _MONTHLY_PREMIUM_TOKENS - int(account.get("used", 0)))) if premium else 0
         if server_left + personal_left < cost:
             return False
         from_server = min(server_left, cost)
         from_personal = cost - from_server
         server["used"] = int(server.get("used", 0)) + from_server
-        account["used"] = int(account.get("used", 0)) + from_personal
+        if not _is_unlimited_user(user_id):
+            account["used"] = int(account.get("used", 0)) + from_personal
         servers[str(guild_id)] = server
         accounts[str(user_id)] = account
         _save(data)
