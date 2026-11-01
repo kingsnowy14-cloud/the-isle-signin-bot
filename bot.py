@@ -611,18 +611,21 @@ def bot_text(guild_id, text):
 def migrate_all_guild_configs():
     """Apply new defaults to every known server while preserving existing settings."""
     changed = False
-    # One-time global migration: disable the pre-ticket form on every existing panel.
-    # Server admins can re-enable it later with /ticket-settings.
-    if not config.get("_ticket_form_default_off_v1"):
-        for server_cfg in config.values():
-            if not isinstance(server_cfg, dict):
-                continue
-            panels = server_cfg.get("ticket_panels", {})
-            if isinstance(panels, dict):
-                for panel in panels.values():
-                    if isinstance(panel, dict):
-                        panel["ask_before_open"] = False
-        config["_ticket_form_default_off_v1"] = True
+    # One-time migration per guild: disable pre-ticket forms on existing panels.
+    # Keep migration metadata inside each guild dictionary; top-level config
+    # entries are expected to be guild IDs mapped to dictionaries.
+    config.pop("_ticket_form_default_off_v1", None)
+    for guild_id, server_cfg in list(config.items()):
+        if not str(guild_id).isdigit() or not isinstance(server_cfg, dict):
+            continue
+        if server_cfg.get("_ticket_form_default_off_v1"):
+            continue
+        panels = server_cfg.get("ticket_panels", {})
+        if isinstance(panels, dict):
+            for panel in panels.values():
+                if isinstance(panel, dict):
+                    panel["ask_before_open"] = False
+        server_cfg["_ticket_form_default_off_v1"] = True
         changed = True
     for guild_id, cfg in list(config.items()):
         if not str(guild_id).isdigit():
