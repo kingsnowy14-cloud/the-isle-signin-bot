@@ -71,13 +71,13 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
         RECORDS["applications"][app_id] = row
         save_records()
         english = True
-        embed = discord.Embed(title="📨 New Application" if english else "📨 Neue Fraktionsbewerbung", description=("Applicant: <@{}>\nStatus: ⏳ Pending" if english else "Bewerber: <@{}>\nStatus: ⏳ Offen").format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        embed = discord.Embed(title="📨 New Application" if english else "📨 Neue Fraktionsbewerbung", description=("Applicant: <@{}>\nStatus: ⏳ Pending" if english else "Applicant: <@{}>\nStatus: ⏳ Pending").format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         embed.add_field(name="RP Name" if english else "RP-Name", value=safe_text(row["rp_name"], 200), inline=True)
         embed.add_field(name="Roblox Username" if english else "Roblox Username", value=safe_text(row["roblox_name"], 200), inline=True)
         embed.add_field(name="Age (OOC)" if english else "Alter (OOC)", value=safe_text(row["age"], 30), inline=True)
         embed.add_field(name="Experience" if english else "Erfahrung", value=safe_text(row["experience"]), inline=False)
         embed.add_field(name="Motivation", value=safe_text(row["motivation"]), inline=False)
-        embed.set_footer(text=("Application ID: " if english else "Bewerbungs-ID: ") + app_id)
+        embed.set_footer(text=("Application ID: " if english else "Application ID: ") + app_id)
         try:
             message = await channel.send(embed=embed, view=ApplicationReviewView(self.cog, app_id), allowed_mentions=discord.AllowedMentions.none())
             row["review_message_id"] = message.id
@@ -101,14 +101,14 @@ class DashboardApplicationModal(discord.ui.Modal):
 
     async def on_submit(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
-            await interaction.response.send_message("Bitte nutze dieses Panel auf dem richtigen Server.", ephemeral=True)
+            await interaction.response.send_message("Please use this panel on the correct server.", ephemeral=True)
             return
         if any(row.get("guild_id") == self.guild_id and row.get("user_id") == interaction.user.id and row.get("status") == "pending" and row.get("panel_id") == self.panel_id for row in RECORDS.setdefault("applications", {}).values()):
-            await interaction.response.send_message("Du hast bereits eine offene Bewerbung für dieses Panel.", ephemeral=True)
+            await interaction.response.send_message("You already have a pending application for this panel.", ephemeral=True)
             return
         channel = interaction.guild.get_channel(int(self.panel.get("review_channel_id") or 0))
         if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message("Der Bewerbungs-Prüfkanal ist nicht eingerichtet.", ephemeral=True)
+            await interaction.response.send_message("The application review channel is not configured.", ephemeral=True)
             return
         app_id = "{}-{}-{}".format(self.guild_id, interaction.user.id, int(datetime.now(timezone.utc).timestamp()))
         answers = [{"question": question, "answer": str(field.value).strip()} for question, field in self.fields]
@@ -120,10 +120,10 @@ class DashboardApplicationModal(discord.ui.Modal):
         }
         RECORDS["applications"][app_id] = row
         save_records()
-        embed = discord.Embed(title="📨 Neue Bewerbung · " + str(row["panel_name"])[:200], description="Bewerber: <@{}>\nStatus: ⏳ Offen".format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        embed = discord.Embed(title="📨 New Application · " + str(row["panel_name"])[:200], description="Applicant: <@{}>\nStatus: ⏳ Pending".format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         for question, answer in answers:
             embed.add_field(name=safe_text(question, 250), value=safe_text(answer, 1000) or "—", inline=False)
-        embed.set_footer(text="Bewerbungs-ID: " + app_id)
+        embed.set_footer(text="Application ID: " + app_id)
         try:
             message = await channel.send(embed=embed, view=ApplicationReviewView(self.cog, app_id), allowed_mentions=discord.AllowedMentions.none())
             row["review_message_id"] = message.id
@@ -131,9 +131,9 @@ class DashboardApplicationModal(discord.ui.Modal):
         except (discord.Forbidden, discord.HTTPException):
             RECORDS["applications"].pop(app_id, None)
             save_records()
-            await interaction.response.send_message("Die Bewerbung konnte nicht ans Team gesendet werden.", ephemeral=True)
+            await interaction.response.send_message("Your application could not be sent to the team.", ephemeral=True)
             return
-        await interaction.response.send_message("✅ Deine Bewerbung wurde eingereicht.", ephemeral=True)
+        await interaction.response.send_message("✅ Your application has been submitted.", ephemeral=True)
 
 
 class ApplicationPanelView(discord.ui.View):
@@ -155,7 +155,7 @@ class ApplicationStartButton(discord.ui.Button):
         self.cog, self.guild_id, self.panel_id = cog, guild_id, panel_id
     async def callback(self, interaction):
         if not interaction.guild or interaction.guild.id != self.guild_id:
-            await interaction.response.send_message("Please use this panel on the correct server." if self.guild_id == 1561027077984227371 else "Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
+            await interaction.response.send_message("Please use this panel on the correct server." if True else "Bitte nutze das Panel auf dem richtigen Server.", ephemeral=True)
             return
         if self.panel_id:
             panel = guild_settings(self.guild_id).get("panels", {}).get(str(self.panel_id), {})
@@ -179,20 +179,20 @@ class ApplicationDecisionButton(discord.ui.Button):
     async def callback(self, interaction):
         english = True
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("Only server team members can review applications." if english else "Nur Teammitglieder auf dem Server können Bewerbungen bearbeiten.", ephemeral=True)
+            await interaction.response.send_message("Only server team members can review applications." if english else "Only server team members can review applications.", ephemeral=True)
             return
         settings = guild_settings(interaction.guild.id)
         role_id = settings.get("review_role_id")
         allowed_role = role_id and any(role.id == role_id for role in interaction.user.roles)
         if not (interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.manage_guild or allowed_role):
-            await interaction.response.send_message("You do not have permission to review applications." if english else "Dir fehlt die Berechtigung, Bewerbungen zu bearbeiten.", ephemeral=True)
+            await interaction.response.send_message("You do not have permission to review applications." if english else "You do not have permission to review applications.", ephemeral=True)
             return
         row = RECORDS.setdefault("applications", {}).get(self.app_id)
         if not row or row.get("guild_id") != interaction.guild.id:
-            await interaction.response.send_message("Application not found." if english else "Bewerbung nicht gefunden.", ephemeral=True)
+            await interaction.response.send_message("Application not found." if english else "Application not found.", ephemeral=True)
             return
         if row.get("status") != "pending":
-            await interaction.response.send_message("This application has already been reviewed." if english else "Diese Bewerbung wurde bereits bearbeitet.", ephemeral=True)
+            await interaction.response.send_message("This application has already been reviewed." if english else "This application has already been reviewed.", ephemeral=True)
             return
         row["status"] = "accepted" if self.decision == "approve" else "rejected"
         row["reviewed_by"] = interaction.user.id
@@ -200,7 +200,7 @@ class ApplicationDecisionButton(discord.ui.Button):
         save_records()
         embed = interaction.message.embeds[0] if interaction.message and interaction.message.embeds else discord.Embed(title="Application" if english else "Bewerbung")
         embed.color = discord.Color.green() if self.decision == "approve" else discord.Color.red()
-        embed.description = ("Applicant: <@{}>\nStatus: {}\nReviewed by: {}" if english else "Bewerber: <@{}>\nStatus: {}\nBearbeitet von: {}").format(row["user_id"], ("✅ Accepted" if self.decision == "approve" else "❌ Rejected") if english else ("✅ Angenommen" if self.decision == "approve" else "❌ Abgelehnt"), interaction.user.mention)
+        embed.description = ("Applicant: <@{}>\nStatus: {}\nReviewed by: {}" if english else "Applicant: <@{}>\nStatus: {}\nBearbeitet von: {}").format(row["user_id"], ("✅ Accepted" if self.decision == "approve" else "❌ Rejected") if english else ("✅ Angenommen" if self.decision == "approve" else "❌ Abgelehnt"), interaction.user.mention)
         await interaction.response.edit_message(embed=embed, view=None)
         applicant = interaction.guild.get_member(row["user_id"])
         if applicant:
@@ -210,15 +210,15 @@ class ApplicationDecisionButton(discord.ui.Button):
                 pass
         log_channel = interaction.guild.get_channel(settings.get("log_channel_id") or 0)
         if isinstance(log_channel, discord.TextChannel):
-            log = discord.Embed(title="📋 Application Reviewed" if english else "📋 Bewerbung bearbeitet", description=("Applicant: <@{}>\nDecision: {}\nReviewer: {}\nID: {}" if english else "Bewerber: <@{}>\nEntscheidung: {}\nBearbeiter: {}\nID: {}").format(row["user_id"], row["status"], interaction.user.mention, self.app_id), color=discord.Color.green() if self.decision == "approve" else discord.Color.red(), timestamp=datetime.now(timezone.utc))
+            log = discord.Embed(title="📋 Application Reviewed" if english else "📋 Application reviewed", description=("Applicant: <@{}>\nDecision: {}\nReviewer: {}\nID: {}" if english else "Applicant: <@{}>\nEntscheidung: {}\nBearbeiter: {}\nID: {}").format(row["user_id"], row["status"], interaction.user.mention, self.app_id), color=discord.Color.green() if self.decision == "approve" else discord.Color.red(), timestamp=datetime.now(timezone.utc))
             await log_channel.send(embed=log, allowed_mentions=discord.AllowedMentions.none())
-        await interaction.followup.send("Decision saved and logged." if english else "Entscheidung gespeichert und protokolliert.", ephemeral=True)
+        await interaction.followup.send("Decision saved and logged." if english else "Decision saved and logged.", ephemeral=True)
 
 class Applications(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None, panel_name="Bewerbung", button_label=None):
+    async def dashboard_create_panel(self, guild_id, panel_channel_id, review_channel_id, log_channel_id, title, description, questions, review_role_id=None, ping_role_id=None, panel_name="Application", button_label=None):
         """Create and persist a dashboard-managed application panel.
 
         Keep panel_name and button_label optional so older slash-command callers
@@ -243,9 +243,9 @@ class Applications(commands.Cog):
         if not isinstance(channel, discord.TextChannel):
             panels.pop(panel_id, None)
             save_config()
-            raise ValueError("Der ausgewählte Panel-Kanal ist nicht verfügbar.")
+            raise ValueError("The selected application panel channel is unavailable.")
         embed = discord.Embed(title=panel["title"], description=panel["description"], color=discord.Color.dark_blue())
-        embed.set_footer(text="IronWolf RP • Bewerbungen")
+        embed.set_footer(text="IronWolf RP • Applications")
         view = ApplicationPanelView(self, guild_id, panel_id=panel_id, button_label=label)
         message = await channel.send(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
         panel["message_id"] = message.id
@@ -264,10 +264,10 @@ class Applications(commands.Cog):
             if row.get("status") == "pending":
                 self.bot.add_view(ApplicationReviewView(self, app_id))
 
-    @app_commands.command(name="bewerbung-panel", description="Erstellt ein dauerhaftes Bewerbungs-Panel")
+    @app_commands.command(name="application-panel", description="Creates a persistent application panel")
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(manage_guild=True)
-    @app_commands.describe(kanal="Kanal für das Bewerbungs-Panel", review_kanal="Kanal für eingehende Bewerbungen", log_kanal="Kanal für Entscheidungsprotokolle", review_rolle="Optionale Rolle für Bewerbungsprüfer", button_name="Custom name for the application button (max. 80 characters)")
+    @app_commands.describe(kanal="Channel for the application panel", review_kanal="Channel for incoming applications", log_kanal="Channel for decision logs", review_rolle="Optional role for application reviewers", button_name="Custom name for the application button (max. 80 characters)")
     async def application_panel(self, interaction: discord.Interaction, kanal: discord.TextChannel, review_kanal: discord.TextChannel, log_kanal: discord.TextChannel, review_rolle: discord.Role = None, button_name: str = None):
         if not interaction.guild:
             await interaction.response.send_message("Nur auf einem Server verfügbar.", ephemeral=True)
@@ -277,7 +277,7 @@ class Applications(commands.Cog):
         save_config()
         english = gid == 1561027077984227371
         embed = discord.Embed(title="🐺 IronWolf – Applications" if english else "🐺 IronWolf – Fraktionsbewerbungen", description=("Would you like to join our team?\n\nClick **Apply Now** and complete the form. Your answers will be sent confidentially to the team. You can only have one pending application at a time." if english else "Du möchtest Teil unseres Teams werden?\n\nKlicke auf **Jetzt bewerben** und fülle das Formular vollständig aus. Deine Angaben werden vertraulich an das zuständige Team übermittelt. Du kannst immer nur eine offene Bewerbung gleichzeitig haben."), color=discord.Color.dark_blue())
-        embed.set_footer(text="IronWolf RP • Applications" if english else "IronWolf RP • Bewerbungen")
+        embed.set_footer(text="IronWolf RP • Applications" if english else "IronWolf RP • Applications")
         self.bot.add_view(ApplicationPanelView(self, gid))
         await kanal.send(embed=embed, view=ApplicationPanelView(self, gid))
         await interaction.response.send_message(("✅ Application panel created in {}. Button: **{}**. Review channel: {} · Log channel: {}".format(kanal.mention, guild_settings(gid).get("button_label") or ("Apply Now" if english else "Jetzt bewerben"), review_kanal.mention, log_kanal.mention)) if english else ("✅ Bewerbungs-Panel in {} erstellt. Button: **{}**. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, guild_settings(gid).get("button_label") or "Jetzt bewerben", review_kanal.mention, log_kanal.mention)), ephemeral=True)
