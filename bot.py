@@ -2038,9 +2038,16 @@ class DashboardMessageView(discord.ui.View):
                 ))
             elif item.get("type") == "role":
                 role_id = int(item.get("role_id", 0))
+                style_name = str(item.get("style", "primary"))
+                style = {
+                    "primary": discord.ButtonStyle.primary,
+                    "secondary": discord.ButtonStyle.secondary,
+                    "success": discord.ButtonStyle.success,
+                    "danger": discord.ButtonStyle.danger,
+                }.get(style_name, discord.ButtonStyle.primary)
                 button = discord.ui.Button(
                     label=label,
-                    style=discord.ButtonStyle.primary,
+                    style=style,
                     custom_id=f"iwrole:{self.guild_id}:{role_id}:{index}",
                 )
                 async def callback(interaction: discord.Interaction, rid=role_id):
