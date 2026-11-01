@@ -2244,7 +2244,8 @@ async def _change_ticket_member(interaction: discord.Interaction, member: discor
         await interaction.response.send_message(f"Discord could not update ticket access (HTTP {exc.status}).", ephemeral=True)
         return
     action = "Added" if add else "Removed"
-    await interaction.response.send_message(f"✅ {member.mention} has been {action.lower()} {"to" if add else "from"} this ticket.", ephemeral=False)
+    direction = "to" if add else "from"
+    await interaction.response.send_message(f"✅ {member.mention} has been {action.lower()} {direction} this ticket.", ephemeral=False)
 
 
 @bot.tree.command(name="add", description="Add a member to the current private ticket")
