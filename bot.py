@@ -170,10 +170,10 @@ async def log_command_usage(guild, channel, user, command_name, command_type):
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(name="Benutzer", value=f"{user.mention} (ID: {user.id})", inline=False)
+    embed.add_field(name="User", value=f"{user.mention} (ID: {user.id})", inline=False)
     embed.add_field(name="Befehl", value=f"`{discord.utils.escape_markdown(str(command_name)[:150])}`", inline=True)
     embed.add_field(name="Typ", value=command_type, inline=True)
-    embed.add_field(name="Kanal", value=f"{channel.mention} (ID: {channel.id})", inline=False)
+    embed.add_field(name="Channel", value=f"{channel.mention} (ID: {channel.id})", inline=False)
     try:
         await output.send(embed=embed)
     except (discord.Forbidden, discord.HTTPException) as exc:
@@ -288,22 +288,22 @@ async def announce_private_release(changes):
         if not line.lower().startswith(("merge pull request", "merge branch", "co-authored-by:"))
         and not line.startswith((chr(96), "#"))
     ]
-    summary = summary_lines[0] if summary_lines else "Neue Verbesserungen und technische Aktualisierungen wurden bereitgestellt."
+    summary = summary_lines[0] if summary_lines else "New improvements and technical updates have been released."
     # Publish descriptive notes only: no source, snippets, file paths, hashes, or URLs.
     summary = re.sub(r"\x60+[^\x60]*\x60+", "[interne technische Details]", summary)
     summary = re.sub(r"https?://\S+|\b[a-f0-9]{7,40}\b", "", summary, flags=re.IGNORECASE)
     summary = re.sub(r"\s+", " ", summary).strip()[:350]
     if not summary:
-        summary = "Neue Verbesserungen und technische Aktualisierungen wurden bereitgestellt."
+        summary = "New improvements and technical updates have been released."
 
     embed = discord.Embed(
         title="🐺 IronWolf · Update verfügbar",
         description=f"**Änderung / Verbesserung**\n{discord.utils.escape_markdown(summary)}\n\n"
-                    "Dieses Update gehört zu diesem Server. Hier werden nur verständliche Änderungsinfos veröffentlicht – **kein Quellcode und keine Codeausschnitte**.",
+                    "This update is for this server. Only readable release notes are published here — **no source code or code snippets**.",
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.set_footer(text="Privater Server-Updatekanal")
+    embed.set_footer(text="Private server update channel")
     try:
         await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
     except (discord.Forbidden, discord.HTTPException) as exc:
@@ -333,7 +333,7 @@ async def ironwolf_logs(ctx):
         return
     lines = []
     for entry in reversed(logs[-15:]):
-        stamp = entry.get("detected_at", "Zeit unbekannt").replace("T", " ")[:19]
+        stamp = entry.get("detected_at", "Unknown time").replace("T", " ")[:19]
         lines.append(f"• **{entry.get('module', 'Unbekannt')}** — {entry.get('change', 'Änderung')} — {stamp} UTC")
     text = "\n".join(lines)
     if len(text) > 1900:
@@ -839,7 +839,7 @@ TEXTS = {
 
 
 def set_user_language(user_id, language):
-    data.setdefault("languages", {})[str(user_id)] = language
+    data.setdefault("languages", {})[str(user_id)] = "en"
     save_json(DATA_FILE, data)
 
 
@@ -905,7 +905,7 @@ class LanguageSelect(discord.ui.Select):
                          custom_id="registration:language")
 
     async def callback(self, interaction: discord.Interaction):
-        language = self.values[0]
+        language = "en"
         set_user_language(interaction.user.id, language)
         await interaction.response.send_message(TEXTS[language]["language_saved"], ephemeral=True)
 
@@ -936,15 +936,15 @@ class GamingAccountVerifyView(discord.ui.View):
                         link_url = _create_steam_link_url(interaction.guild_id, interaction.user.id)
                         message = (
                             "🔐 **Steam sicher verknüpfen**\nÖffne diesen Link und melde dich direkt bei Steam an. "
-                            "Your Steam password is never shared with IronWolf. Der Link ist 10 Minuten gültig "
+                            "Your Steam password is never shared with IronWolf. The link is valid for 10 minutes "
                             "and can only be used once.\n" + link_url
                         )
                     else:
                         link_url = _create_roblox_link_url(interaction.guild_id, interaction.user.id)
                         message = (
                             "🔐 **Roblox sicher verknüpfen**\nÖffne den Link und melde dich direkt bei Roblox an. "
-                            "IronWolf fragt nur deine Roblox-Profilidentität ab, niemals dein Passwort. "
-                            "Der Link ist 10 Minuten gültig und einmalig.\n" + link_url
+                            "IronWolf only accesses your Roblox profile identity, never your password. "
+                            "The link is valid for 10 minutes and can only be used once.\n" + link_url
                         )
                     await interaction.followup.send(message, ephemeral=True)
                 except ValueError as exc:
@@ -968,7 +968,7 @@ class LanguageView(discord.ui.View):
 class RegistrationModal(discord.ui.Modal):
     def __init__(self, action: str, language: str):
         self.action = action
-        self.language = language if language in TEXTS else "en"
+        self.language = "en"
         t = TEXTS[self.language]
         super().__init__(title=t["modal_title"], timeout=300)
         self.dinosaur = discord.ui.TextInput(
@@ -1026,7 +1026,7 @@ class RegistrationModal(discord.ui.Modal):
             announced = await send_public_registration(guild, interaction.user, "Sign In", dinosaur, skin, location, pack)
             message = t["signin_success"]
             if not announced:
-                message += " Die Anmeldung wurde gespeichert, aber die öffentliche Meldung konnte nicht gesendet werden." if self.language == "de" else " Your registration was saved, but the public announcement could not be sent."
+                message += " Your registration was saved, but the public announcement could not be sent." if self.language == "de" else " Your registration was saved, but the public announcement could not be sent."
             await interaction.response.send_message(message, ephemeral=True)
         else:
             if not current:
@@ -1039,7 +1039,7 @@ class RegistrationModal(discord.ui.Modal):
             clear_registration(interaction.user.id, guild.id)
             message = t["signout_success"]
             if not announced:
-                message += " Du wurdest abgemeldet, aber die öffentliche Meldung konnte nicht gesendet werden." if self.language == "de" else " You were signed out, but the public announcement could not be sent."
+                message += " You were signed out, but the public announcement could not be sent." if self.language == "de" else " You were signed out, but the public announcement could not be sent."
             await interaction.response.send_message(message, ephemeral=True)
 
 
@@ -1203,7 +1203,7 @@ class TicketPanelSelect(discord.ui.Select):
             for index, label in enumerate(labels[:10])
         ]
         super().__init__(
-            placeholder="Ticket-Art auswählen …",
+            placeholder="Select a ticket type …",
             min_values=1,
             max_values=1,
             options=options,
@@ -1274,14 +1274,14 @@ class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
 
 def ticket_status_embed(meta, channel_id=None):
     """Build the compact, single-source ticket summary shown above the controls."""
-    ticket_id = meta.get("ticket_number") or channel_id or "Unbekannt"
+    ticket_id = meta.get("ticket_number") or channel_id or "Unknown"
     owner_id = meta.get("owner_id")
     claimed_by = meta.get("claimed_by")
     embed = discord.Embed(title="🎫 Ticket-Informationen", color=discord.Color.blurple())
     embed.add_field(name="Kategorie", value=str(meta.get("label") or "Ticket")[:100], inline=True)
     embed.add_field(name="Ticket-ID", value=str(ticket_id), inline=True)
-    embed.add_field(name="Geöffnet von", value=f"<@{owner_id}>" if owner_id else "Unbekannt", inline=True)
-    embed.add_field(name="Übernommen von", value=f"<@{claimed_by}>" if claimed_by else "Niemand", inline=True)
+    embed.add_field(name="Opened by", value=f"<@{owner_id}>" if owner_id else "Unknown", inline=True)
+    embed.add_field(name="Claimed by", value=f"<@{claimed_by}>" if claimed_by else "Nobody", inline=True)
     return embed
 
 
@@ -1706,7 +1706,7 @@ async def award_message_xp(message):
         embed = create_embed(
             title="🎉 Levelaufstieg!",
             description=(
-                f"Glückwunsch {message.author.mention}!\n\n"
+                f"Congratulations {message.author.mention}!\n\n"
                 f"You are now **Level {new_level}**!\n"
                 f"⭐ XP insgesamt: **{stats['xp']}**"
             ),
@@ -1905,7 +1905,7 @@ async def send_captcha_challenge(interaction: discord.Interaction):
     image_file = discord.File(_make_captcha_image(answer), filename="verification-captcha.png")
     embed = create_embed(
         title="🧩 Verification",
-        description="Lies den Code im Bild und drücke unten die passende von drei Antworten. Die Aufgabe läuft nach 2 Minuten ab.",
+        description="Read the code in the image and select the matching option below. The challenge expires after 2 minutes.",
         color=discord.Color.blurple(),
     )
     embed.set_image(url="attachment://verification-captcha.png")
@@ -1971,12 +1971,12 @@ class DashboardMessageView(discord.ui.View):
 
     async def toggle_role(self, interaction: discord.Interaction, role_id: int):
         if not interaction.guild or interaction.guild.id != self.guild_id or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("This button belongs to a different server." if self.guild_id == 1561027077984227371 else "Dieser Button gehört zu einem anderen Server.", ephemeral=True)
+            await interaction.response.send_message("This button belongs to a different server." if self.guild_id == 1561027077984227371 else "This button belongs to a different server.", ephemeral=True)
             return
         role = interaction.guild.get_role(role_id)
         me = interaction.guild.me
         if role is None or role.is_default() or role.managed or me is None or role >= me.top_role:
-            await interaction.response.send_message("This role cannot be assigned right now. Check that it exists and is below IronWolf’s highest role." if self.guild_id == 1561027077984227371 else "Diese Rolle kann aktuell nicht vergeben werden: Prüfe, ob sie existiert und unter der höchsten IronWolf-Botrolle liegt.", ephemeral=True)
+            await interaction.response.send_message("This role cannot be assigned right now. Check that it exists and is below IronWolf’s highest role." if self.guild_id == 1561027077984227371 else "This role cannot be assigned right now. Check that it exists and is below IronWolf’s highest role.", ephemeral=True)
             return
         if not me.guild_permissions.manage_roles:
             await interaction.response.send_message("IronWolf needs the Manage Roles permission on this server." if self.guild_id == 1561027077984227371 else "IronWolf needs the Manage Roles permission on this server.", ephemeral=True)
@@ -2040,9 +2040,7 @@ class VerifyView(discord.ui.View):
 @bot.tree.command(name="language", description="Set your private registration form language")
 @app_commands.describe(sprache="Choose a language")
 @app_commands.choices(sprache=[
-    app_commands.Choice(name="Deutsch", value="de"),
     app_commands.Choice(name="English", value="en"),
-    app_commands.Choice(name="Čeština", value="cs"),
 ])
 async def sprache(interaction: discord.Interaction, sprache: app_commands.Choice[str]):
     set_user_language(interaction.user.id, sprache.value)
@@ -2429,7 +2427,7 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
             f"**Inaktiv / keine Aktivität:** {len(inactive)}\n"
             f"**Erfasste Nachrichten gesamt:** {total_messages:,}\n"
             f"**Erfasste Voice-Zeit gesamt:** {format_duration(total_voice_seconds)}\n\n"
-            f"**Zuletzt aktive Mitglieder**\n" + ("\n".join(top_lines) if top_lines else "Noch keine Aktivität erfasst.")
+            f"**Zuletzt aktive Mitglieder**\n" + ("\n".join(top_lines) if top_lines else "No activity recorded yet.")
         ).replace(",", "."),
         color=discord.Color.blurple(),
         timestamp=now,
@@ -2449,7 +2447,7 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
     else:
         await interaction.followup.send(
             "ℹ️ Es ist kein Aktivitätskanal eingerichtet. Bericht wird dir privat angezeigt. "
-            "Nutze zuerst /aktivitaetskanal, um einen Protokollkanal festzulegen.",
+            "Use /set-activity-log-channel first to configure a log channel.",
             embed=embed,
             ephemeral=True,
         )
@@ -2502,14 +2500,14 @@ async def anmeldepannel(ctx):
         title="🦖 The Isle — Server Sign-In",
         description=(
             "Welcome to the server registration panel!\n"
-            "Willkommen beim Server-Anmeldepanel!\n"
+            "Welcome to the server sign-in panel!\n"
             "Vítejte v registračním panelu serveru!\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "**How to use / Anleitung / Návod**\n"
             "1. Choose your private language below.\n"
             "2. Press **Sign In** and fill in Dinosaur, Skin and Location.\n"
             "3. When you leave, press **Sign Out**.\n\n"
-            "1. Wähle unten deine private Sprache.\n"
+            "1. Select your private language below.\n"
             "2. Drücke **Sign In** und fülle Dinosaurier, Skin und Standort aus.\n"
             "3. Wenn du gehst, drücke **Sign Out**.\n\n"
             "1. Níže si vyber jazyk soukromého formuláře.\n"
@@ -2551,13 +2549,13 @@ def _can_moderate(interaction: discord.Interaction, member: discord.Member):
     if interaction.guild is None or not isinstance(interaction.user, discord.Member):
         return False, "This command can only be used in a server."
     if member.id == interaction.user.id:
-        return False, "Du kannst diese Aktion nicht gegen dich selbst ausführen."
+        return False, "You cannot perform this action on yourself."
     if member.id == interaction.guild.owner_id:
         return False, "Der Serverinhaber kann nicht moderiert werden."
     if interaction.user.id != interaction.guild.owner_id and member.top_role >= interaction.user.top_role:
-        return False, "Deine höchste Rolle muss über der höchsten Rolle des Zielmitglieds liegen."
+        return False, "Your highest role must be above the target member’s highest role."
     if interaction.guild.me and member.top_role >= interaction.guild.me.top_role:
-        return False, "Die höchste Rolle des Bots muss über der höchsten Rolle des Zielmitglieds liegen."
+        return False, "The bot’s highest role must be above the target member’s highest role."
     return True, ""
 
 
@@ -2880,14 +2878,14 @@ class BirthdayRegisterView(discord.ui.View):
     @discord.ui.button(label="Geburtstag eintragen", style=discord.ButtonStyle.primary, emoji="🎂", custom_id="ironwolf:birthday:register")
     async def register_birthday(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild is None:
-            await interaction.response.send_message("Bitte nutze diesen Button auf einem Server.", ephemeral=True)
+            await interaction.response.send_message("Please use this button in a server.", ephemeral=True)
             return
         await interaction.response.send_modal(BirthdayRegisterModal())
 
     @discord.ui.button(label="Meinen Geburtstag löschen", style=discord.ButtonStyle.danger, emoji="🗑️", custom_id="ironwolf:birthday:delete_own")
     async def delete_own_birthday(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.guild is None:
-            await interaction.response.send_message("Bitte nutze diesen Button auf einem Server.", ephemeral=True)
+            await interaction.response.send_message("Please use this button in a server.", ephemeral=True)
             return
         cfg = guild_config(interaction.guild.id)
         user_id = str(interaction.user.id)
@@ -2914,7 +2912,7 @@ async def refresh_birthday_calendar(guild, cfg=None):
     if not isinstance(channel, discord.TextChannel) or not message_id:
         return False
 
-    month_names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
+    month_names = ["January", "February", "March", "April", "May", "June", "July", "August",
                    "September", "Oktober", "November", "Dezember"]
     entries = [[] for _ in range(12)]
     for user_id, birthday in cfg.get("birthdays", {}).items():
@@ -2969,7 +2967,7 @@ async def birthday_channel_set(interaction: discord.Interaction, kanal: discord.
     cfg = guild_config(interaction.guild_id)
     cfg["birthday_channel"] = kanal.id if kanal else None
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message("Geburtstagsgrüße " + (f"aktiviert in {kanal.mention}." if kanal else "deaktiviert."), ephemeral=True)
+    await interaction.response.send_message("Birthday greetings " + (f"enabled in {kanal.mention}." if kanal else "disabled."), ephemeral=True)
 
 @bot.tree.command(name="birthday", description="Saves your birthday for server greetings")
 @app_commands.guild_only()
@@ -2982,7 +2980,7 @@ async def birthday_register(interaction: discord.Interaction, monat: app_command
     cfg = guild_config(interaction.guild_id)
     cfg.setdefault("birthdays", {})[str(interaction.user.id)] = {"month": int(monat), "day": int(tag)}
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"Dein Geburtstag wurde als {tag:02d}.{monat:02d} gespeichert. Es wird nur Tag und Monat gespeichert.", ephemeral=True)
+    await interaction.response.send_message(f"Your birthday was saved as {tag:02d}.{monat:02d}. Only the day and month are stored.", ephemeral=True)
 
 @bot.tree.command(name="birthday-delete", description="Deletes your saved birthday")
 @app_commands.guild_only()
@@ -3065,7 +3063,7 @@ async def backup_command(interaction: discord.Interaction):
                 archive.write(path, arcname=path.name)
     buffer.seek(0)
     try:
-        await interaction.followup.send("Hier ist dein Backup von `config.json` und `data.json`.", file=discord.File(buffer, filename=f"bot-backup-{interaction.guild_id}.zip"), ephemeral=True)
+        await interaction.followup.send("Here is your backup of `config.json` and `data.json`.", file=discord.File(buffer, filename=f"bot-backup-{interaction.guild_id}.zip"), ephemeral=True)
     except discord.HTTPException:
         await interaction.followup.send("The backup could not be sent. Check the file size and bot connection.", ephemeral=True)
 
@@ -3162,8 +3160,8 @@ class AnonymousFeedbackModal(discord.ui.Modal):
         super().__init__(title=title, timeout=300)
         self.guild_id = guild_id
         self.feedback_text = discord.ui.TextInput(
-            label="Dein Feedback",
-            placeholder="Schreibe dein Feedback hier …",
+            label="Your feedback",
+            placeholder="Write your feedback here …",
             style=discord.TextStyle.paragraph,
             min_length=3,
             max_length=1500,
@@ -3180,13 +3178,13 @@ class AnonymousFeedbackModal(discord.ui.Modal):
         channel = interaction.guild.get_channel(channel_id) if interaction.guild else None
         if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message(
-                "Das Feedback-Ziel ist momentan nicht korrekt eingerichtet. Bitte informiere das Serverteam.",
+                "The feedback destination is not configured correctly. Please contact the server team.",
                 ephemeral=True,
             )
             return
         text = str(self.feedback_text.value).strip()
         if not text:
-            await interaction.response.send_message("Bitte gib ein Feedback ein.", ephemeral=True)
+            await interaction.response.send_message("Please enter feedback.", ephemeral=True)
             return
         embed = discord.Embed(
             title="📨 Anonymes Feedback",
@@ -3444,7 +3442,7 @@ async def case_command(interaction: discord.Interaction, nummer: app_commands.Ra
 @app_commands.checks.has_permissions(ban_members=True)
 async def unban_command(interaction: discord.Interaction, user_id: str, grund: str = "Kein Grund angegeben"):
     if not user_id.isdigit():
-        await interaction.response.send_message("Bitte eine numerische Discord-ID eingeben.", ephemeral=True)
+        await interaction.response.send_message("Please enter a numeric Discord ID.", ephemeral=True)
         return
     try:
         user = await bot.fetch_user(int(user_id))
@@ -3509,7 +3507,7 @@ async def unlockdown_command(interaction: discord.Interaction):
 async def automod_set(interaction: discord.Interaction, aktiviert: bool):
     guild_config(interaction.guild_id)["automod_enabled"] = aktiviert
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"AutoMod ist jetzt **{'aktiviert' if aktiviert else 'deaktiviert'}**. Aktiv: 6 Nachrichten innerhalb von 8 Sekunden lösen Löschen und einen 2-Minuten-Timeout aus.", ephemeral=True)
+    await interaction.response.send_message(f"AutoMod is now **{'enabled' if aktiviert else 'disabled'}**. Active: 6 messages within 8 seconds trigger deletion and a 2-minute timeout.", ephemeral=True)
 
 
 @bot.tree.command(name="daily", description="Claim XP once every 24 hours")
@@ -3523,7 +3521,7 @@ async def daily_command(interaction: discord.Interaction):
     if now - last < 86400:
         hours = int((86400 - (now - last)) // 3600)
         minutes = int(((86400 - (now - last)) % 3600) // 60)
-        await interaction.response.send_message(f"Deine tägliche Belohnung ist bereits abgeholt. Komm in **{hours} Std. {minutes} Min.** wieder.", ephemeral=True)
+        await interaction.response.send_message(f"You have already claimed your daily reward. Come back in **{hours} hr {minutes} min**.", ephemeral=True)
         return
     stats = get_level_xp(interaction.guild_id, interaction.user.id)
     reward = random.randint(40, 80)
@@ -3709,7 +3707,7 @@ def _id_card_image(guild, member, card_number, answers=None):
 def _id_card_issue(guild, member, application_id, answers=None):
     cfg = guild_config(guild.id)
     answers = answers or []
-    card = discord.Embed(title=cfg.get("id_card_title", "🪪 Mitgliedsausweis"), description="Dein digitaler Mitgliedsausweis mit deinen Antragsangaben wurde ausgestellt.", color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)))
+    card = discord.Embed(title=cfg.get("id_card_title", "🪪 Mitgliedsausweis"), description="Your digital member ID card has been issued using your application details.", color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16)))
     card.add_field(name="Mitglied", value=member.mention, inline=True)
     card.add_field(name="Ausweisnummer", value=str(application_id), inline=True)
     for item in answers[:10]:
@@ -3727,10 +3725,10 @@ async def _id_card_dm_application(guild_id, user):
         if guild is None:
             return
         cfg = guild_config(guild.id)
-        questions = [str(q).strip()[:45] for q in (cfg.get("id_card_questions") or ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]) if str(q).strip()][:10]
+        questions = [str(q).strip()[:45] for q in (cfg.get("id_card_questions") or ["What name would you like on your ID card?", "Why do you need an ID card?"]) if str(q).strip()][:10]
         if not questions:
-            questions = ["Wie lautet dein gewünschter Ausweisname?", "Warum benötigst du einen Ausweis?"]
-        await user.send(f"🪪 **Ausweisantrag für {guild.name}**\nIch stelle dir jetzt {len(questions)} Frage(n). Antworte jeweils direkt auf meine DM. Du hast pro Frage 5 Minuten Zeit. Schreibe ABBRECHEN, um aufzuhören.")
+            questions = ["What name would you like on your ID card?", "Why do you need an ID card?"]
+        await user.send(f"🪪 **ID card application for {guild.name}**\nI will now ask you {len(questions)} question(s). Reply directly to my DM. You have 5 minutes per question. Type CANCEL to stop.")
         dm_channel = user.dm_channel or await user.create_dm()
         answers = []
         for index, question in enumerate(questions, start=1):
@@ -3740,19 +3738,19 @@ async def _id_card_dm_application(guild_id, user):
             try:
                 reply = await bot.wait_for("message", check=check, timeout=300)
             except asyncio.TimeoutError:
-                await user.send("⌛ Dein Ausweisantrag wurde wegen Zeitüberschreitung abgebrochen. Starte ihn über den Server-Button erneut.")
+                await user.send("⌛ Your ID card application timed out. Start again using the server button.")
                 return
             if reply.content.strip().lower() in {"abbrechen", "cancel", "stop"}:
-                await user.send("Der Ausweisantrag wurde abgebrochen.")
+                await user.send("Your ID card application was cancelled.")
                 return
             answer = reply.content.strip()
             if not answer:
-                await user.send("Bitte gib eine Antwort ein. Starte den Antrag erneut.")
+                await user.send("Please provide an answer. Start the application again.")
                 return
             answers.append({"question": question, "answer": answer[:500]})
         existing = next((row for row in RECORDS.setdefault("id_card_applications", {}).values() if row.get("guild_id") == guild.id and row.get("user_id") == user.id and row.get("status") == "pending"), None)
         if existing:
-            await user.send("Du hast bereits einen offenen Ausweisantrag. Deine Antworten wurden nicht doppelt eingereicht.")
+            await user.send("You already have an open ID card application. Your answers were not submitted twice.")
             return
         app_id = str(guild.id) + "-" + str(user.id) + "-" + str(int(datetime.now(timezone.utc).timestamp()))
         auto = bool(cfg.get("id_card_auto_approve", False))
@@ -3770,14 +3768,14 @@ async def _id_card_dm_application(guild_id, user):
                     except (discord.Forbidden, discord.HTTPException):
                         pass
             card, file = _id_card_issue(guild, member or user, app_id, answers)
-            await user.send("✅ Dein Antrag wurde automatisch genehmigt. Hier ist dein Ausweis:", embed=card, file=file)
+            await user.send("✅ Your application was automatically approved. Here is your ID card:", embed=card, file=file)
             await _id_card_publish_to_channel(guild, app_id, answers, member or user)
             return
         channel = guild.get_channel(int(cfg.get("id_card_review_channel_id") or 0))
         if not isinstance(channel, discord.TextChannel):
             RECORDS["id_card_applications"].pop(app_id, None)
             save_records()
-            await user.send("Der Antrag konnte nicht eingereicht werden, weil im Dashboard kein gültiger Prüfkanal eingestellt ist.")
+            await user.send("Your application could not be submitted because no valid review channel is configured in the dashboard.")
             return
         embed = discord.Embed(title="🪪 Neuer Ausweisantrag", description=f"Antragsteller: {user.mention}\nAntragsnummer: {app_id}", color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
         for answer in answers:
@@ -3791,11 +3789,11 @@ async def _id_card_dm_application(guild_id, user):
         )
         embed.set_image(url="attachment://ironwolf-ausweis-vorschau.png")
         await channel.send(embed=embed, file=preview_file, view=IDCardReviewView(app_id))
-        await user.send("📨 Danke! Deine Antworten wurden eingereicht. Das Serverteam prüft deinen Antrag und sieht vor der Freigabe eine Ausweis-Vorschau.")
+        await user.send("📨 Thank you! Your answers were submitted. The server team will review your application and see an ID card preview before approval.")
     except (discord.Forbidden, discord.HTTPException) as exc:
         print(f"[ID CARD] DM workflow failed for {getattr(user, 'id', 'unknown')}: {type(exc).__name__}", flush=True)
         try:
-            await user.send("Ich konnte deine Ausweis-DMs nicht fortsetzen. Bitte erlaube Direktnachrichten vom Server und starte den Antrag erneut.")
+            await user.send("I could not continue your ID card DMs. Please allow direct messages from this server and start the application again.")
         except Exception:
             pass
 
@@ -3827,7 +3825,7 @@ class IDCardApplyButton(discord.ui.Button):
         if not cfg.get("id_card_enabled", False):
             await interaction.response.send_message("Das Ausweissystem ist ausgeschaltet.", ephemeral=True)
             return
-        await interaction.response.send_message("📩 Ich schreibe dir jetzt privat per DM und stelle dir deine Ausweisfragen. Bitte öffne deine Direktnachrichten.", ephemeral=True)
+        await interaction.response.send_message("📩 I will message you privately and ask your ID card questions. Please open your direct messages.", ephemeral=True)
         asyncio.create_task(_id_card_dm_application(interaction.guild.id, interaction.user))
 
 
@@ -3863,7 +3861,7 @@ class IDCardReviewView(discord.ui.View):
             return
         row = RECORDS.setdefault("id_card_applications", {}).get(self.app_id)
         if not row or int(row.get("guild_id", 0)) != interaction.guild.id or row.get("status") != "pending":
-            await interaction.response.send_message("Der Antrag ist nicht offen oder wurde nicht gefunden.", ephemeral=True)
+            await interaction.response.send_message("The application is not open or could not be found.", ephemeral=True)
             return
         row["status"] = "approved" if approve else "rejected"
         row["reviewed_by"] = interaction.user.id
@@ -3890,7 +3888,7 @@ class IDCardReviewView(discord.ui.View):
         try:
             applicant = interaction.guild.get_member(int(row["user_id"]))
             if applicant:
-                await applicant.send("Dein Ausweisantrag auf **{}** wurde {}.".format(interaction.guild.name, "genehmigt" if approve else "abgelehnt"))
+                await applicant.send("Your ID card application in **{}** was {}.".format(interaction.guild.name, "genehmigt" if approve else "abgelehnt"))
         except (discord.Forbidden, discord.HTTPException):
             pass
 
@@ -3908,7 +3906,7 @@ async def ausweis_command(interaction: discord.Interaction):
         return
     embed = discord.Embed(
         title=str(cfg.get("id_card_title", "🪪 Mitgliedsausweis"))[:256],
-        description=str(cfg.get("id_card_description", "Beantrage hier deinen digitalen Mitgliedsausweis."))[:4000] + "\n\nKlicke auf **Ausweis beantragen**, um das Formular auszufüllen.",
+        description=str(cfg.get("id_card_description", "Apply here for your digital member ID card."))[:4000] + "\n\nKlicke auf **Ausweis beantragen**, um das Formular auszufüllen.",
         color=discord.Color(int(str(cfg.get("id_card_color", "5865F2")).lstrip("#"), 16))
     )
     embed.set_footer(text="IronWolf · Created by KingSnowy")
@@ -3918,17 +3916,17 @@ async def ausweis_command(interaction: discord.Interaction):
 @bot.tree.command(name="verify", description="Set up the complete verification panel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.describe(
-    kanal="Kanal, in dem das Verifizierungs-Panel erscheinen soll",
-    rolle_geben="Rolle, die nach erfolgreicher Verifizierung vergeben wird",
-    rolle_entfernen="Rolle, die nach erfolgreicher Verifizierung entfernt wird (optional)",
-    modus="Ein Klick oder Bild-Captcha mit drei Auswahlmöglichkeiten",
+    kanal="Channel where the verification panel should appear",
+    rolle_geben="Role assigned after successful verification",
+    rolle_entfernen="Role removed after successful verification (optional)",
+    modus="One click or image CAPTCHA with three answer choices",
     titel="Titel des Verifizierungs-Embeds",
     beschreibung="Beschreibung des Verifizierungs-Embeds",
     button_name="Text auf dem Verifizierungsbutton",
     emoji="Emoji auf dem Verifizierungsbutton",
 )
 @app_commands.choices(modus=[
-    app_commands.Choice(name="Nur Knopf drücken", value="click"),
+    app_commands.Choice(name="Click the button only", value="click"),
     app_commands.Choice(name="Bild-Captcha (3 Antworten)", value="code"),
 ])
 async def verify_command(
@@ -3953,13 +3951,13 @@ async def verify_command(
         or (rolle_entfernen and (rolle_entfernen.is_default() or rolle_entfernen >= bot_member.top_role))
     ):
         await interaction.response.send_message(
-            "Die Bot-Rolle muss über beiden ausgewählten Rollen stehen. @everyone kann nicht verwendet werden.",
+            "The bot role must be above both selected roles. @everyone cannot be used.",
             ephemeral=True,
         )
         return
     if rolle_entfernen and rolle_entfernen.id == rolle_geben.id:
         await interaction.response.send_message(
-            "Die Rolle zum Vergeben und die Rolle zum Entfernen müssen unterschiedlich sein.",
+            "The role to assign and the role to remove must be different.",
             ephemeral=True,
         )
         return
@@ -3990,13 +3988,13 @@ async def verify_command(
         save_json(CONFIG_FILE, config)
     except discord.Forbidden:
         await interaction.response.send_message(
-            "Ich kann in diesem Kanal keine Nachricht senden. Prüfe meine Kanalrechte.",
+            "I cannot send messages in this channel. Check my channel permissions.",
             ephemeral=True,
         )
         return
     except (discord.HTTPException, ValueError):
         await interaction.response.send_message(
-            "Das Verifizierungs-Panel konnte nicht gesendet werden. Prüfe bitte das Emoji und die Texte.",
+            "The verification panel could not be sent. Please check the emoji and text.",
             ephemeral=True,
         )
         return
@@ -4013,7 +4011,7 @@ async def verify_command(
     kanal="Kanal, in dem das Verifizierungs-Panel erscheint",
     verifiziert="Rolle für erfolgreich verifizierte Mitglieder",
     unverified="Optionale Rolle für noch nicht verifizierte Mitglieder",
-    modus="Ein Klick oder Bild-Captcha mit drei Auswahlmöglichkeiten",
+    modus="One click or image CAPTCHA with three answer choices",
     button_text="Beschriftung des Verifizierungsbuttons",
     emoji="Emoji für den Verifizierungsbutton",
 )
@@ -4071,7 +4069,7 @@ async def verify_setup(
 async def poll_command(interaction: discord.Interaction, frage: str, option1: str, option2: str, option3: str = None, option4: str = None):
     options = [o for o in (option1, option2, option3, option4) if o]
     if len(options) < 2 or len(options) > 4:
-        await interaction.response.send_message("Bitte zwei bis vier Optionen angeben.", ephemeral=True)
+        await interaction.response.send_message("Please provide two to four options.", ephemeral=True)
         return
     emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"][:len(options)]
     chart_lines = [f"{emojis[i]} **{o[:250]}**\n`{'░' * 10}` **0.0%** · 0 Stimmen" for i, o in enumerate(options)]
@@ -4098,7 +4096,7 @@ async def poll_command(interaction: discord.Interaction, frage: str, option1: st
 
 
 @bot.tree.command(name="suggest", description="Submit a community suggestion")
-@app_commands.describe(vorschlag="Dein Vorschlag für den Server")
+@app_commands.describe(vorschlag="Your suggestion for the server")
 async def suggest_command(interaction: discord.Interaction, vorschlag: str):
     if not interaction.guild_id:
         await interaction.response.send_message("This command is only available in a server.", ephemeral=True); return
@@ -4114,7 +4112,7 @@ async def suggest_command(interaction: discord.Interaction, vorschlag: str):
         await msg.add_reaction("👍"); await msg.add_reaction("👎")
         await interaction.response.send_message(f"Vorschlag eingereicht: {msg.jump_url}", ephemeral=True)
     else:
-        await interaction.response.send_message("Vorschlag gespeichert. Ein Admin kann mit `/suggestion-channel-set` einen öffentlichen Kanal festlegen.", ephemeral=True)
+        await interaction.response.send_message("Suggestion saved. An admin can use `/suggestion-channel-set` to configure a public channel.", ephemeral=True)
 
 
 @bot.tree.command(name="suggestion-channel-set", description="Set the channel for community suggestions")
@@ -4122,7 +4120,7 @@ async def suggest_command(interaction: discord.Interaction, vorschlag: str):
 async def suggestion_channel_set(interaction: discord.Interaction, kanal: discord.TextChannel):
     guild_config(interaction.guild_id)["suggestion_channel"] = kanal.id
     save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"Vorschläge werden in {kanal.mention} veröffentlicht.", ephemeral=True)
+    await interaction.response.send_message(f"Suggestions will be posted in {kanal.mention}.", ephemeral=True)
 
 
 @bot.tree.command(name="event-create", description="Publish a community event")
@@ -4130,13 +4128,13 @@ async def suggestion_channel_set(interaction: discord.Interaction, kanal: discor
 @app_commands.describe(titel="Kurzer Event-Titel", datum="Datum und Uhrzeit mit Zeitzone", beschreibung="Details zur Veranstaltung")
 async def event_create(interaction: discord.Interaction, titel: str, datum: str, beschreibung: str):
     if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
-        await interaction.response.send_message("Dieser Befehl funktioniert nur in einem Textkanal auf einem Server.", ephemeral=True)
+        await interaction.response.send_message("This command only works in a server text channel.", ephemeral=True)
         return
     titel = str(titel).strip()
     datum = str(datum).strip()
     beschreibung = str(beschreibung).strip()
     if not titel or len(titel) > 250 or not datum or len(datum) > 200 or not beschreibung or len(beschreibung) > 3000:
-        await interaction.response.send_message("Bitte gib einen Titel (max. 250 Zeichen), Datum (max. 200) und eine Beschreibung (max. 3000) an.", ephemeral=True)
+        await interaction.response.send_message("Please provide a title (max 250 characters), date (max 200), and description (max 3000).", ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True, thinking=True)
     embed = create_embed(
@@ -4155,7 +4153,7 @@ async def event_create(interaction: discord.Interaction, titel: str, datum: str,
             except (discord.Forbidden, discord.HTTPException):
                 pass
         print(f"[EVENTS] Could not publish event in guild {interaction.guild_id}: {type(exc).__name__}: {exc}", flush=True)
-        await interaction.followup.send("Das Event konnte nicht veröffentlicht werden. Prüfe die Kanalberechtigungen und versuche es erneut.", ephemeral=True)
+        await interaction.followup.send("The event could not be published. Check channel permissions and try again.", ephemeral=True)
         return
     data.setdefault("events", {}).setdefault(str(interaction.guild_id), []).append({
         "message_id": msg.id,
@@ -4183,7 +4181,7 @@ async def ticket_stats(interaction: discord.Interaction):
     claimed = sum(1 for t in guild_tickets if t.get("claimed_by"))
     embed = create_embed(title="🎫 Support-Statistik", color=discord.Color.blurple())
     embed.add_field(name="Offene/gespeicherte Tickets", value=str(open_count), inline=True)
-    embed.add_field(name="Übernommen", value=str(claimed), inline=True)
+    embed.add_field(name="Claimed", value=str(claimed), inline=True)
     embed.add_field(name="Ticket-System", value="Aktiv", inline=True)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -4263,14 +4261,14 @@ def _social_alert_mentions(role):
 @app_commands.guild_only()
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(plattform=[app_commands.Choice(name="YouTube RSS", value="youtube"), app_commands.Choice(name="Twitch", value="twitch")])
-@app_commands.describe(plattform="Plattform", kanal="Ankündigungskanal", quelle="YouTube-RSS-/Channel-URL oder Twitch-Benutzername", rolle="Optional: Rolle, die bei neuen Inhalten erwähnt wird")
+@app_commands.describe(plattform="Platform", kanal="Announcement channel", quelle="YouTube RSS/channel URL or Twitch username", rolle="Optional: role to mention for new content")
 async def social_alert_set(interaction: discord.Interaction, plattform: app_commands.Choice[str], kanal: discord.TextChannel, quelle: str, rolle: discord.Role = None):
     source = quelle.strip()
     if plattform.value == "youtube":
         normalized_source = _normalize_youtube_source(source)
         if normalized_source is None:
             await interaction.response.send_message(
-                "Ungültige YouTube-Quelle. Verwende eine HTTPS-URL von youtube.com mit /channel/CHANNEL_ID oder /feeds/videos.xml?channel_id=CHANNEL_ID.",
+                "Invalid YouTube source. Use an HTTPS URL from youtube.com with /channel/CHANNEL_ID or /feeds/videos.xml?channel_id=CHANNEL_ID.",
                 ephemeral=True,
             )
             return
@@ -4331,7 +4329,7 @@ async def social_alert_test(interaction: discord.Interaction, plattform: app_com
     _, alert = matches[0]
     channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
     if not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message("Der konfigurierte Kanal wurde nicht gefunden.", ephemeral=True)
+        await interaction.response.send_message("The configured channel could not be found.", ephemeral=True)
         return
     role = _social_alert_role(interaction.guild, alert)
     embed = create_embed(
@@ -4343,9 +4341,9 @@ async def social_alert_test(interaction: discord.Interaction, plattform: app_com
     try:
         await channel.send(content=role.mention if role else None, embed=embed, allowed_mentions=_social_alert_mentions(role))
     except (discord.Forbidden, discord.HTTPException) as exc:
-        await interaction.response.send_message(f"Test konnte nicht gesendet werden ({type(exc).__name__}). Prüfe Kanal- und Rollenrechte.", ephemeral=True)
+        await interaction.response.send_message(f"Test could not be sent ({type(exc).__name__}). Check channel and role permissions.", ephemeral=True)
         return
-    await interaction.response.send_message(f"Testnachricht für **{alert.get('source')}** in {channel.mention} gesendet. Die externe API wird dabei nicht geprüft.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+    await interaction.response.send_message(f"Test message for **{alert.get('source')}** sent in {channel.mention}. The external API is not checked.", ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
 
 @bot.tree.command(name="social-alert-status", description="Show creators, channels and alert status")
@@ -4355,7 +4353,7 @@ async def social_alert_status(interaction: discord.Interaction):
     alerts = _normalize_social_alerts(guild_config(interaction.guild_id))
     embed = create_embed(title="📡 Social-Alerts · Übersicht", color=discord.Color.blurple())
     if not alerts:
-        embed.description = "Noch keine Alerts eingerichtet. Nutze /social-alert-set für jeden Creator."
+        embed.description = "No alerts configured yet. Use /social-alert-set for each creator."
     else:
         for key, alert in list(sorted(alerts.items()))[:25]:
             channel = interaction.guild.get_channel(int(alert.get("channel_id", 0)))
@@ -5806,7 +5804,7 @@ async def on_member_join(member: discord.Member):
                     inviter = used_invite.inviter
                     embed.add_field(
                         name="🤝 Eingeladen von",
-                        value=inviter.mention if inviter else "Unbekannt",
+                        value=inviter.mention if inviter else "Unknown",
                         inline=True,
                     )
                     embed.add_field(name="🔗 Invite-Code", value=f"`{used_invite.code}`", inline=True)
