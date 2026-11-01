@@ -144,7 +144,7 @@ class SecuritySuite(commands.Cog):
     @app_commands.command(name="secure-log-setup", description="Sets the central security log channel")
     @app_commands.guild_only()
     @is_admin()
-    async def log_setup(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    async def log_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel):
         me = bot_member(interaction.guild)
         perms = kanal.permissions_for(me) if me else None
         if not perms or not perms.view_channel or not perms.send_messages:
@@ -273,7 +273,7 @@ class SecuritySuite(commands.Cog):
     @app_commands.command(name="secure-verify-setup", description="Konfiguriert Verifizierung und veröffentlicht einen Button")
     @app_commands.guild_only()
     @is_admin()
-    async def verify_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel, verified_role: discord.Role, unverified_role: discord.Role = None):
+    async def verify_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel, verified_rolle: discord.Role, unverified_rolle: discord.Role = None):
         guild = interaction.guild
         me = bot_member(guild)
         if not me or not me.guild_permissions.manage_roles:
