@@ -996,7 +996,10 @@ nav,main{{position:relative;z-index:1}}
  function apply(name){{
   const value=art[name]?name:'wolf',url='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(art[value])+'") 4 4, auto';
   let s=document.getElementById('iw-cursor-style');if(!s){{s=document.createElement('style');s.id='iw-cursor-style';document.head.appendChild(s);}}
-  s.textContent='html,body,body *{{cursor:'+url+' !important}}';picker.value=value;
+  const hand='<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path d="M11 17V8a2.5 2.5 0 0 1 5 0v7-9a2.5 2.5 0 0 1 5 0v9-7a2.5 2.5 0 0 1 5 0v9-4a2.5 2.5 0 0 1 5 0v10c0 7-4 11-11 11h-2c-4 0-6-2-8-5l-5-7a2.8 2.8 0 0 1 4-4l2 2z" fill="#f4d7b5" stroke="#182338" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  const handUrl='url("data:image/svg+xml;charset=utf-8,'+encodeURIComponent(hand)+'") 10 4, pointer';
+  s.textContent='html body *{cursor:'+url+' !important} html body *:hover{cursor:'+url+' !important} html body button:hover,html body a:hover,html body [role="button"]:hover,html body input[type="submit"]:hover,html body input[type="button"]:hover{cursor:'+handUrl+' !important}';
+  picker.value=value;
  }}
  let saved='wolf';try{{saved=localStorage.getItem('ironwolf-cursor')||'wolf';}}catch(e){{}}
  apply(saved);
