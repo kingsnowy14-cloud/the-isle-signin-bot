@@ -5008,12 +5008,22 @@ async def _generate_ticket_ai_reply(channel, message, meta):
 
         guild_id = getattr(getattr(channel, "guild", None), "id", None)
         cfg = guild_config(guild_id) if guild_id else {}
-        saved_knowledge = cfg.get("ai_knowledge", [])
-        ticket_knowledge = cfg.get("ai_ticket_knowledge", []) if meta is not None else []
+        all_knowledge = cfg.get("ai_knowledge", [])
+        saved_knowledge = [
+            item for item in all_knowledge
+            if isinstance(item, dict) and item.get("source") == "Dashboard"
+        ] if isinstance(all_knowledge, list) else []
+        # Older versions stored ticket-learned entries in ai_knowledge. Keep those
+        # private to ticket replies; never expose or use them as dashboard knowledge.
+        legacy_ticket_knowledge = [
+            item for item in all_knowledge
+            if isinstance(item, dict) and item.get("source") != "Dashboard"
+        ] if isinstance(all_knowledge, list) and meta is not None else []
+        ticket_knowledge = (cfg.get("ai_ticket_knowledge", []) if meta is not None else []) + legacy_ticket_knowledge
         knowledge_text = "\n".join(
-            str(item.get("text", ""))[:1800] if isinstance(item, dict) else str(item)[:1800]
+            str(item.get("text", ""))[:1800]
             for item in saved_knowledge[-12:]
-        ) if isinstance(saved_knowledge, list) else ""
+        )
         if isinstance(ticket_knowledge, list) and ticket_knowledge:
             ticket_context_text = "\n".join(
                 str(item.get("text", ""))[:1800] if isinstance(item, dict) else str(item)[:1800]
