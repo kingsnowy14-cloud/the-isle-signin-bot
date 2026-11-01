@@ -822,6 +822,7 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/ai">🤖 KI-Wissen</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/image-generator">🎨 KI-Bildgenerator</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium Servers</a>' if logged_in and is_premium_admin else '')
         + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
@@ -862,6 +863,7 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
  nav:not(.module-nav) .nav-logout{{margin:0;padding:0;border:0}}
  .module-nav{{position:fixed;z-index:9;inset:64px auto 0 0;width:246px;height:calc(100vh - 64px);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:stretch;gap:4px;flex-wrap:nowrap;margin:0;padding:16px 12px;border:0;border-right:1px solid var(--border);border-radius:0;background:rgba(10,15,29,.98)}}
  .module-nav-title{{padding:7px 10px 10px}}
+ .module-nav-group-title{{padding:13px 10px 5px;margin-top:8px;border-top:1px solid var(--border);color:#aebaff;font-size:11px;font-weight:900;letter-spacing:1px;text-transform:uppercase}}
  .module-nav-link{{width:100%;min-height:36px;white-space:normal}}
  main{{max-width:1440px;margin:30px auto;padding:0 34px 52px}}
 }}
@@ -1101,7 +1103,9 @@ def _module_navigation():
         ("welcome", "👋 Welcome & Goodbye", "/welcome"),
         ("tickets", "🎟️ Support Tickets", "/tickets"),
         ("quick-support", "🆘 Quick Support", "/quick-support"),
-        ("ai", "🤖 AI Assistant", "/ai"),
+        ("__ai_category__", "🎨 AI & Creation", ""),
+        ("ai", "🤖 AI Assistant & Wissen", "/ai"),
+        ("image-generator", "🖼️ Bildgenerierung", "/image-generator"),
         ("verification", "🔐 Verification", "/verification"),
         ("reaction-roles", "🎭 Reaction Roles", "/reaction-roles"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
@@ -1142,6 +1146,9 @@ def _module_navigation():
     except Exception:
         modules = tuple(item for item in modules if item[0] != "custom-bot")
     for key, label, target in modules:
+        if key == "__ai_category__":
+            links.append('<div class="module-nav-group-title">' + html.escape(label) + '</div>')
+            continue
         href = "/guild/" + gid + (target if target.startswith("?") else target)
         current = (active == "starter" and key == "starter") or active == key
         links.append(
@@ -1236,6 +1243,13 @@ def _render(title, body, status=200):
     if language not in {"en", "de"}:
         language = "en"
     body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
+    guild_match = re.match(r"^/guild/(\d+)", request.path)
+    if guild_match and _bot:
+        active_guild = _bot.get_guild(int(guild_match.group(1)))
+        if active_guild:
+            cursor_asset = active_guild.icon.with_format("png").with_size(32).url if active_guild.icon else f"https://cdn.discordapp.com/embed/avatars/{active_guild.id % 6}.png"
+            cursor_url = html.escape(cursor_asset, quote=True)
+            body += '<style>body,body a,body button,body .button,body select,body input[type=submit]{cursor:url("' + cursor_url + '") 16 16,auto!important}</style>'
     title = _translate_dashboard(title, language)
     selected_en = " selected" if language == "en" else ""
     language_control = '<p class="muted language-switcher">🌐 Dashboard language: English (fixed)</p>'
@@ -4870,22 +4884,18 @@ def guild_ai_knowledge(guild_id):
             abort(403, "KI-Assistent und KI-Wissen sind Premium-Funktionen. Verknüpfe Premium mit diesem Server.")
         if action == "save":
             ai_enabled = request.form.get("ai_enabled") == "on"
-            ai_mode = request.form.get("ai_mode", "ticket").strip()
             ai_channel_raw = request.form.get("ai_channel_id", "").strip()
-            valid_modes = {"ticket", "channel", "both"}
-            if ai_mode not in valid_modes:
-                abort(400, "Bitte wähle einen gültigen KI-Einsatzort.")
-            if ai_enabled and not guild_has_feature(cfg, "ticket"):
-                abort(403, "Der KI-Assistent ist eine Premium-Funktion. Verknüpfe zuerst Premium mit diesem Server.")
-            if ai_enabled and ai_mode in {"channel", "both"}:
-                valid_channel_ids = {str(channel.id) for channel in guild.text_channels}
-                if ai_channel_raw not in valid_channel_ids:
-                    abort(400, "Für den Kanal-Modus musst du einen gültigen Textkanal auswählen.")
-            elif ai_channel_raw and ai_channel_raw not in {str(channel.id) for channel in guild.text_channels}:
+            valid_channel_ids = {str(channel.id) for channel in guild.text_channels}
+            if ai_enabled and ai_channel_raw not in valid_channel_ids:
+                abort(400, "Bitte wähle einen gültigen Textkanal für den KI-Assistenten.")
+            if ai_channel_raw and ai_channel_raw not in valid_channel_ids:
                 abort(400, "Bitte wähle einen gültigen Textkanal.")
             cfg["ai_enabled_global"] = ai_enabled
-            cfg["ai_mode"] = "both" if ai_enabled and ai_channel_raw else ai_mode
+            cfg["ai_mode"] = "channel"
             cfg["ai_channel_id"] = int(ai_channel_raw) if ai_channel_raw else None
+            for ticket_panel in cfg.get("ticket_panels", {}).values():
+                if isinstance(ticket_panel, dict):
+                    ticket_panel["ai_support_enabled"] = False
             cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
             cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         entries = cfg.setdefault("ai_knowledge", [])
@@ -4921,10 +4931,10 @@ def guild_ai_knowledge(guild_id):
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
         + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
         + ('<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", guild_has_feature(cfg, "ticket")) else '') + '> KI-Assistent für diesen Server aktivieren</label>' if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><label class="check"><input type="checkbox" disabled> KI-Assistent für diesen Server aktivieren</label></div>')
-        + ('<p class="muted">KI ist Premium. Wähle, wo der Assistent antworten soll. Im Ticket-Modus muss zusätzlich die KI-Option im jeweiligen Ticket-Panel aktiviert sein.</p>' if guild_has_feature(cfg, "ticket") else '<p class="notice">🔒 KI-Assistent und KI-Ticketsupport sind Premium-Funktionen. Verknüpfe Premium auf der Premium-Seite.</p>')
-        + (('<label for="ai_mode">KI-Einsatzort (Premium)</label><select id="ai_mode" name="ai_mode"><option value="ticket"' + (' selected' if cfg.get("ai_mode", "ticket") == "ticket" else '') + '>Nur in Tickets</option><option value="channel"' + (' selected' if cfg.get("ai_mode") == "channel" else '') + '>In einem bestimmten Kanal</option><option value="both"' + (' selected' if cfg.get("ai_mode") == "both" else '') + '>In Tickets und im Kanal</option></select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>KI-Einsatzort</option></select></div>')
+        + '<p class="muted">Der KI-Assistent antwortet ausschließlich im ausgewählten Textkanal. KI in Tickets ist deaktiviert; Bildgenerierung findest du als eigenes Modul unter „AI & Creation“.</p>'
+        + '<input type="hidden" name="ai_mode" value="channel">'
         + (('<label for="ai_channel_id">KI-Kanal (für Kanal-Modus)</label><select id="ai_channel_id" name="ai_channel_id"><option value="">— Textkanal auswählen —</option>' + ''.join('<option value="' + str(channel.id) + '"' + (' selected' if str(cfg.get("ai_channel_id") or "") == str(channel.id) else '') + '>#' + html.escape(channel.name) + '</option>' for channel in guild.text_channels) + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>KI-Kanal</option></select></div>')
-        + '<p class="muted">Wenn ein Kanal ausgewählt ist, antwortet die KI sowohl dort als auch in Tickets (sofern die KI aktiviert ist).</p>'
+        + '<p class="muted">Wähle genau einen Textkanal. Außerhalb dieses Kanals antwortet der KI-Assistent nicht.</p>'
         + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
         + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
         + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
@@ -4953,6 +4963,10 @@ def guild_tickets(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     panels = cfg.setdefault("ticket_panels", {})
+    # Remove legacy ticket-AI flags so old panels cannot keep enabling ticket replies.
+    for legacy_panel in panels.values():
+        if isinstance(legacy_panel, dict):
+            legacy_panel["ai_support_enabled"] = False
     result_html = ""
     if request.method == "POST":
         if not _csrf_ok():
@@ -5015,9 +5029,8 @@ def guild_tickets(guild_id):
         category_raw = request.form.get("category_id", "").strip()
         role_raw = request.form.get("support_role_id", "").strip()
         priority_role_raw = request.form.get("priority_role_id", "").strip()
-        ai_support_enabled = request.form.get("ai_support_enabled") == "on"
-        if ai_support_enabled and not guild_has_feature(cfg, "ticket"):
-            abort(403, "Der KI-Ticketsupport ist eine Premium-Funktion.")
+        # AI is available only in the selected AI channel, never inside ticket panels.
+        ai_support_enabled = False
         if priority_role_raw and not guild_has_feature(cfg, "ticket"):
             abort(403, "Eine Prioritätsrolle ist eine Premium-Funktion.")
         try:
@@ -5210,7 +5223,7 @@ def guild_tickets(guild_id):
         + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, None, "— Textkanal auswählen —") + '</select>'
         + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, None, "— Standard-Kategorie verwenden —") + '</select>'
         + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>'
-        + (('<label class="check"><input type="checkbox" name="ai_support_enabled" value="on"> 🤖 KI-Ticketsupport aktivieren <small>Premium · optional.</small></label>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><label class="check"><input type="checkbox" disabled> 🤖 KI-Ticketsupport aktivieren</label></div>')
+
         + (('<label>Premium-Prioritätsrolle</label><select name="priority_role_id">' + options(roles, None, "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Prioritätsrolle</option></select></div>')
         + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
     )
@@ -5242,7 +5255,7 @@ def guild_tickets(guild_id):
             + '<label>Panel-Kanal</label><select name="channel_id" required>' + options(channels, panel.get("channel_id"), "— Textkanal auswählen —") + '</select>'
             + '<label>Ticket-Kategorie (optional)</label><select name="category_id">' + options(categories, panel.get("category_id"), "— Standard-Kategorie verwenden —") + '</select>'
             + '<label>Support role (optional)</label><select name="support_role_id">' + options(roles, panel.get("support_role_id"), "— Standard-Support role verwenden —") + '</select>'
-            + (('<label class="check"><input type="checkbox" name="ai_support_enabled" value="on"' + (' checked' if panel.get("ai_support_enabled", False) else '') + '> 🤖 KI-Ticketsupport aktivieren <small>Premium · optional, standardmäßig aus. Benötigt GEMINI_API_KEY mit kostenlosem Gemini-Kontingent.</small></label>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><label class="check"><input type="checkbox" disabled> 🤖 KI-Ticketsupport aktivieren</label></div>')
+
             + (('<label>✨ Premium-Prioritätsrolle (wird im Ticket erwähnt und erhält Zugriff)</label><select name="priority_role_id">' + options(roles, panel.get("priority_role_id"), "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Prioritätsrolle</option></select></div>')
             + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
             + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color_picker.value=\'#\'+this.value" placeholder="5865F2"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><small>' + ('Aktuelles Logo: ' + html.escape(str(panel.get("brand_logo_filename", "hochgeladen")), quote=True) if panel.get("brand_logo_file") else 'Noch kein hochgeladenes Logo.') + '</small><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '"><div class="check"><input type="checkbox" name="remove_brand_logo" id="remove-logo-' + html.escape(str(panel_key), quote=True) + '"><label for="remove-logo-' + html.escape(str(panel_key), quote=True) + '">Hochgeladenes Logo entfernen</label></div>' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
@@ -5690,6 +5703,13 @@ def start_dashboard(bot, config, save_json, guild_config):
     except Exception as exc:
         print(f"[DASHBOARD] Voice support settings route could not be registered: {type(exc).__name__}: {exc}", flush=True)
     app.secret_key = _env("DASHBOARD_SECRET_KEY") or app.secret_key
+    try:
+        import image_generation
+        app.view_functions["dashboard_render"] = _render
+        image_generation.register(app, _authorized_guild, _csrf_ok, _csrf_field)
+        print("[DASHBOARD] AI image generator routes registered.", flush=True)
+    except Exception as exc:
+        print(f"[DASHBOARD] AI image generator route registration failed: {type(exc).__name__}: {exc}", flush=True)
     if not _env("DASHBOARD_SECRET_KEY"):
         print("[DASHBOARD] WARNING: DASHBOARD_SECRET_KEY is not set; sessions will reset on restart.", flush=True)
     port = int(os.getenv("PORT", "8080"))
