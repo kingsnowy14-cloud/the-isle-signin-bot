@@ -91,6 +91,43 @@ def fetch_public_servers(max_pages=5, target_ids=None):
     return list(found.values())
 
 
+def fetch_public_servers_page(max_pages=5, cursor=None):
+    """Fetch one chunk of public servers and return the cursor for the next chunk."""
+    found = {}
+    next_cursor = str(cursor) if cursor else None
+    pages = max(1, min(int(max_pages), 20))
+    for _ in range(pages):
+        params = {"sortOrder": "Desc", "limit": 100}
+        if next_cursor:
+            params["cursor"] = next_cursor
+        response = _HTTP.get(ROBLOX_SERVERS_URL, params=params, timeout=(5, 12))
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After", "60")
+            raise RuntimeError("Roblox API rate limit (429); retry after " + str(retry_after) + " seconds.")
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise RuntimeError("Roblox API hat eine ungültige Antwort geliefert.")
+        rows = payload.get("data", [])
+        if not isinstance(rows, list):
+            raise RuntimeError("Roblox API hat eine ungültige Serverliste geliefert.")
+        for row in rows:
+            if not isinstance(row, dict) or not row.get("id"):
+                continue
+            item = {
+                "id": str(row["id"]),
+                "playing": int(row.get("playing", 0) or 0),
+                "maxPlayers": int(row.get("maxPlayers", 0) or 0),
+                "fps": row.get("fps"),
+                "ping": row.get("ping"),
+            }
+            found[item["id"]] = item
+        next_cursor = payload.get("nextPageCursor")
+        if not next_cursor:
+            break
+    return list(found.values()), (str(next_cursor) if next_cursor else None)
+
+
 def build_status_embed(guild, configured, server_map, error=None):
     """Create the persistent per-guild Discord status embed."""
     selected = configured.get("servers", [])
