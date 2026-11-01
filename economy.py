@@ -37,9 +37,9 @@ class BankView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Mein Konto ansehen", style=discord.ButtonStyle.primary, emoji="🏦", custom_id="ironwolf:bank:account")
+    @discord.ui.button(label="View my account", style=discord.ButtonStyle.primary, emoji="🏦", custom_id="ironwolf:bank:account")
     async def show_account(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.guild_id == 1561027077984227371:
+        if True:
             await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
             return
         if interaction.guild_id is None:
@@ -72,7 +72,7 @@ class ShopItemSelect(discord.ui.Select):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
-        if interaction.guild_id == 1561027077984227371:
+        if True:
             await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
             return
         self.parent_view.selected_name = self.values[0]
@@ -97,23 +97,23 @@ class ShopBuyButton(discord.ui.Button):
             return
         name = self.parent_view.selected_name
         if not name:
-            await interaction.response.send_message("Wähle zuerst oben einen Artikel aus.", ephemeral=True)
+            await interaction.response.send_message("Select an item above first.", ephemeral=True)
             return
         g = guild(interaction.guild_id)
         item = self.parent_view.items.get(name)
         if not item:
-            await interaction.response.send_message("Artikel nicht gefunden. Öffne /shop erneut.", ephemeral=True)
+            await interaction.response.send_message("Item not found. Open /shop again.", ephemeral=True)
             return
         u = user(interaction.guild_id, interaction.user.id)
         price = int(item["price"])
         if u["bank"] < price:
-            await interaction.response.send_message(f"Nicht genug Geld auf deinem Bankkonto. Preis: **{money(price)}**.", ephemeral=True)
+            await interaction.response.send_message(f"Not enough money in your bank account. Price: **{money(price)}**.", ephemeral=True)
             return
         u["bank"] -= price
         u["items"].append(name)
         save()
         await interaction.response.send_message(
-            f"🛍️ Du hast **{name}** for **{money(price)}** gekauft. Neuer Kontostand: **{money(u['bank'])}**.",
+            f"🛍️ You purchased **{name}** for **{money(price)}** gekauft. Neuer Kontostand: **{money(u['bank'])}**.",
             ephemeral=True
         )
 
@@ -132,7 +132,7 @@ class ShopView(discord.ui.View):
             await interaction.response.send_message("Der Shop ist noch leer.", ephemeral=True)
             return
         await interaction.response.send_message(
-            "Wähle einen Artikel aus und drücke danach auf **Jetzt kaufen**:",
+            "Select an item, then click **Buy now**:",
             view=ShopPurchaseView(interaction.guild_id, items),
             ephemeral=True
         )
@@ -164,13 +164,13 @@ class Economy(commands.Cog):
         g, u = guild(ctx.guild.id), user(ctx.guild.id, ctx.author.id)
         wait = 60 - (time.time() - u["work_at"])
         if wait > 0:
-            await ctx.reply(f"Du kannst in {int(wait)} Sekunden wieder arbeiten.", mention_author=False); return
+            await ctx.reply(f"You can work again in {int(wait)} seconds.", mention_author=False); return
         gross = random.randint(120, 350)
         actual, tax, capped = credit(g, u, gross)
         u["work_at"] = time.time(); save()
         extra = f" Steuer: {money(tax)}." if tax else ""
         extra += f" Wegen des Banklimits nicht gutgeschrieben: {money(capped)}." if capped else ""
-        await ctx.reply(f"🛠️ Du hast {money(actual)} verdient und direkt auf dein Bankkonto erhalten.{extra}\nKontostand: **{money(u['bank'])}**", mention_author=False)
+        await ctx.reply(f"🛠️ You purchased {money(actual)} earned and was deposited directly into your bank account.{extra}\nKontostand: **{money(u['bank'])}**", mention_author=False)
 
     @commands.command(name="crime")
     @commands.guild_only()
@@ -183,13 +183,13 @@ class Economy(commands.Cog):
         if random.random() < 0.60:
             gross = random.randint(200, 650)
             actual, tax, capped = credit(g, u, gross)
-            result = f"💸 Coup erfolgreich! {money(actual)} wurden deinem Bankkonto gutgeschrieben."
+            result = f"💸 Heist successful! {money(actual)} wurden deinem Bankkonto gutgeschrieben."
             if tax: result += f" Steuer: {money(tax)}."
             if capped: result += f" Wegen des Banklimits nicht gutgeschrieben: {money(capped)}."
         else:
             loss = random.randint(100, 300)
             lost = min(u["bank"], loss); u["bank"] -= lost
-            result = f"🚔 Du wurdest erwischt und hast {money(lost)} verloren."
+            result = f"🚔 You were caught and lost {money(lost)} verloren."
         save()
         await ctx.reply(f"{result}\n🏦 Kontostand: **{money(u['bank'])}**", mention_author=False)
 
@@ -199,14 +199,14 @@ class Economy(commands.Cog):
         if member is None or amount is None:
             await ctx.reply("Verwendung: !pay @Mitglied Betrag", mention_author=False); return
         if member.bot or member.id == ctx.author.id or amount <= 0:
-            await ctx.reply("Wähle ein anderes Mitglied und einen Betrag größer als 0.", mention_author=False); return
+            await ctx.reply("Choose another member and an amount greater than 0.", mention_author=False); return
         sender, receiver = user(ctx.guild.id, ctx.author.id), user(ctx.guild.id, member.id)
         if sender["bank"] < amount:
-            await ctx.reply("Du hast nicht genug Geld auf deinem Bankkonto.", mention_author=False); return
+            await ctx.reply("You purchased nicht genug Geld auf deinem Bankkonto.", mention_author=False); return
         sender["bank"] -= amount; receiver["bank"] += amount; save()
         await ctx.reply(f"💸 {ctx.author.mention} hat {member.mention} **{money(amount)}** überwiesen.", mention_author=False)
 
-    @app_commands.command(name="bank", description="Öffentliche Bankübersicht und dein Kontostand")
+    @app_commands.command(name="bank", description="Public bank overview and your account balance")
     async def bank_overview(self, interaction: discord.Interaction):
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True); return
@@ -217,7 +217,7 @@ class Economy(commands.Cog):
         e.add_field(name="Banklimit", value=money(g["bank_limit"]), inline=True)
         await interaction.response.send_message(embed=e, view=BankView(), ephemeral=False)
 
-    @app_commands.command(name="konto", description="Zeigt deinen Kontostand privat")
+    @app_commands.command(name="account", description="Privately displays your account balance")
     async def account(self, interaction: discord.Interaction):
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True); return
@@ -262,7 +262,7 @@ class Economy(commands.Cog):
     async def shop_add(self, interaction: discord.Interaction, name: str, preis: app_commands.Range[int, 1, 100000000], beschreibung: str = ""):
         name = name.strip()[:50]
         if not name:
-            await interaction.response.send_message("Bitte Artikelnamen eingeben.", ephemeral=True); return
+            await interaction.response.send_message("Please enter an item name.", ephemeral=True); return
         guild(interaction.guild_id)["shop"][name.lower()] = {"price": preis, "description": beschreibung[:150]}; save()
         await interaction.response.send_message(f"Artikel **{name}** for **{money(preis)}** hinzugefügt.", ephemeral=True)
 
@@ -270,7 +270,7 @@ class Economy(commands.Cog):
     @admin()
     async def shop_remove(self, interaction: discord.Interaction, name: str):
         item = guild(interaction.guild_id)["shop"].pop(name.lower(), None); save()
-        await interaction.response.send_message("Artikel entfernt." if item else "Artikel nicht gefunden.", ephemeral=True)
+        await interaction.response.send_message("Item removed." if item else "Item not found.", ephemeral=True)
 
     @app_commands.command(name="shop-kaufen", description="Shopartikel kaufen")
     async def shop_buy(self, interaction: discord.Interaction, name: str):
@@ -279,9 +279,9 @@ class Economy(commands.Cog):
         g, u = guild(interaction.guild_id), user(interaction.guild_id, interaction.user.id)
         item = g["shop"].get(name.lower())
         if not item:
-            await interaction.response.send_message("Artikel nicht gefunden. Nutze /shop.", ephemeral=True); return
+            await interaction.response.send_message("Item not found. Use /shop.", ephemeral=True); return
         if u["bank"] < item["price"]:
-            await interaction.response.send_message("Du hast nicht genug Geld auf dem Bankkonto.", ephemeral=True); return
+            await interaction.response.send_message("You purchased nicht genug Geld auf dem Bankkonto.", ephemeral=True); return
         u["bank"] -= item["price"]; u["items"].append(name.lower()); save()
         await interaction.response.send_message(f"🛍️ **{name}** for **{money(item['price'])}** gekauft.", ephemeral=True)
 
