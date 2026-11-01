@@ -204,7 +204,7 @@ class EmergencyHamburg(commands.Cog):
             ephemeral=True,
         )
 
-    async def update_guild(self, guild, server_map=None, api_error=None):
+    async def update_guild(self, guild, server_map=None, api_error=None, shared_refresh=False):
         if guild is None:
             return False
         async with self._refresh_lock:
@@ -220,7 +220,7 @@ class EmergencyHamburg(commands.Cog):
             if not isinstance(channel, discord.TextChannel):
                 return False
             error = api_error
-            if server_map is None:
+            if server_map is None and not shared_refresh:
                 target_ids = [item.get("job_id") for item in selected if item.get("job_id")]
                 try:
                     rows = await asyncio.to_thread(
@@ -296,7 +296,7 @@ class EmergencyHamburg(commands.Cog):
                 print(f"[EH MONITOR] Shared Roblox API refresh failed: {api_error}", flush=True)
         for guild in guilds:
             try:
-                await self.update_guild(guild, server_map=server_map, api_error=api_error)
+                await self.update_guild(guild, server_map=server_map, api_error=api_error, shared_refresh=True)
             except Exception as exc:
                 print(f"[EH MONITOR] Unexpected refresh error for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
