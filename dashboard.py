@@ -2845,6 +2845,7 @@ def guild_page(guild_id):
     metrics = (("Modules", len(module_records)), ("Active modules", sum(1 for item in module_records if item["enabled"])), ("Active commands", sum(1 for item in command_records if item["enabled"])), ("Disabled commands", sum(1 for item in command_records if not item["enabled"])))
     body = '<section class="iw-hero"><span class="iw-kicker">IRONWOLF · CONTROL PANEL</span><h1>🐺 ' + html.escape(guild.name) + '</h1><p>Your server, organized. Manage community, security and automation from one place.</p><small>SERVER ID · ' + gid + '</small></section>'
     body += '<div class="iw-metrics">' + "".join('<div><small>' + label + '</small><strong>' + str(value) + '</strong></div>' for label, value in metrics) + '</div>'
+    body += '<section class="iw-section"><div class="iw-heading"><div><span class="iw-kicker">SUPPORT CENTER</span><h2>🆘 Quick Support & AI</h2><p>Open either support module directly from the server dashboard.</p></div></div>' + module_cards([("🆘", "Quick Support", "Configure automatic support pings in tickets", "/quick-support"), ("🤖", "AI Assistant", "Manage AI ticket replies and server knowledge", "/ai")], True) + '</section>'
     # Render the selected section immediately after the server summary. Previously
     # settings_html was built above but never appended to the response body, so
     # settings links loaded the page without displaying their target panel.

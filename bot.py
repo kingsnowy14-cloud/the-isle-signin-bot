@@ -1100,28 +1100,8 @@ class TicketCreateModal(discord.ui.Modal):
         data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
         save_json(DATA_FILE, data)
 
-        brand_color = discord.Color.blurple()
-        if guild_has_feature(cfg, "branding"):
-            try:
-                brand_color = discord.Color(int(str(panel.get("brand_color", "5865F2")).lstrip("#"), 16))
-            except (TypeError, ValueError):
-                brand_color = discord.Color.blurple()
-        embed = create_embed(
-            title=f"🎫 {self.button_label}",
-            description=f"Hello {interaction.user.mention}!\n\n**Issue:**\n{self.reason.value}",
-            color=brand_color,
-            timestamp=datetime.now(timezone.utc),
-        )
-        logo_url = panel.get("brand_logo_url", "") if guild_has_feature(cfg, "branding") else ""
-        if isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
-            embed.set_thumbnail(url=logo_url)
-        embed.add_field(name="Ticket owner", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Ticket number", value=str(ticket_number), inline=True)
-        await channel.send(
-            content=" ".join(part for part in (interaction.user.mention, support_role.mention if support_role else None, priority_role.mention if priority_role else None) if part),
-            embed=embed,
-            view=TicketControlView(),
-        )
+        embed = ticket_status_embed(ticket_meta, channel.id)
+        await channel.send(embed=embed, view=TicketControlView())
         _ticket_creations_in_progress.discard(creation_key)
         await interaction.followup.send(f"Your ticket has been created: {channel.mention}", ephemeral=True)
 
@@ -1209,6 +1189,19 @@ class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
         await interaction.response.send_message("🔒 Internal team note saved privately.", ephemeral=True)
 
 
+def ticket_status_embed(meta, channel_id=None):
+    """Build the compact, single-source ticket summary shown above the controls."""
+    ticket_id = meta.get("ticket_number") or channel_id or "Unbekannt"
+    owner_id = meta.get("owner_id")
+    claimed_by = meta.get("claimed_by")
+    embed = discord.Embed(title="🎫 Ticket-Informationen", color=discord.Color.blurple())
+    embed.add_field(name="Kategorie", value=str(meta.get("label") or "Ticket")[:100], inline=True)
+    embed.add_field(name="Ticket-ID", value=str(ticket_id), inline=True)
+    embed.add_field(name="Geöffnet von", value=f"<@{owner_id}>" if owner_id else "Unbekannt", inline=True)
+    embed.add_field(name="Übernommen von", value=f"<@{claimed_by}>" if claimed_by else "Niemand", inline=True)
+    return embed
+
+
 class TicketControlView(discord.ui.View):
     def __init__(self, claimed: bool = False):
         super().__init__(timeout=None)
@@ -1265,11 +1258,9 @@ class TicketControlView(discord.ui.View):
             pass
 
         await interaction.response.edit_message(
-            content=f"🎫 **Ticket übernommen von:** {interaction.user.mention}",
-            view=TicketControlView(claimed=True),
-        )
-        await interaction.channel.send(
-            f"🙋 {interaction.user.mention} hat dieses Ticket übernommen."
+            content=None,
+            embed=ticket_status_embed(meta, interaction.channel_id),
+            view=TicketControlView(),
         )
 
     async def release(self, interaction: discord.Interaction):
@@ -1294,17 +1285,10 @@ class TicketControlView(discord.ui.View):
         except discord.HTTPException:
             pass
 
-        previous_claimer_mention = f"<@{previous_claimer}>" if previous_claimer else "Unbekannt"
         await interaction.response.edit_message(
-            content=(
-                f"🔓 **Ticket freigegeben von:** {interaction.user.mention}\n"
-                f"**Zuvor übernommen von:** {previous_claimer_mention}"
-            ),
-            view=TicketControlView(claimed=False),
-        )
-        await interaction.channel.send(
-            f"🔓 {interaction.user.mention} hat das Ticket freigegeben. "
-            f"Previously claimed by: {previous_claimer_mention}. The ticket can now be claimed again."
+            content=None,
+            embed=ticket_status_embed(meta, interaction.channel_id),
+            view=TicketControlView(),
         )
 
     async def priority(self, interaction: discord.Interaction):
