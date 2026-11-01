@@ -1094,6 +1094,8 @@ def _module_navigation():
         ("starter", "🏠 Starter Module", "?section=overview"),
         ("welcome", "👋 Welcome & Goodbye", "/welcome"),
         ("tickets", "🎟️ Support Tickets", "/tickets"),
+        ("quick-support", "🆘 Quick Support", "/quick-support"),
+        ("ai", "🤖 AI Assistant", "/ai"),
         ("verification", "🔐 Verification", "/verification"),
         ("reaction-roles", "🎭 Reaction Roles", "/reaction-roles"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
@@ -4688,6 +4690,53 @@ def guild_server_boost(guild_id):
     return _render(guild.name + " · Server-Booster", body)
 
 
+@app.route("/guild/<guild_id>/quick-support", methods=["GET", "POST"])
+def guild_quick_support(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    panels = cfg.setdefault("ticket_panels", {})
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+        cfg["quick_support_enabled_global"] = request.form.get("quick_support_enabled") == "on"
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Quick Support", session.get("user_id"), "Globale Einstellung gespeichert")
+        return redirect(url_for("guild_quick_support", guild_id=guild.id, saved="1"))
+    enabled = cfg.get("quick_support_enabled_global", True)
+    rows = []
+    for key, panel in panels.items():
+        if not isinstance(panel, dict):
+            continue
+        role_id = panel.get("support_role_id") or cfg.get("support_role")
+        role = guild.get_role(int(role_id)) if str(role_id or "").isdigit() else None
+        rows.append(
+            '<div class="notice"><strong>' + html.escape(str(panel.get("title", "Ticket-Panel"))) + '</strong>'
+            + '<p class="muted">Panel ' + html.escape(str(key)) + ' · Support-Rolle: '
+            + (html.escape(role.name) if role else 'Nicht eingerichtet')
+            + ' · Panel-Schalter: ' + ('Aktiv' if panel.get("quick_support_enabled", False) else 'Aus')
+            + '</p></div>'
+        )
+    body = (
+        '<span class="pill">IRONWOLF · QUICK SUPPORT</span><h1 style="margin-top:12px">🆘 Quick Support</h1>'
+        '<p class="muted">Zentrale Steuerung für automatische Support-Pings in Ticket-Kanälen. Die Funktion pingt das konfigurierte Support-Team bei einer neuen Mitgliedernachricht höchstens alle fünf Minuten pro Ticket.</p>'
+        + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
+        + '<section class="card"><h2>Modulsteuerung</h2><form method="post">' + _csrf_field()
+        + '<label class="check"><input type="checkbox" name="quick_support_enabled" value="on"'
+        + (' checked' if enabled else '') + '> Quick Support serverweit aktivieren</label>'
+        + '<p class="muted">Ist der Schalter aus, werden keine automatischen Quick-Support-Pings gesendet. Zusätzlich muss Quick Support im jeweiligen Ticket-Panel aktiviert sein.</p>'
+        + '<button type="submit">Einstellungen speichern</button></form></section>'
+        + '<section class="card"><h2>Ticket-Panels</h2>'
+        + (''.join(rows) if rows else '<p class="muted">Noch keine Ticket-Panels vorhanden. Erstelle zuerst ein Panel im Ticket-Modul.</p>')
+        + '<p><a class="button secondary" href="/guild/' + str(guild.id) + '/tickets">Ticket-Panels verwalten →</a></p></section>'
+    )
+    return _render(guild.name + " · Quick Support", body)
+
+
 @app.route("/guild/<guild_id>/ai", methods=["GET", "POST"])
 def guild_ai_knowledge(guild_id):
     guild, response = _authorized_guild(guild_id)
@@ -4703,6 +4752,7 @@ def guild_ai_knowledge(guild_id):
             abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
         action = request.form.get("action", "save")
         if action == "save":
+            cfg["ai_enabled_global"] = request.form.get("ai_enabled") == "on"
             cfg["ai_learning_enabled"] = request.form.get("learning_enabled") == "on"
             cfg["ai_custom_instructions"] = request.form.get("custom_instructions", "").strip()[:2000]
         entries = cfg.setdefault("ai_knowledge", [])
@@ -4734,6 +4784,8 @@ def guild_ai_knowledge(guild_id):
         '<p class="muted">Dieses Wissen gilt nur für diesen Discord-Server. Automatisches Lernen ist standardmäßig deaktiviert. Es werden nur Textnachrichten vertrauenswürdiger Staff-Mitglieder gespeichert; du kannst Einträge jederzeit prüfen und löschen.</p>'
         + ('<div class="notice">Einstellungen gespeichert.</div>' if request.args.get("saved") else '')
         + '<section class="card"><h2>Automatisches Lernen</h2><form method="post">' + _csrf_field()
+        + '<label class="check"><input type="checkbox" name="ai_enabled" value="on"' + (' checked' if cfg.get("ai_enabled_global", True) else '') + '> KI-Assistent für diesen Server aktivieren</label>'
+        + '<p class="muted">Schaltet KI-Antworten in allen Ticket-Panels zentral ein oder aus. Die jeweilige Panel-Option muss zusätzlich aktiviert sein.</p>'
         + '<label class="check"><input type="checkbox" name="learning_enabled" value="on"' + learning_checked + '> Staff-Nachrichten als Serverwissen speichern</label>'
         + '<p class="muted">Berücksichtigt Administratoren, Server-Verwalter und die konfigurierte Support-Rolle. Es werden keine Anhänge oder Nachrichten von normalen Mitgliedern übernommen. Maximal 80 Einträge pro Server.</p>'
         + '<label>Zusätzliche KI-Anweisungen</label><textarea name="custom_instructions" maxlength="2000" rows="5">' + custom + '</textarea>'
