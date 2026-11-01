@@ -32,9 +32,9 @@ def safe_text(value, limit=1000):
     return discord.utils.escape_mentions(str(value or ""))[:limit]
 
 class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
-    rp_name = discord.ui.TextInput(label="RP-Name", placeholder="Vorname Nachname", max_length=80)
+    rp_name = discord.ui.TextInput(label="RP Name", placeholder="Vorname Nachname", max_length=80)
     roblox_name = discord.ui.TextInput(label="Roblox Username", placeholder="Your Roblox username", max_length=80)
-    age = discord.ui.TextInput(label="Alter (OOC)", placeholder="z. B. 16", max_length=3)
+    age = discord.ui.TextInput(label="Age (OOC)", placeholder="z. B. 16", max_length=3)
     experience = discord.ui.TextInput(label="RP / faction experience", placeholder="What experience can you bring?", style=discord.TextStyle.paragraph, max_length=700)
     motivation = discord.ui.TextInput(label="Why would you like to join?", placeholder="Your motivation and strengths", style=discord.TextStyle.paragraph, max_length=1000)
 
@@ -71,11 +71,11 @@ class ApplicationModal(discord.ui.Modal, title="IronWolf – Application"):
         RECORDS["applications"][app_id] = row
         save_records()
         english = True
-        embed = discord.Embed(title="📨 New Application" if english else "📨 Neue Fraktionsbewerbung", description=("Applicant: <@{}>\nStatus: ⏳ Pending" if english else "Applicant: <@{}>\nStatus: ⏳ Pending").format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
-        embed.add_field(name="RP Name" if english else "RP-Name", value=safe_text(row["rp_name"], 200), inline=True)
+        embed = discord.Embed(title="📨 New Application" if english else "📨 Neue Application", description=("Applicant: <@{}>\nStatus: ⏳ Pending" if english else "Applicant: <@{}>\nStatus: ⏳ Pending").format(interaction.user.id), color=discord.Color.blurple(), timestamp=datetime.now(timezone.utc))
+        embed.add_field(name="RP Name" if english else "RP Name", value=safe_text(row["rp_name"], 200), inline=True)
         embed.add_field(name="Roblox Username" if english else "Roblox Username", value=safe_text(row["roblox_name"], 200), inline=True)
-        embed.add_field(name="Age (OOC)" if english else "Alter (OOC)", value=safe_text(row["age"], 30), inline=True)
-        embed.add_field(name="Experience" if english else "Erfahrung", value=safe_text(row["experience"]), inline=False)
+        embed.add_field(name="Age (OOC)" if english else "Age (OOC)", value=safe_text(row["age"], 30), inline=True)
+        embed.add_field(name="Experience" if english else "Experience", value=safe_text(row["experience"]), inline=False)
         embed.add_field(name="Motivation", value=safe_text(row["motivation"]), inline=False)
         embed.set_footer(text=("Application ID: " if english else "Application ID: ") + app_id)
         try:
@@ -205,7 +205,7 @@ class ApplicationDecisionButton(discord.ui.Button):
         applicant = interaction.guild.get_member(row["user_id"])
         if applicant:
             try:
-                await applicant.send(("Your IronWolf application on {} was {}.".format(interaction.guild.name, "accepted" if self.decision == "approve" else "rejected")) if english else ("Deine IronWolf-Fraktionsbewerbung auf {} wurde {}.".format(interaction.guild.name, "angenommen" if self.decision == "approve" else "abgelehnt")) )
+                await applicant.send(("Your IronWolf application on {} was {}.".format(interaction.guild.name, "accepted" if self.decision == "approve" else "rejected")) if english else ("Deine IronWolf-Application auf {} wurde {}.".format(interaction.guild.name, "angenommen" if self.decision == "approve" else "abgelehnt")) )
             except (discord.Forbidden, discord.HTTPException):
                 pass
         log_channel = interaction.guild.get_channel(settings.get("log_channel_id") or 0)
@@ -276,11 +276,11 @@ class Applications(commands.Cog):
         guild_settings(gid).update({"panel_channel_id": kanal.id, "review_channel_id": review_kanal.id, "log_channel_id": log_kanal.id, "review_role_id": review_rolle.id if review_rolle else None, "button_label": (str(button_name).strip()[:80] if button_name and str(button_name).strip() else None)})
         save_config()
         english = gid == 1561027077984227371
-        embed = discord.Embed(title="🐺 IronWolf – Applications" if english else "🐺 IronWolf – Fraktionsbewerbungen", description=("Would you like to join our team?\n\nClick **Apply Now** and complete the form. Your answers will be sent confidentially to the team. You can only have one pending application at a time." if english else "Du möchtest Teil unseres Teams werden?\n\nKlicke auf **Jetzt bewerben** und fülle das Formular vollständig aus. Deine Angaben werden vertraulich an das zuständige Team übermittelt. Du kannst immer nur eine offene Bewerbung gleichzeitig haben."), color=discord.Color.dark_blue())
+        embed = discord.Embed(title="🐺 IronWolf – Applications" if english else "🐺 IronWolf – Applicationen", description=("Would you like to join our team?\n\nClick **Apply Now** and complete the form. Your answers will be sent confidentially to the team. You can only have one pending application at a time." if english else "Du möchtest Teil unseres Teams werden?\n\nKlicke auf **Apply now** und fülle das Formular vollständig aus. Deine Angaben werden vertraulich an das zuständige Team übermittelt. Du kannst immer nur eine offene Bewerbung gleichzeitig haben."), color=discord.Color.dark_blue())
         embed.set_footer(text="IronWolf RP • Applications" if english else "IronWolf RP • Applications")
         self.bot.add_view(ApplicationPanelView(self, gid))
         await kanal.send(embed=embed, view=ApplicationPanelView(self, gid))
-        await interaction.response.send_message(("✅ Application panel created in {}. Button: **{}**. Review channel: {} · Log channel: {}".format(kanal.mention, guild_settings(gid).get("button_label") or ("Apply Now" if english else "Jetzt bewerben"), review_kanal.mention, log_kanal.mention)) if english else ("✅ Bewerbungs-Panel in {} erstellt. Button: **{}**. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, guild_settings(gid).get("button_label") or "Jetzt bewerben", review_kanal.mention, log_kanal.mention)), ephemeral=True)
+        await interaction.response.send_message(("✅ Application panel created in {}. Button: **{}**. Review channel: {} · Log channel: {}".format(kanal.mention, guild_settings(gid).get("button_label") or ("Apply Now" if english else "Apply now"), review_kanal.mention, log_kanal.mention)) if english else ("✅ Bewerbungs-Panel in {} erstellt. Button: **{}**. Prüfkanal: {} · Logkanal: {}".format(kanal.mention, guild_settings(gid).get("button_label") or "Apply now", review_kanal.mention, log_kanal.mention)), ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Applications(bot))
