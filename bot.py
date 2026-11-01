@@ -1237,6 +1237,7 @@ class TicketCreateModal(discord.ui.Modal):
 
 
 async def _open_ticket_flow(interaction: discord.Interaction, panel_key: str, button_index: int, button_label: str):
+    print(f"[TICKET BUTTON] Open flow invoked: guild={interaction.guild_id} user={interaction.user.id} panel={panel_key} index={button_index}.", flush=True)
     cfg = guild_config(interaction.guild_id) if interaction.guild_id else {}
     panel = cfg.get("ticket_panels", {}).get(panel_key, {})
     if not panel:
@@ -5279,6 +5280,7 @@ class QuickSupportThreadView(discord.ui.View):
         custom_id="quick_support:create_private_thread",
     )
     async def create_private_thread(self, interaction: discord.Interaction, button: discord.ui.Button):
+        print(f"[QUICK SUPPORT] Thread button clicked: guild={interaction.guild_id} user={interaction.user.id} message={getattr(interaction.message, 'id', None)}.", flush=True)
         guild = interaction.guild
         if guild is None or interaction.message is None:
             await interaction.response.send_message("Dieser Button funktioniert nur auf dem Server.", ephemeral=True)
@@ -5386,6 +5388,18 @@ async def on_message(message: discord.Message):
     if message.guild and not message.author.bot:
         guild = message.guild
         cfg = guild_config(guild.id)
+        _quick_id = cfg.get("quick_support_channel_id")
+        _ai_id = cfg.get("ai_channel_id")
+        _is_ticket = str(message.channel.id) in data.setdefault("tickets", {})
+        _is_quick = str(_quick_id or "").isdigit() and int(_quick_id) == message.channel.id
+        _is_ai = str(_ai_id or "").isdigit() and int(_ai_id) == message.channel.id
+        if _is_ticket or _is_quick or _is_ai:
+            print(
+                f"[MODULE EVENT] on_message received: guild={guild.id} channel={message.channel.id} "
+                f"user={message.author.id} ticket={_is_ticket} quick_support={_is_quick} ai_channel={_is_ai} "
+                f"content_length={len(message.content or '')} message_content_intent={bot.intents.message_content}.",
+                flush=True,
+            )
 
         # Standalone Quick Support only notifies staff; it never invokes the AI.
         quick_channel_id = cfg.get("quick_support_channel_id")
@@ -8461,12 +8475,16 @@ async def on_ready():
     bot.add_view(VerifyView())
 
     # Restore persistent ticket panel views saved in config.
+    _restored_ticket_panels = 0
     for guild_id, cfg in config.items():
         for panel_key, panel in cfg.get("ticket_panels", {}).items():
             try:
                 bot.add_view(TicketPanelView(panel_key, panel.get("labels", []), panel.get("display_mode", "buttons"), panel.get("option_descriptions", [])))
-            except Exception:
-                pass
+                _restored_ticket_panels += 1
+            except Exception as exc:
+                print(f"[TICKET VIEW] Could not restore panel view: guild={guild_id} panel={panel_key} error={type(exc).__name__}: {exc}", flush=True)
+    print(f"[TICKET VIEW] Persistent ticket panel views restored: {_restored_ticket_panels}.", flush=True)
+    print(f"[QUICK SUPPORT] Persistent thread view registered; message_content_intent={bot.intents.message_content}.", flush=True)
     try:
         # Discord allows at most 100 global slash commands. Keep economy commands
         # guild-scoped so they do not prevent the main command set from syncing.
