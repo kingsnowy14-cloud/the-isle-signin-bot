@@ -1056,6 +1056,12 @@ class TicketCreateModal(discord.ui.Modal):
         support_role = guild.get_role(support_role_id) if support_role_id else None
         if support_role:
             overwrites[support_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        priority_role_id = panel.get("priority_role_id") if guild_has_feature(cfg, "ticket") else None
+        priority_role = guild.get_role(int(priority_role_id)) if priority_role_id else None
+        if priority_role and not priority_role.is_default() and not priority_role.managed:
+            overwrites[priority_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        else:
+            priority_role = None
         try:
             channel = await guild.create_text_channel(
                 channel_name, category=category, overwrites=overwrites or {},
@@ -1085,6 +1091,7 @@ class TicketCreateModal(discord.ui.Modal):
             "label": self.button_label,
             "ticket_number": ticket_number,
             "support_role_id": support_role_id,
+            "priority_role_id": priority_role.id if priority_role else None,
         }
         data.setdefault("tickets", {})[str(channel.id)] = ticket_meta
         save_json(DATA_FILE, data)
@@ -1107,7 +1114,7 @@ class TicketCreateModal(discord.ui.Modal):
         embed.add_field(name="Ticket owner", value=interaction.user.mention, inline=True)
         embed.add_field(name="Ticket number", value=str(ticket_number), inline=True)
         await channel.send(
-            content=f"{interaction.user.mention}" + (f" {support_role.mention}" if support_role else ""),
+            content=" ".join(part for part in (interaction.user.mention, support_role.mention if support_role else None, priority_role.mention if priority_role else None) if part),
             embed=embed,
             view=TicketControlView(),
         )
@@ -1220,30 +1227,6 @@ class TicketControlView(discord.ui.View):
         )
         release_button.callback = self.release
         self.add_item(release_button)
-
-        priority_button = discord.ui.Button(
-            label="Toggle priority",
-            style=discord.ButtonStyle.secondary,
-            emoji="🚩",
-            custom_id="ticket:priority",
-        )
-        priority_button.callback = self.priority
-        self.add_item(priority_button)
-
-        note_button = discord.ui.Button(
-            label="Teamnotiz",
-            style=discord.ButtonStyle.secondary,
-            emoji="📝",
-            custom_id="ticket:internal-note",
-        )
-        async def add_note(interaction: discord.Interaction):
-            meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
-            if not meta or not is_support(interaction.user, meta, interaction.guild):
-                await interaction.response.send_message("Only the support team can add internal notes.", ephemeral=True)
-                return
-            await interaction.response.send_modal(TicketInternalNoteModal())
-        note_button.callback = add_note
-        self.add_item(note_button)
 
         close_button = discord.ui.Button(
             label="Close ticket",
