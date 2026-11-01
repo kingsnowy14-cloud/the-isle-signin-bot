@@ -4910,6 +4910,8 @@ def guild_ai_knowledge(guild_id):
     entries = cfg.get("ai_knowledge", [])
     if not isinstance(entries, list):
         entries = []
+    # Only entries explicitly created in the dashboard are displayed here.
+    entries = [item for item in entries if isinstance(item, dict) and item.get("source") == "Dashboard"]
     learning_checked = " checked" if cfg.get("ai_learning_enabled", False) else ""
     custom = html.escape(str(cfg.get("ai_custom_instructions", "")), quote=True)
     body = (
