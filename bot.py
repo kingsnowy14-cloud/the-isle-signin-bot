@@ -4972,7 +4972,7 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         recent_messages = []
         if meta is not None:
             try:
-                async for item in channel.history(limit=8, oldest_first=False):
+                async for item in channel.history(limit=5, oldest_first=False):
                     if item.author.bot and item.author.id != bot.user.id:
                         continue
                     if (item.content or "").strip():
@@ -4986,7 +4986,7 @@ async def _generate_ticket_ai_reply(channel, message, meta):
 
         # Gemini expects valid user/model turns; merge adjacent messages from the same role.
         history = []
-        for item in recent_messages[-8:]:
+        for item in recent_messages[-5:]:
             content = (item.content or "").strip()
             if not content:
                 continue
@@ -5021,28 +5021,21 @@ async def _generate_ticket_ai_reply(channel, message, meta):
         payload = {
             "system_instruction": {"parts": [{"text": prompt}]},
             "contents": history,
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 220},
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 180, "candidateCount": 1},
         }
         configured_model = (os.getenv("GEMINI_MODEL") or "gemini-3.8-flash").strip()
         configured_model = configured_model.removeprefix("models/").strip("/")
-        request = urllib.request.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{configured_model}:generateContent?key={api_key}",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        def send_request():
-            # Gemini occasionally takes longer than 15 seconds to answer. A longer
-            # read timeout prevents normal model latency from being treated as failure.
-            with urllib.request.urlopen(request, timeout=60) as response:
-                return json.loads(response.read().decode("utf-8"))
-        try:
-            result = await asyncio.to_thread(send_request)
-        except urllib.error.HTTPError as http_error:
-            error_body = http_error.read().decode("utf-8", errors="replace")[:700]
-            print(f"[TICKET AI] Gemini model {configured_model} failed: HTTP {http_error.code}: {error_body}", flush=True)
-            # Do not post internal service/configuration errors into public Discord channels.
-            return None
+        # Async HTTP avoids blocking the Discord event loop while Gemini generates.
+        import aiohttp
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{configured_model}:generateContent"
+        timeout = aiohttp.ClientTimeout(total=35, connect=8, sock_read=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, params={"key": api_key}, json=payload, headers={"Content-Type": "application/json"}) as response:
+                response_text = await response.text()
+                if response.status >= 400:
+                    print(f"[TICKET AI] Gemini model {configured_model} failed: HTTP {response.status}: {response_text[:700]}", flush=True)
+                    return None
+                result = json.loads(response_text)
         candidates = result.get("candidates", [])
         parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
         answer = "\n".join(str(part.get("text", "")) for part in parts).strip()
@@ -5141,7 +5134,7 @@ async def on_message(message: discord.Message):
                 and panel.get("ai_support_enabled", False)
             ):
                 now = time.monotonic()
-                if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 25:
+                if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 5:
                     _ticket_ai_last_reply[message.channel.id] = now
                     async with message.channel.typing():
                         answer = await _generate_ticket_ai_reply(message.channel, message, ticket_meta)
@@ -5170,7 +5163,7 @@ async def on_message(message: discord.Message):
             and not message.author.bot
         ):
             now = time.monotonic()
-            if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 25:
+            if now - _ticket_ai_last_reply.get(message.channel.id, 0) >= 5:
                 _ticket_ai_last_reply[message.channel.id] = now
                 async with message.channel.typing():
                     answer = await _generate_ticket_ai_reply(message.channel, message, None)
