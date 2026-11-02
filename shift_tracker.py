@@ -277,7 +277,7 @@ class ShiftTracker(commands.Cog):
         await interaction.response.send_message(f"🔴 Shift ended. Worked: **{_duration(worked)}** (Pausen: {_duration(shift.get('paused_seconds', 0))}).", ephemeral=True)
         await self.log(guild, panel, f"🔴 {interaction.user.mention} hat **{panel['name']}** beendet. Gesamtdauer: **{_duration(total)}** · Arbeitszeit: **{_duration(worked)}** · Pausenzeit: **{_duration(shift.get('paused_seconds', 0))}** · Verwarnungen: **{shift.get('warnings', 0)}**.")
 
-    @tasks.loop(seconds=20)
+    @tasks.loop(seconds=5)
     async def pause_worker(self):
         now = _now()
         for guild_id, data in list(STATE.get("guilds", {}).items()):
