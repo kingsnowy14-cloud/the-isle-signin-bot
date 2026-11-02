@@ -450,7 +450,7 @@ def format_duration(seconds):
 # Defaults are merged recursively into existing per-server settings. Existing values,
 # unknown keys and module-specific configuration are deliberately never overwritten.
 DEFAULT_GUILD_CONFIG = {
-    "bot_language": "auto",
+    "bot_language": "en",
     "channel_translations": {},
     "registration_channel": None,
     "ticket_category": None,
@@ -546,7 +546,7 @@ def guild_config(guild_id):
         changed = False
     changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
     if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
-        cfg["bot_language"] = "auto"
+        cfg["bot_language"] = "en"
         changed = True
     # The assistant is intentionally restricted to the single dashboard-selected text channel.
     if cfg.get("ai_mode") != "channel":
@@ -607,8 +607,8 @@ def server_language(guild_id):
     if language == "auto":
         guild = bot.get_guild(int(guild_id))
         locale = str(getattr(guild, "preferred_locale", "en-US")).lower()
-        return "de" if locale.startswith("de") else "en"
-    return language if language in {"de", "en"} else "en"
+        return "en"
+    return "en"
 
 def bot_text(guild_id, text):
     """Translate catalogued common bot messages; unknown text remains unchanged."""
@@ -642,7 +642,7 @@ def migrate_all_guild_configs():
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
         if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
-            cfg["bot_language"] = "auto"
+            cfg["bot_language"] = "en"
             changed = True
     # Ensure newly joined servers get a complete default config too.
     for guild in getattr(bot, "guilds", []):
@@ -653,7 +653,7 @@ def migrate_all_guild_configs():
             changed = True
         changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
         if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
-            cfg["bot_language"] = "auto"
+            cfg["bot_language"] = "en"
             changed = True
     if changed:
         save_json(CONFIG_FILE, config)
@@ -817,7 +817,7 @@ def user_language(user_id, discord_locale=None):
     if saved in {"de", "en"}:
         return saved
     locale = str(discord_locale or "en").lower()
-    return "de" if locale.startswith("de") else "en"
+    return "en"
 
 
 TEXTS = {
@@ -8934,31 +8934,43 @@ async def wolfcheck_command(interaction: discord.Interaction):
 @bot.command(name="translate")
 @commands.guild_only()
 @commands.has_guild_permissions(manage_channels=True)
-async def translate_command(ctx, channel: discord.TextChannel, target: str):
-    """Enable automatic translation of every new message in a selected text channel."""
-    target = target.lower()
-    if target not in {"de", "en", "off"}:
-        await ctx.reply("🌐 Verwendung: `!translate #kanal de`, `!translate #kanal en` oder `!translate #kanal off`.", mention_author=False)
+async def translate_command(ctx, channel_or_language: str, target: str = None):
+    """Enable automatic translation in the current channel or a selected channel."""
+    first = channel_or_language.strip()
+    if target is None and first.lower() in {"de", "en", "off"}:
+        channel = ctx.channel
+        target = first.lower()
+    else:
+        target = str(target or "").lower()
+        match = re.fullmatch(r"<#(\\d+)>", first)
+        channel_id = match.group(1) if match else first
+        if not channel_id.isdigit():
+            await ctx.reply("Usage: `!translate #channel en`, `!translate #channel de`, or `!translate #channel off`. You can also use `!translate en` in the current channel.", mention_author=False)
+            return
+        channel = ctx.guild.get_channel(int(channel_id))
+    if not isinstance(channel, discord.TextChannel) or channel.guild.id != ctx.guild.id:
+        await ctx.reply("Please select a text channel from this server.", mention_author=False)
         return
-    if channel.guild.id != ctx.guild.id:
-        await ctx.reply("❌ Bitte wähle einen Kanal dieses Servers.", mention_author=False)
+    if target not in {"de", "en", "off"}:
+        await ctx.reply("Target language must be `en`, `de`, or `off`.", mention_author=False)
         return
     if target == "off":
         cfg = guild_config(ctx.guild.id)
         cfg.setdefault("channel_translations", {}).pop(str(channel.id), None)
         save_json(CONFIG_FILE, config)
-        await ctx.reply(f"✅ Automatische Übersetzung in {channel.mention} wurde deaktiviert.", mention_author=False)
+        await ctx.reply(f"Automatic translation has been disabled in {channel.mention}.", mention_author=False)
         return
-    if not channel.permissions_for(ctx.guild.me).send_messages:
-        await ctx.reply(f"❌ Ich darf in {channel.mention} keine Nachrichten senden.", mention_author=False)
+    permissions = channel.permissions_for(ctx.guild.me)
+    if not permissions.send_messages or not permissions.read_message_history:
+        await ctx.reply(f"I need permission to read messages and send messages in {channel.mention}.", mention_author=False)
         return
     cfg = guild_config(ctx.guild.id)
     cfg.setdefault("channel_translations", {})[str(channel.id)] = target
     save_json(CONFIG_FILE, config)
-    language_name = "Deutsch" if target == "de" else "Englisch"
+    language_name = "English" if target == "en" else "German"
     await ctx.reply(
-        f"✅ Automatische Übersetzung ist in {channel.mention} aktiviert. Neue Nachrichten werden nach **{language_name}** übersetzt.\n"
-        f"Deaktivieren mit `!translate {channel.mention} off`.",
+        f"Automatic translation is enabled in {channel.mention}. New messages will be translated into **{language_name}**.\n"
+        f"Disable it with `!translate {channel.mention} off`.",
         mention_author=False,
     )
 
@@ -8966,15 +8978,15 @@ async def translate_command(ctx, channel: discord.TextChannel, target: str):
 @translate_command.error
 async def translate_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.reply("❌ Dafür benötigst du die Berechtigung **Kanäle verwalten**.", mention_author=False)
+        await ctx.reply("You need the Manage Channels permission to use this command.", mention_author=False)
     elif isinstance(error, commands.BadArgument):
-        await ctx.reply("🌐 Verwendung: `!translate #kanal de` oder `!translate #kanal en`.", mention_author=False)
+        await ctx.reply("Usage: `!translate #channel en` or `!translate #channel de`.", mention_author=False)
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.reply("🌐 Verwendung: `!translate #kanal de`, `!translate #kanal en` oder `!translate #kanal off`.", mention_author=False)
+        await ctx.reply("Usage: `!translate #channel en`, `!translate #channel de`, or `!translate #channel off`.", mention_author=False)
     else:
         original = getattr(error, "original", error)
         print(f"[TRANSLATE] Command error: {type(original).__name__}: {original}", flush=True)
-        await ctx.reply("❌ Der Übersetzungskanal konnte nicht eingerichtet werden.", mention_author=False)
+        await ctx.reply("The translation channel could not be configured. Check the bot logs for details.", mention_author=False)
 
 
 @bot.command(name="language", aliases=["lang"])
