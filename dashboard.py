@@ -1884,7 +1884,7 @@ def premium_page():
         raw_ids = request.form.get("discord_user_ids", "")
         # Accept one or many IDs, separated by commas, spaces, semicolons or new lines.
         target_ids = list(dict.fromkeys(
-            item for item in re.split(r"[\\s,;]+", raw_ids.strip()) if item
+            item for item in re.split(r"[\s,;]+", raw_ids.strip()) if item
         ))
         if not target_ids:
             abort(400, "Bitte mindestens eine Discord-Benutzer-ID eingeben.")
