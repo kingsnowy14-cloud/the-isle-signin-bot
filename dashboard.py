@@ -1225,7 +1225,7 @@ def _module_navigation():
         ("__ai_category__", "🎭 Rollen & Serververwaltung", ""),
         ("reaction-roles", "🎭 Reaction Roles", "/reaction-roles"),
         ("roles", "🎭 Roles & Rewards", "?section=roles#settings-panel"),
-        ("channels", "📡 Channels & Logs", "?section=channels#settings-panel"),
+        ("channels", "📡 Channels & Logs", "?section=channels#settings-panel"),\n        ("server-logs", "📋 System-Logs", "/server-logs"),
         ("temporary-voice", "🔊 Temporary Voice", "/temporary-voice"),
         ("__ai_category__", "🛡️ Sicherheit & Moderation", ""),
         ("security-lab", "🛡️ Security Center", "/security-lab"),
@@ -2996,7 +2996,7 @@ def guild_page(guild_id):
         ("🧩 Modules", [("🆘", "Quick Support", "Automatic support-team pings in tickets", "/quick-support")]),
         ("📨 Support & Communication", [("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
         ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("🎭", "Roles & Rewards", "Bot roles and level rewards", "?section=roles#settings-panel"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
-        ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "Server Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
+        ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "System-Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
     ]
     def module_cards(items, popular_style=False):
         css_class = "iw-popular-card" if popular_style else "iw-module-card"
@@ -4241,16 +4241,16 @@ def guild_server_logs(guild_id):
     notice = '<div class="notice">Settings saved.</div>' if request.args.get("saved") == "1" else ''
     enabled = ' checked' if cfg.get("enabled", False) else ''
     all_checked = ' checked' if cfg.get("all_in_one", True) else ''
-    body = '<section class="card"><span class="pill">LOGGING · SERVER ACTIVITY</span><h1>📋 Server Logs</h1><p>Choose one channel for every event or assign a separate channel to each category.</p>' + notice
+    body = '<section class="card"><span class="pill">LOGGING · SERVER ACTIVITY</span><h1>📋 System-Logs</h1><p>Lege fest, in welchen Discord-Kanälen IronWolf Server-Ereignisse protokolliert. Du kannst einen gemeinsamen Kanal oder getrennte Kanäle pro Kategorie verwenden.</p>' + notice
     body += '<form method="post">' + _csrf_field()
-    body += '<div class="check"><input type="checkbox" id="server-logs-enabled" name="enabled"' + enabled + '><label for="server-logs-enabled">Enable server logs</label></div>'
-    body += '<div class="check"><input type="checkbox" id="server-logs-all" name="all_in_one"' + all_checked + '><label for="server-logs-all">Log everything in one channel</label></div>'
-    body += '<div id="server-logs-single"><label for="channel_id">Shared log channel</label>' + channel_select("channel_id", cfg.get("channel_id")) + '</div>'
-    body += '<div id="server-logs-split"><h2>Separate log channels</h2>'
+    body += '<div class="check"><input type="checkbox" id="server-logs-enabled" name="enabled"' + enabled + '><label for="server-logs-enabled">System-Logs aktivieren</label></div>'
+    body += '<div class="check"><input type="checkbox" id="server-logs-all" name="all_in_one"' + all_checked + '><label for="server-logs-all">Alle Ereignisse in einem Kanal protokollieren</label></div>'
+    body += '<div id="server-logs-single"><label for="channel_id">Gemeinsamer System-Log-Kanal</label>' + channel_select("channel_id", cfg.get("channel_id")) + '</div>'
+    body += '<div id="server-logs-split"><h2>Getrennte Log-Kanäle</h2>'
     for key, title, description in categories:
         checked = ' checked' if cfg.get("categories", {}).get(key, True) else ''
-        body += '<div class="card"><div class="check"><input type="checkbox" id="category_' + key + '" name="category_' + key + '"' + checked + '><label for="category_' + key + '">' + title + '</label></div><small class="muted">' + description + '</small><label for="channel_' + key + '">Log channel</label>' + channel_select("channel_" + key, cfg.get("channels", {}).get(key)) + '</div>'
-    body += '</div><button type="submit">💾 Save server log settings</button> <a class="button secondary" href="/guild/' + gid + '">Back to server overview</a></form></section>'
+        body += '<div class="card"><div class="check"><input type="checkbox" id="category_' + key + '" name="category_' + key + '"' + checked + '><label for="category_' + key + '">' + title + '</label></div><small class="muted">' + description + '</small><label for="channel_' + key + '">Log-Kanal</label>' + channel_select("channel_" + key, cfg.get("channels", {}).get(key)) + '</div>'
+    body += '</div><button type="submit">💾 System-Log-Einstellungen speichern</button> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht</a></form></section>'
     body += '<script>(function(){const all=document.getElementById("server-logs-all"),one=document.getElementById("server-logs-single"),split=document.getElementById("server-logs-split");function update(){one.hidden=!all.checked;split.hidden=all.checked;}all.addEventListener("change",update);update();})();</script>'
     return _render(guild.name + " · Server Logs", body)
 
