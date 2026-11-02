@@ -5183,7 +5183,8 @@ def guild_verification(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     result_html = ""
-    if request.method == "POST":        if not _csrf_ok():
+    if request.method == "POST":
+        if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
@@ -6604,86 +6605,3 @@ def guild_wolfchronicle(guild_id):
             )
         elif resolution_note:
             card += '<p class="notice"><strong>Abschlussnotiz:</strong> ' + resolution_note + '</p>'
-        card += '</section>'
-        cards.append(card)
-    timeline = "".join(cards) if cards else '<section class="card"><h2>Noch keine Vorfälle</h2><p>Erstelle hier einen Eintrag oder nutze im Discord Servers <code>/wolfincident</code>. Beide Wege schreiben in dieselbe serverbezogene Chronik.</p></section>'
-    body = (
-        '<section class="card"><h1>📚 WolfChronicle · Gemeinsames Incident-Center</h1>'
-        '<p class="muted">Ein gemeinsamer Verlauf für Discord und Website. Vorfälle bleiben serverbezogen gespeichert, sind begrenzt auf 100 Einträge und können hier nachverfolgt werden. Es werden keine Nachrichten automatisch gesammelt und keine Strafen ausgeführt.</p>'
-        '<form method="post">' + _csrf_field() +
-        '<input type="hidden" name="action" value="create">'
-        '<div class="grid"><label>Vorfalltyp<select name="incident_type">' + type_options + '</select></label>'
-        '<label>Priorität<select name="severity">' + severity_options + '</select></label></div>'
-        '<label>Titel<input type="text" name="title" maxlength="120" required placeholder="Kurzer, verständlicher Titel"></label>'
-        '<label>Zusammenfassung<textarea name="summary" maxlength="500" required placeholder="Was ist passiert? Keine privaten Nachrichten oder unnötigen personenbezogenen Daten einfügen."></textarea></label>'
-        '<button type="submit">＋ Vorfall dokumentieren</button></form></section>'
-        '<section><h2>Letzte Vorfälle · ' + str(len(incidents)) + '</h2>' + timeline + '</section>'
-        '<section class="card"><h2>Vom Discord aus starten</h2><p><code>/wolfincident</code> legt einen Eintrag an. <code>/wolfincidents</code> zeigt die letzten Vorfälle direkt im Server. Statusänderungen im Dashboard werden beim nächsten Aufruf auch vom Bot gelesen.</p>'
-        '<p><a href="/guild/' + str(guild.id) + '/wolfmirror">WolfMirror öffnen ↗</a> · <a href="/guild/' + str(guild.id) + '/wolfpulse">WolfPulse öffnen ↗</a></p></section>'
-    )
-    return _page("WolfChronicle · Incident-Center", body)
-
-
-@app.route("/guild/<guild_id>/wolfmirror", methods=["GET", "POST"])
-def guild_wolfmirror(guild_id):
-    """Run a safe, read-only security tabletop simulation for this guild."""
-    guild, response = _authorized_guild(guild_id)
-    if response:
-        return response
-    cfg = _guild_config(guild.id)
-    scenario = request.form.get("scenario", "raid") if request.method == "POST" else request.args.get("scenario", "raid")
-    if scenario not in SCENARIOS:
-        abort(400, "Unbekanntes WolfMirror-Szenario.")
-    if request.method == "POST" and not _csrf_ok():
-        abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
-
-    me = guild.me
-    permissions = me.guild_permissions if me else None
-    report = simulate_scenario(
-        cfg,
-        {
-            "moderate_members": bool(permissions and permissions.moderate_members),
-            "manage_messages": bool(permissions and permissions.manage_messages),
-            "view_audit_log": bool(permissions and permissions.view_audit_log),
-        },
-        scenario,
-        {"member_count": guild.member_count or 0, "channel_count": len(guild.channels)},
-    )
-    controls_html = "".join(
-        '<div class="setting-row"><span><strong>' + html.escape(item["name"]) + '</strong><small>' +
-        html.escape(item["detail"]) + '</small></span><strong>' +
-        ("✅" if item["active"] else "⚠️") + '</strong></div>'
-        for item in report["controls"]
-    )
-    gaps_html = "".join('<li>' + html.escape(gap) + '</li>' for gap in report["gaps"])
-    options_html = "".join(
-        '<option value="' + key + '"' + (' selected' if key == scenario else '') + '>' +
-        html.escape(value["label"]) + '</option>'
-        for key, value in SCENARIOS.items()
-    )
-    score = int(report["score"])
-    score_color = "#35c98b" if score >= 80 else ("#e6b450" if score >= 50 else "#f16c6c")
-    body = (
-        '<section class="card"><h1>🧪 WolfMirror · Security Digital Twin</h1>'
-        '<p class="muted">Teste die Reaktion deines Servers, bevor ein echter Vorfall passiert. '
-        'Website und Discord-Bot verwenden denselben Simulationskern und die gespeicherten Servereinstellungen.</p>'
-        '<form method="post">' + _csrf_field() +
-        '<label class="card">Szenario auswählen<select name="scenario">' + options_html + '</select></label>'
-        '<button type="submit">🧪 Dry-Run simulieren</button></form>'
-        '<p class="muted">Simulationen verändern weder Konfiguration noch Mitglieder, Nachrichten oder Serverobjekte.</p></section>'
-        '<section class="card"><h2>' + html.escape(report["label"]) + '</h2><p>' + html.escape(report["summary"]) + '</p>'
-        '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:18px 0">'
-        '<div style="width:112px;height:112px;border-radius:50%;display:grid;place-items:center;border:8px solid ' + score_color + ';font-size:25px;font-weight:800">' + str(score) + '<small style="font-size:12px">/100</small></div>'
-        '<div><h3>' + html.escape(report["verdict"]) + '</h3><p class="muted">' +
-        str(report["metrics"]["member_count"]) + ' Mitglieder · ' + str(report["metrics"]["channel_count"]) + ' Kanäle</p></div></div>'
-        + controls_html +
-        ('<h3>Verbesserungspotenzial</h3><ul>' + gaps_html + '</ul>' if gaps_html else '<p>✅ Keine Lücken in den geprüften Signalen gefunden.</p>') +
-        '<p class="muted">🧪 ' + html.escape(report["disclaimer"]) + '</p></section>'
-        '<section class="card"><h2>Warum WolfMirror anders ist</h2>'
-        '<p>Ein kontrollierter Sicherheits-Tabletop statt blindem Auto-Ban: Du siehst vorab, welche Regeln aktiv sind und welche Bot-Berechtigungen fehlen. '
-        'Der Score ist eine erklärbare Checkliste, keine wissenschaftliche Angriffswahrscheinlichkeit.</p>'
-        '<p><a href="/guild/' + str(guild.id) + '/wolfshield">WolfShield konfigurieren ↗</a> · '
-        '<a href="/guild/' + str(guild.id) + '/wolfpulse">WolfPulse prüfen ↗</a></p></section>'
-    )
-    return _page("WolfMirror · Security Digital Twin", body)
-
