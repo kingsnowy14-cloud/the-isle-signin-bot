@@ -836,6 +836,8 @@ def _page(title, body):
         + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
         + ('<a class="nav-server" href="/guild/' + match.group(1) + '?section=general">⚙️ Einstellungen</a>' if logged_in and match else '')
         + ('<a class="nav-server" href="/guild/' + match.group(1) + '/security-center">🛡️ Security Center</a>' if logged_in and match else '')
+        + ('<a class="nav-admin-premium" href="/premium">👑 Premium Admin</a>' if logged_in and is_premium_admin else '')
+        + ('<label class="cursor-picker-label" for="iw-cursor-choice">✦ Cursor <select id="iw-cursor-choice" aria-label="Cursor-Stil"><option value="wolf">Wolf Glow</option><option value="skeleton">Phantom</option><option value="tree">Neon Forest</option></select></label>' if logged_in else '')
         + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Logout</button></form>' if logged_in else '<a href="/login">Login</a>')
         + '</nav>'
     )
@@ -974,6 +976,20 @@ td{{vertical-align:top;overflow-wrap:anywhere}}
 .module-nav-link.is-active{{color:#fff;background:rgba(129,140,248,.18);border-color:rgba(139,157,255,.4)}}
 @media(max-width:1000px){{.iw-card-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:650px){{.iw-hero{{padding:24px 19px}}.iw-metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.iw-card-grid{{grid-template-columns:1fr}}.iw-category{{padding:15px}}.iw-heading{{align-items:flex-start}}}}
 
+
+/* Admin shortcut and refreshed neon cursor */
+nav .nav-admin-premium{{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 13px;border:1px solid rgba(255,205,112,.55)!important;border-radius:11px;background:linear-gradient(120deg,rgba(255,190,75,.2),rgba(139,157,255,.2))!important;color:#ffe6a6!important;font-weight:950!important;box-shadow:0 0 18px rgba(255,184,77,.13),inset 0 0 14px rgba(255,220,140,.06);animation:adminHalo 3s ease-in-out infinite}}
+nav .nav-admin-premium:hover{{transform:translateY(-2px) scale(1.025)!important;box-shadow:0 0 25px rgba(255,190,75,.3)!important}}
+@keyframes adminHalo{{0%,100%{{box-shadow:0 0 12px rgba(255,184,77,.12)}}50%{{box-shadow:0 0 23px rgba(255,184,77,.28)}}}}
+#iw-animated-cursor{{width:42px!important;height:42px!important;transform:translate(-7px,-7px)!important;filter:drop-shadow(0 0 10px rgba(105,190,255,.7))!important}}
+#iw-animated-cursor:before{{content:"";position:absolute;inset:2px;border:1px solid rgba(130,205,255,.75);border-radius:50%;box-shadow:0 0 12px rgba(91,177,255,.6),inset 0 0 9px rgba(91,177,255,.22);animation:cursorOrbit 2.8s linear infinite}}
+#iw-animated-cursor:after{{content:"";position:absolute;inset:-5px;border:1px dashed rgba(169,148,255,.7);border-radius:50%;animation:cursorOrbit 5s linear infinite reverse}}
+#iw-animated-cursor svg{{position:relative;z-index:1;width:35px!important;height:35px!important;margin:3px}}
+#iw-animated-cursor.iw-over-link:before{{border-color:#8fffe0;box-shadow:0 0 18px rgba(100,255,213,.85),inset 0 0 12px rgba(100,255,213,.3)}}
+@keyframes cursorOrbit{{to{{transform:rotate(360deg)}}}}
+.iw-spark{{width:15px!important;height:15px!important;font-size:15px!important;animation:iwSpark .85s cubic-bezier(.16,.75,.3,1) forwards!important}}
+@keyframes iwSpark{{0%{{opacity:0;transform:translate(-50%,-50%) scale(.25) rotate(0deg)}}18%{{opacity:1}}100%{{opacity:0;transform:translate(-50%,-50%) scale(1.8) rotate(110deg)}}}}
+@media(prefers-reduced-motion:reduce){{nav .nav-admin-premium,#iw-animated-cursor,#iw-animated-cursor:before,#iw-animated-cursor:after,.iw-spark{{animation:none!important}}}}
 
 /* IronWolf motion effects: subtle ambient glow, card lift and cursor sparks */
 @keyframes iwAmbient{{0%,100%{{opacity:.35;transform:scale(1)}}50%{{opacity:.75;transform:scale(1.08)}}}}
