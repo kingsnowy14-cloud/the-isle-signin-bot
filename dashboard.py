@@ -26,7 +26,7 @@ from discord import app_commands
 import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response, send_file
 from storage import data_path
-from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
+from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active, grant_manual_premium, PREMIUM_ADMIN_ID
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
 from wolfanalytics import get_stats as wolfanalytics_get_stats, get_timeline as wolfanalytics_get_timeline
@@ -1834,14 +1834,25 @@ def logout():
     return redirect(url_for("index"))
 
 
-@app.route("/premium")
+@app.route("/premium", methods=["GET", "POST"])
 def premium_page():
     login = _require_login()
     if login:
         return login
     user_id = str(session.get("user_id", ""))
+    is_premium_admin = user_id == PREMIUM_ADMIN_ID
+    if request.method == "POST":
+        if not is_premium_admin:
+            abort(403)
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        target_id = request.form.get("discord_user_id", "").strip()
+        try:
+            grant = grant_manual_premium(target_id, user_id)
+        except (ValueError, PermissionError) as exc:
+            abort(400, str(exc))
+        return redirect(url_for("premium_page", granted=target_id))
     plan = account_plan(user_id)
-    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
     included_features = set(PLAN_FEATURES.get(plan, frozenset()))
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
@@ -1850,16 +1861,24 @@ def premium_page():
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF PREMIUM</span><h1 style="margin-top:14px">Dein Premium-Konto</h1>'
         '<p>Dein Zugriff wird an dein angemeldetes Discord-Konto gebunden.</p>'
-        '<div class="notice">Aktueller Plan: <strong>' + html.escape(labels[plan]) + '</strong></div>'
-        '<p>Die Zahlungsintegration ist noch nicht aktiviert. Bis ein Zahlungsanbieter festgelegt und sicher angebunden ist, werden Pläne ausschließlich manuell über Railway-Variablen freigeschaltet.</p>'
+        '<div class="notice">Aktueller Plan: <strong>' + ("Premium" if plan == "premium" else "Free") + '</strong></div>'
+        '<p>Premium umfasst alle verfügbaren Premium-Funktionen. Die Freischaltung erfolgt derzeit manuell.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
-        '<section class="card"><h2>Premium Plans</h2><div class="grid">'
-        '<div class="card"><h3>Premium</h3><p><strong>All core Premium features</strong></p><ul><li>Ticket System Pro</li><li>Custom Branding</li><li>Custom Bot Profile (server-specific banner, avatar and description)</li><li>Invite Tracker Pro</li></ul></div>'
-        '<div class="card"><h3>Premium+</h3><p><strong>Everything in Premium, plus</strong></p><ul><li>Security Pro</li><li>Automation Pro</li><li>Advanced protection tools</li></ul></div></div>'
-        '<p class="muted">No online checkout is connected yet. Plans are granted manually by an administrator. A feature is enabled only while the linked server entitlement or its trial is active.</p>'
-        '<p class="muted">Open a server Premium management page to link your eligible account to that server.</p>'
+        '<section class="card"><h2>Premium</h2><p><strong>Alle Premium-Funktionen in einem Plan.</strong></p>'
+        '<p class="muted">Ein Online-Checkout ist derzeit nicht verbunden. Server-Testphasen und bestehende Freischaltungen bleiben erhalten.</p>'
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
+    if is_premium_admin:
+        granted = request.args.get("granted", "")
+        notice = ('<p class="notice">Premium wurde für Discord-ID <strong>' + html.escape(granted) + '</strong> freigeschaltet.</p>') if granted.isdigit() else ""
+        body += (
+            '<section class="card"><h2>🔐 Premium manuell freischalten</h2>'
+            '<p>Nur dieses Administratorkonto kann Premium für andere Discord-Konten vergeben. Die Freischaltung gilt 365 Tage.</p>'
+            + notice +
+            '<form method="post">' + _csrf_field() +
+            '<label>Discord-Benutzer-ID<input name="discord_user_id" inputmode="numeric" pattern="[0-9]{17,20}" minlength="17" maxlength="20" required placeholder="z. B. 123456789012345678"></label>'
+            '<button type="submit">Premium freischalten</button></form></section>'
+        )
     return _render("Premium · IronWolf", body)
 
 @app.route("/guild/<guild_id>/premium", methods=["GET", "POST"])
@@ -1908,7 +1927,7 @@ def guild_premium(guild_id):
     owner_matches = owner_id == user_id and bool(owner_id)
     trial_active = guild_trial_active(cfg)
     trial_used = bool(cfg.get("premium_trial_used"))
-    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium+"}
+    labels = {"free": "Free", "premium": "Premium", "premium_plus": "Premium"}
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
         if feature == "branding":
