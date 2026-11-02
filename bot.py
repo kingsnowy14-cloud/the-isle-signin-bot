@@ -2183,8 +2183,19 @@ async def wolfanalytics_command(interaction: discord.Interaction, period: app_co
         ("🧩 Module Manager", "?section=modules"), ("🛠️ Module Template", "?section=template"),
     ]
     module_lines = [f"[{name}]({dashboard_base}/guild/{interaction.guild.id}{path})" for name, path in module_links]
-    embed.add_field(name="🧭 Alle Server-Module · 1/2", value=" • ".join(module_lines[:19]), inline=False)
-    embed.add_field(name="🧭 Alle Server-Module · 2/2", value=" • ".join(module_lines[19:]), inline=False)
+    module_groups = []
+    current_group = ""
+    for module_line in module_lines:
+        candidate = current_group + (" • " if current_group else "") + module_line
+        if len(candidate) > 950 and current_group:
+            module_groups.append(current_group)
+            current_group = module_line
+        else:
+            current_group = candidate
+    if current_group:
+        module_groups.append(current_group)
+    for index, group_text in enumerate(module_groups, start=1):
+        embed.add_field(name=f"🧭 Alle Server-Module · {index}/{len(module_groups)}", value=group_text, inline=False)
     embed.set_image(url="attachment://wolfanalytics.png")
     await interaction.response.defer(ephemeral=True, thinking=True)
     try:
