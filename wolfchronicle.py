@@ -20,6 +20,11 @@ INCIDENT_TYPES = {
 SEVERITIES = {"low": "Niedrig", "medium": "Mittel", "high": "Hoch", "critical": "Kritisch"}
 STATUSES = {"open": "Offen", "investigating": "In Bearbeitung", "resolved": "Abgeschlossen"}
 MAX_INCIDENTS = 100
+MAX_HISTORY_EVENTS = 20
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def list_incidents(config: dict[str, Any], limit: int = 20) -> list[dict[str, Any]]:
@@ -71,9 +76,10 @@ def create_incident(
     records = config.get("wolfchronicle_incidents")
     if not isinstance(records, list):
         records = []
-    now = datetime.now(timezone.utc).isoformat()
+    now = _now()
+    # 96 bits of randomness makes accidental collisions negligible even at scale.
     incident = {
-        "id": secrets.token_hex(4).upper(),
+        "id": secrets.token_hex(12).upper(),
         "created_at": now,
         "updated_at": now,
         "reporter_id": str(reporter_id)[:32],
@@ -87,8 +93,13 @@ def create_incident(
         "title": clean_title,
         "summary": clean_summary,
         "resolution_note": "",
+        "history": [{
+            "at": now,
+            "event": "created",
+            "status": "open",
+            "actor_id": str(reporter_id)[:32],
+        }],
     }
-    # Newest first and bounded to keep config storage predictable.
     config["wolfchronicle_incidents"] = [incident] + [
         item for item in records
         if isinstance(item, dict) and item.get("id") != incident["id"]
@@ -102,8 +113,9 @@ def update_incident(
     *,
     status: str,
     resolution_note: str = "",
+    actor_id: str | int | None = None,
 ) -> dict[str, Any] | None:
-    """Update one record's workflow state; return None if the ID is unknown."""
+    """Update workflow state and append a bounded status-change event."""
     if status not in STATUSES:
         raise ValueError("Unbekannter Vorfallstatus.")
     records = config.get("wolfchronicle_incidents")
@@ -112,9 +124,22 @@ def update_incident(
     target = str(incident_id or "").strip().upper()
     for item in records:
         if isinstance(item, dict) and str(item.get("id", "")).upper() == target:
+            previous_status = item.get("status", "open")
+            now = _now()
             item["status"] = status
             item["status_label"] = STATUSES[status]
-            item["updated_at"] = datetime.now(timezone.utc).isoformat()
+            item["updated_at"] = now
             item["resolution_note"] = " ".join(str(resolution_note).split())[:500] if status == "resolved" else ""
+            history = item.get("history")
+            if not isinstance(history, list):
+                history = []
+            history.append({
+                "at": now,
+                "event": "status_changed",
+                "from": previous_status if previous_status in STATUSES else "unknown",
+                "status": status,
+                "actor_id": str(actor_id)[:32] if actor_id is not None else "",
+            })
+            item["history"] = history[-MAX_HISTORY_EVENTS:]
             return dict(item)
     return None

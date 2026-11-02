@@ -37,6 +37,15 @@ class WolfMirrorTests(unittest.TestCase):
         )
         self.assertTrue(any("Berechtigung fehlt" in item["detail"] for item in report["controls"]))
 
+    def test_missing_required_permission_changes_verdict(self):
+        report = simulate_scenario(
+            {"anti_raid_enabled": True, "raid_action": "timeout"},
+            {"moderate_members": False},
+            "raid",
+        )
+        self.assertIn("fehlender Bot-Rechte", report["verdict"])
+        self.assertIn("Mitglieder moderieren", report["missing_permissions"])
+
     def test_simulation_does_not_mutate_config(self):
         config = {"anti_raid_enabled": True, "raid_threshold": 8}
         original = dict(config)

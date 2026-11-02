@@ -25,9 +25,12 @@ class WolfChronicleTests(unittest.TestCase):
         self.assertEqual(item["status"], "open")
         self.assertEqual(item["source"], "discord")
         self.assertEqual(list_incidents(config)[0]["id"], item["id"])
-        updated = update_incident(config, item["id"], status="resolved", resolution_note="Reviewed by staff")
+        updated = update_incident(config, item["id"], status="resolved", resolution_note="Reviewed by staff", actor_id=456)
         self.assertEqual(updated["status"], "resolved")
         self.assertEqual(updated["resolution_note"], "Reviewed by staff")
+        self.assertEqual(len(item["id"]), 24)
+        self.assertEqual(updated["history"][-1]["actor_id"], "456")
+        self.assertEqual(updated["history"][-1]["from"], "open")
 
     def test_rejects_invalid_type_severity_and_status(self):
         with self.assertRaises(ValueError):

@@ -122,3 +122,101 @@ def register():
             + '<p><a class="button secondary" href="/guild/' + gid + '">← Zur Serververwaltung</a></p></section>'
         )
         return d._render(guild.name + " · Sprach-Support", body)
+
+
+    @d.app.route("/guild/<guild_id>/security-center", methods=["GET"])
+    def guild_security_center(guild_id):
+        """Structured, read-only security hub for this Discord server."""
+        guild, response = d._authorized_guild(guild_id)
+        if response:
+            return response
+        cfg = d._guild_config(guild.id)
+        from security_suite import guild_state as security_guild_state
+        secure = security_guild_state(guild.id)
+        me = guild.me
+        permission_checks = [
+            ("Audit-Log lesen", bool(me and me.guild_permissions.view_audit_log)),
+            ("Nachrichten verwalten", bool(me and me.guild_permissions.manage_messages)),
+            ("Mitglieder moderieren", bool(me and me.guild_permissions.moderate_members)),
+            ("Rollen verwalten", bool(me and me.guild_permissions.manage_roles)),
+            ("Kanäle verwalten", bool(me and me.guild_permissions.manage_channels)),
+        ]
+        ready_permissions = sum(1 for _, ok in permission_checks if ok)
+        protections = [
+            ("Anti-Raid", bool(cfg.get("anti_raid_enabled")), "Beitrittswellen erkennen", "/wolfshield"),
+            ("Anti-Nuke", bool(cfg.get("anti_nuke_enabled")), "Schutzregel in den Servereinstellungen", "?section=security#settings-panel"),
+            ("AutoMod", bool(cfg.get("automod_enabled")), "Spam-Signale und Nachrichtenmoderation", "?section=general#settings-panel"),
+            ("Link-/Scam-Filter", bool(secure.get("scam_enabled")), "Gesperrte Domains und Einladungslinks", "?section=security#settings-panel"),
+            ("Account-Alter-Warnungen", bool(secure.get("alt_alerts_enabled", True)), "Junge Accounts markieren, ohne sie automatisch zu sanktionieren", "?section=security#settings-panel"),
+            ("Verifizierung", bool(secure.get("verified_role_id") and secure.get("verify_channel_id")), "Verifizierungsrolle und Kanal eingerichtet", "/verification"),
+        ]
+        active = sum(1 for _, enabled, _, _ in protections if enabled)
+        def card(title, detail, href, status=None):
+            status_html = ('<span class="pill">' + ("Aktiv" if status else "Nicht aktiv") + '</span>') if status is not None else ""
+            return (
+                '<a class="card" style="display:block;text-decoration:none;color:inherit" href="/guild/'
+                + str(guild.id) + href + '"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center">'
+                + '<strong>' + html.escape(title) + '</strong>' + status_html
+                + '</div><p class="muted">' + html.escape(detail) + '</p><span class="card-link">Öffnen →</span></a>'
+            )
+        protection_cards = ''.join(card(name, detail, href, enabled) for name, enabled, detail, href in protections)
+        permission_rows = ''.join(
+            '<div class="setting-row"><span><strong>' + html.escape(name) + '</strong><small>'
+            + ('Discord-Recht vorhanden' if ok else 'Fehlt – betroffene Aktionen können blockiert sein')
+            + '</small></span><strong>' + ('✅' if ok else '⚠️') + '</strong></div>'
+            for name, ok in permission_checks
+        )
+        modules = [
+            ("🧪 WolfMirror", "Read-only Sicherheits-Checkliste für Szenarien und fehlende Rechte", "/wolfmirror"),
+            ("📚 WolfChronicle", "Vorfallverwaltung und Statusverlauf", "/wolfchronicle"),
+            ("🧪 Security Lab", "Live-Konfigurations- und Berechtigungsprüfung ohne destructive Aktionen", "/security-lab"),
+            ("🛡️ WolfShield", "Anti-Raid-Schwellen und Reaktionsmodus", "/wolfshield"),
+            ("🍯 Honeypot", "Lockkanal und konfigurierte Moderationsreaktion", "/honeypot"),
+            ("⚙️ Schutz-Einstellungen", "Anti-Nuke, Anti-Raid, Linkfilter und Sicherheitsrollen", "?section=security#settings-panel"),
+            ("📜 Dashboard-Audit", "Nachvollziehbare Dashboard-Änderungen", "/audit-log"),
+            ("🗄️ Sicherheits-Backup", "Serverstruktur und Berechtigungen sichern", "/backup"),
+        ]
+        tool_cards = ''.join(card(name, detail, href) for name, detail, href in modules)
+        body = (
+            '<section class="card"><span class="pill">IRONWOLF · SECURITY OPERATIONS</span>'
+            '<h1 style="margin-top:12px">🛡️ Security Center</h1>'
+            '<p class="muted">Alle Schutzfunktionen an einem Ort. Prüfe zuerst die Live-Berechtigungen, kontrolliere danach die aktiven Schutzregeln und dokumentiere Vorfälle zentral.</p>'
+            '<div class="grid">'
+            '<div class="card"><small class="muted">Aktive Schutzregeln</small><h2>' + str(active) + ' / ' + str(len(protections)) + '</h2></div>'
+            '<div class="card"><small class="muted">Bot-Rechte vorhanden</small><h2>' + str(ready_permissions) + ' / ' + str(len(permission_checks)) + '</h2></div>'
+            '<div class="card"><small class="muted">Server</small><h2>' + html.escape(guild.name) + '</h2></div>'
+            '</div></section>'
+            '<section class="card"><h2>1 · Schutzstatus</h2><p class="muted">Aktueller Konfigurationsstand dieses Servers. Aktiv bedeutet nicht automatisch, dass jede Schutzaktion ausführbar ist – prüfe deshalb auch die Bot-Rechte.</p>'
+            '<div class="grid">' + protection_cards + '</div></section>'
+            '<section class="card"><h2>2 · Discord-Berechtigungen</h2><p class="muted">Diese Rechte werden live vom verbundenen Bot-Mitglied gelesen.</p>'
+            + permission_rows + '<p><a href="/guild/' + str(guild.id) + '/wolfpulse">Zusätzlichen Server-Check mit WolfPulse öffnen →</a></p></section>'
+            '<section class="card"><h2>3 · Security-Werkzeuge</h2><p class="muted">Prüfen, simulieren, Vorfälle dokumentieren und Konfigurationen verwalten.</p>'
+            '<div class="grid">' + tool_cards + '</div></section>'
+            '<p><a class="button secondary" href="/guild/' + str(guild.id) + '">← Zur Serverübersicht</a></p>'
+        )
+        return d._render(guild.name + " · Security Center", body)
+
+    @d.app.after_request
+    def add_security_center_shortcut(response):
+        """Add a persistent security entry point to the main server dashboard."""
+        try:
+            if request.method == "GET" and request.path.startswith("/guild/") and request.path.count("/") == 2 and response.mimetype == "text/html":
+                guild_id = request.path.rsplit("/", 1)[-1]
+                if guild_id.isdigit():
+                    html_body = response.get_data(as_text=True)
+                    marker = '<div class="iw-metrics">'
+                    shortcut = (
+                        '<section class="card" style="margin:18px 0;border:1px solid var(--border)">'
+                        '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+                        '<div><span class="pill">SECURITY OPERATIONS</span><h2 style="margin:8px 0">🛡️ Security Center</h2>'
+                        '<p class="muted" style="margin:0">Schutzstatus, Live-Rechte, WolfMirror und Vorfälle zentral verwalten.</p></div>'
+                        '<a class="button" href="/guild/' + guild_id + '/security-center">Security Center öffnen →</a>'
+                        '</div></section>'
+                    )
+                    if marker in html_body and "/security-center" not in html_body:
+                        html_body = html_body.replace(marker, shortcut + marker, 1)
+                        response.set_data(html_body)
+        except Exception:
+            # A navigation shortcut must never break the dashboard response.
+            pass
+        return response
