@@ -865,7 +865,7 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 /* Dashboard layout: persistent module sidebar with a focused content area */
 @media(min-width:900px){{
  body{{padding-left:246px}}
- nav:not(.module-nav){{position:sticky;top:0;inset:auto;width:100%;height:auto;overflow:visible;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:11px 22px;background:rgba(11,16,32,.96);border-right:0;border-bottom:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.12)}}
+ nav:not(.module-nav){{position:sticky;top:0;inset:auto;width:100%;height:auto;overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:11px 22px;background:rgba(11,16,32,.96);border-right:0;border-bottom:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.12)}}
  nav:not(.module-nav) a:first-child{{width:auto;padding:7px 10px;margin:0 auto 0 0;border:0;font-size:16px}}
  nav:not(.module-nav) a:not(:first-child){{display:inline-flex;width:auto;min-height:34px;padding:7px 10px;border:1px solid transparent;border-radius:9px;background:transparent;font-size:12px;box-shadow:none;transform:none}}
  nav:not(.module-nav) .nav-logout{{margin:0;padding:0;border:0}}
@@ -877,8 +877,8 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 }}
 @media(max-width:899px){{
  body{{padding-left:0}}
- nav:not(.module-nav){{position:sticky;inset:auto;width:auto;height:auto;overflow:visible;flex-direction:row;flex-wrap:wrap;align-items:center;padding:11px 14px}}
- nav:not(.module-nav) a:first-child{{width:100%;padding-bottom:8px;margin-bottom:4px}}
+ nav:not(.module-nav){{position:sticky;inset:auto;width:auto;height:auto;overflow-x:auto;overflow-y:hidden;flex-direction:row;flex-wrap:nowrap;align-items:center;padding:11px 14px}}
+ nav:not(.module-nav) a:first-child{{width:auto;min-width:max-content;padding-bottom:0;margin-bottom:0}}
  nav:not(.module-nav) .nav-logout{{margin:0}}
  .module-nav{{position:relative;width:100%;height:auto;max-height:220px;overflow-x:auto;overflow-y:hidden;flex-direction:row;align-items:center;flex-wrap:nowrap;margin:0 0 18px;padding:10px;border:1px solid var(--border);border-radius:13px}}
  .module-nav-link{{width:auto;white-space:nowrap}}
