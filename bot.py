@@ -26,7 +26,7 @@ from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
-from wolfanalytics import record as wolfanalytics_record, get_stats as wolfanalytics_get_stats, build_report as wolfanalytics_build_report, build_chart as wolfanalytics_build_chart
+from wolfanalytics import record as wolfanalytics_record, get_stats as wolfanalytics_get_stats, build_report as wolfanalytics_build_report, build_chart as wolfanalytics_build_chart, get_timeline as wolfanalytics_get_timeline
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 
 
@@ -2136,6 +2136,7 @@ class VerifyView(discord.ui.View):
 @app_commands.choices(chart=[
     app_commands.Choice(name="Vertical column chart", value="column"),
     app_commands.Choice(name="Horizontal bar chart", value="bar"),
+    app_commands.Choice(name="📈 Line chart", value="line"),
 ])
 @app_commands.describe(period="Statistics period", chart="Chart layout")
 async def wolfanalytics_command(interaction: discord.Interaction, period: app_commands.Choice[str], chart: app_commands.Choice[str]):
@@ -2149,6 +2150,8 @@ async def wolfanalytics_command(interaction: discord.Interaction, period: app_co
         await interaction.response.send_message("Please select the WolfAnalytics report channel in Dashboard → Server settings → Channels first.", ephemeral=True)
         return
     stats = wolfanalytics_get_stats(interaction.guild.id, period.value)
+    if chart.value == "line":
+        stats["timeline"] = wolfanalytics_get_timeline(interaction.guild.id, period.value)
     chart_image = wolfanalytics_build_chart(interaction.guild.name, period.value, stats, chart.value)
     dashboard_base = os.getenv("DASHBOARD_PUBLIC_URL", "https://ironwolf-bot.up.railway.app").strip().rstrip("/")
     analytics_url = f"{dashboard_base}/guild/{interaction.guild.id}/wolfanalytics"
