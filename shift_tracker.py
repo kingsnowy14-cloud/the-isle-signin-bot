@@ -336,7 +336,7 @@ class ShiftTracker(commands.Cog):
                     continue
                 try:
                     message = await channel.send(
-                        f"<@{user_id}> ⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Wähle unten, wie lange ich auf deine Rückmeldung warten soll.",
+                        f"<@{user_id}> ⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Die Verwarnungsfrist wurde von der Administration festgelegt.",
                         view=PausePromptView(self, panel_id, user_id),
                         allowed_mentions=discord.AllowedMentions(users=True),
                     )
