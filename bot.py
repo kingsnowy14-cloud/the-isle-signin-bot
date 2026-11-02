@@ -26,6 +26,7 @@ from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
+from wolfanalytics import record as wolfanalytics_record, get_stats as wolfanalytics_get_stats, build_report as wolfanalytics_build_report, build_chart as wolfanalytics_build_chart
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 
 
@@ -2123,6 +2124,47 @@ class VerifyView(discord.ui.View):
 
 
 # ----------------------------- SLASH COMMANDS -----------------------------
+
+
+@bot.tree.command(name="wolfanalytics", description="Send a WolfAnalytics activity chart to the configured channel")
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.choices(period=[
+    app_commands.Choice(name="Last 24 hours", value="24h"),
+    app_commands.Choice(name="Last 7 days", value="7day"),
+    app_commands.Choice(name="Last 30 days", value="30day"),
+])
+@app_commands.choices(chart=[
+    app_commands.Choice(name="Vertical column chart", value="column"),
+    app_commands.Choice(name="Horizontal bar chart", value="bar"),
+])
+@app_commands.describe(period="Statistics period", chart="Chart layout")
+async def wolfanalytics_command(interaction: discord.Interaction, period: app_commands.Choice[str], chart: app_commands.Choice[str]):
+    if interaction.guild is None:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        return
+    cfg = guild_config(interaction.guild.id)
+    channel_id = cfg.get("analytics_log_channel")
+    channel = interaction.guild.get_channel(int(channel_id)) if str(channel_id or "").isdigit() else None
+    if not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("Please select the WolfAnalytics report channel in Dashboard → Server settings → Channels first.", ephemeral=True)
+        return
+    stats = wolfanalytics_get_stats(interaction.guild.id, period.value)
+    chart_image = wolfanalytics_build_chart(interaction.guild.name, period.value, stats, chart.value)
+    embed = discord.Embed(
+        title=f"WolfAnalytics · {interaction.guild.name}",
+        description=wolfanalytics_build_report(interaction.guild.name, period.value, stats),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_image(url="attachment://wolfanalytics.png")
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        await channel.send(embed=embed, file=discord.File(fp=chart_image, filename="wolfanalytics.png"))
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        await interaction.followup.send(f"Could not post the report to {channel.mention}: {type(exc).__name__}.", ephemeral=True)
+        return
+    await interaction.followup.send(f"WolfAnalytics report posted in {channel.mention}.", ephemeral=True)
+
 
 @bot.tree.command(name="language", description="Set your private registration form language")
 @app_commands.describe(sprache="Choose a language")
@@ -5482,6 +5524,7 @@ async def ai_knowledge_command(interaction: discord.Interaction):
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
     if message.guild and not message.author.bot:
+        wolfanalytics_record(message.guild.id, "message")
         guild = message.guild
         cfg = guild_config(guild.id)
         _quick_id = cfg.get("quick_support_channel_id")
@@ -6202,6 +6245,8 @@ async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm:
 
 @bot.event
 async def on_member_join(member: discord.Member):
+    if not member.bot:
+        wolfanalytics_record(member.guild.id, "join")
     cfg = guild_config(member.guild.id)
     # Run welcome handling first so other optional modules cannot suppress it.
     await send_welcome_for_member(member, cfg)
@@ -6388,6 +6433,8 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
 
 @bot.event
 async def on_member_remove(member: discord.Member):
+    if not member.bot:
+        wolfanalytics_record(member.guild.id, "leave")
     # Send the configured goodbye message when a member leaves or is removed.
     cfg = guild_config(member.guild.id)
     leave_channel_id = cfg.get("goodbye_channel")
