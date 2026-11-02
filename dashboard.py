@@ -4703,10 +4703,11 @@ def guild_shifts(guild_id):
             log_channel_id = request.form.get("log_channel_id", "").strip()
             try:
                 pause_minutes = int(request.form.get("pause_minutes", "15"))
+                warning_delay_minutes = int(request.form.get("warning_delay_minutes", "5"))
             except ValueError:
-                abort(400, "Ungültige Pausenlänge.")
-            if not 2 <= len(name) <= 50 or not 1 <= pause_minutes <= 480:
-                abort(400, "Name muss 2–50 Zeichen lang sein; Pause 1–480 Minuten.")
+                abort(400, "Ungültige Zeitangabe.")
+            if not 2 <= len(name) <= 50 or not 1 <= pause_minutes <= 480 or not 1 <= warning_delay_minutes <= 60:
+                abort(400, "Name muss 2–50 Zeichen lang sein; Pause 1–480 Minuten; Verwarnungsfrist 1–60 Minuten.")
             channel = guild.get_channel(int(channel_id)) if channel_id.isdigit() else None
             log_channel = guild.get_channel(int(log_channel_id)) if log_channel_id.isdigit() else None
             if not isinstance(channel, discord.TextChannel) or not isinstance(log_channel, discord.TextChannel):
@@ -4723,6 +4724,7 @@ def guild_shifts(guild_id):
             panel = {
                 "name": name, "log_channel_id": log_channel.id,
                 "panel_channel_id": channel.id, "default_pause_minutes": pause_minutes,
+                "warning_delay_minutes": warning_delay_minutes,
                 "warnings_enabled": request.form.get("warnings_enabled") == "on",
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -4748,6 +4750,21 @@ def guild_shifts(guild_id):
             _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Schicht-Panel {name} erstellt")
             return redirect(url_for("guild_shifts", guild_id=gid, saved="created"))
 
+        if action == "set_warning_delay":
+            panel_id = request.form.get("panel_id", "")
+            panel = guild_data["panels"].get(panel_id)
+            if not panel:
+                abort(404, "Schicht-Panel nicht gefunden.")
+            try:
+                warning_delay_minutes = int(request.form.get("warning_delay_minutes", "5"))
+            except ValueError:
+                abort(400, "Ungültige Verwarnungsfrist.")
+            if not 1 <= warning_delay_minutes <= 60:
+                abort(400, "Die Verwarnungsfrist muss zwischen 1 und 60 Minuten liegen.")
+            panel["warning_delay_minutes"] = warning_delay_minutes
+            save_shift_state()
+            _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Verwarnungsfrist für {panel.get('name', panel_id)} auf {warning_delay_minutes} Minuten gesetzt")
+            return redirect(url_for("guild_shifts", guild_id=gid, saved="warning_delay"))
         if action == "delete":
             panel_id = request.form.get("panel_id", "")
             panel = guild_data["panels"].get(panel_id)
@@ -4795,6 +4812,7 @@ def guild_shifts(guild_id):
             status = "🟢 Im Dienst" if item.get("status") == "working" else ("☕ Pause" if item.get("status") == "paused" else "🔴 Beendet")
             shift_rows.append('<tr><td>' + html.escape(member_name) + '</td><td>' + status + '</td><td>' + started + '</td><td>' + str(int(item.get("warnings", 0))) + '/3</td></tr>')
         table = ('<div style="overflow-x:auto"><table><thead><tr><th>Mitglied</th><th>Status</th><th>Beginn (UTC)</th><th>Warnungen</th></tr></thead><tbody>' + ''.join(shift_rows) + '</tbody></table></div>') if shift_rows else '<p class="muted">Noch keine Schichten erfasst.</p>'
+        warning_delay_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="set_warning_delay"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><label>Automatische Verwarnung nach (Minuten, 1–60)<input type="number" name="warning_delay_minutes" min="1" max="60" required value="' + str(int(panel.get("warning_delay_minutes", 5) or 5)) + '"></label><button type="submit">Verwarnungszeit speichern</button></form>'
         delete_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><button class="secondary" type="submit">Panel löschen</button></form>'
         panel_channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
         log_channel = guild.get_channel(int(panel.get("log_channel_id", 0)))
@@ -4803,9 +4821,10 @@ def guild_shifts(guild_id):
         panel_cards.append(
             '<section class="card"><div class="pill">' + str(len(active_shifts)) + ' aktive Schichten</div><h2>' + html.escape(panel.get("name", "Schicht")) + '</h2>'
             '<p class="muted">Panel: ' + html.escape(panel_channel_name) + ' · Protokoll: ' + html.escape(log_channel_name) + ' · ID <code>' + html.escape(panel_id) + '</code></p>'
-            + table + delete_form + '</section>'
+            + table + warning_delay_form + delete_form + '</section>'
         )
-    saved = '<div class="notice">✅ Schicht-Panel wurde erstellt.</div>' if request.args.get("saved") == "created" else ('<div class="notice">✅ Schicht-Panel wurde gelöscht.</div>' if request.args.get("saved") == "deleted" else '')
+    saved_messages = {"created": "Schicht-Panel wurde erstellt.", "deleted": "Schicht-Panel wurde gelöscht.", "warning_delay": "Verwarnungsfrist wurde gespeichert."}
+    saved = '<div class="notice">✅ ' + saved_messages.get(request.args.get("saved", ""), "") + '</div>' if request.args.get("saved") in saved_messages else ""
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF · SHIFT TRACKER</span><h1>⏱️ Schichtverwaltung</h1>'
         '<p>Erstelle und verwalte Schicht-Panels direkt im Dashboard. Check-ins, Pausen, Rückmeldungen und Warnungen werden vom Discord-Bot erfasst und im gewählten Protokollkanal gespeichert.</p>'
@@ -4817,7 +4836,8 @@ def guild_shifts(guild_id):
         '<label>Panel-Name (z. B. Polizei, EMS oder Feuerwehr)<input name="name" maxlength="50" minlength="2" required placeholder="Polizei"></label>'
         '<div class="grid"><label>Panel-Kanal<select name="channel_id" required>' + channel_options + '</select></label>'
         '<label>Protokoll-Kanal<select name="log_channel_id" required>' + channel_options + '</select></label>'
-        '<label>Standard-Pausenlänge (Minuten)<input type="number" name="pause_minutes" min="1" max="480" value="15" required></label></div>'
+        '<label>Standard-Pausenlänge (Minuten)<input type="number" name="pause_minutes" min="1" max="480" value="15" required></label>'
+        '<label>Automatische Verwarnung nach (Minuten, 1–60)<input type="number" name="warning_delay_minutes" min="1" max="60" value="5" required></label></div>'
         '<label class="setting-row"><span><strong>Warnung bei „Nein“ aktivieren</strong><small>Nach drei Warnungen wird die Schicht automatisch beendet.</small></span><input type="checkbox" name="warnings_enabled" checked></label>'
         '<button type="submit">＋ Schicht-Panel erstellen und in Discord veröffentlichen</button></form></section>'
         '<section><h2>Vorhandene Schicht-Panels</h2>' + (''.join(panel_cards) if panel_cards else '<section class="card"><p>Noch keine Schicht-Panels erstellt.</p></section>') + '</section>'
