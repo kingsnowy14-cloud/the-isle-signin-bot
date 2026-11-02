@@ -1874,17 +1874,31 @@ def premium_page():
         return login
     user_id = str(session.get("user_id", ""))
     is_premium_admin = user_id == PREMIUM_ADMIN_ID
+    bulk_results = []
+    bulk_errors = []
     if request.method == "POST":
         if not is_premium_admin:
             abort(403)
         if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
-        target_id = request.form.get("discord_user_id", "").strip()
-        try:
-            grant = grant_manual_premium(target_id, user_id)
-        except (ValueError, PermissionError) as exc:
-            abort(400, str(exc))
-        return redirect(url_for("premium_page", granted=target_id))
+        raw_ids = request.form.get("discord_user_ids", "")
+        # Accept one or many IDs, separated by commas, spaces, semicolons or new lines.
+        target_ids = list(dict.fromkeys(
+            item for item in re.split(r"[\\s,;]+", raw_ids.strip()) if item
+        ))
+        if not target_ids:
+            abort(400, "Bitte mindestens eine Discord-Benutzer-ID eingeben.")
+        if len(target_ids) > 100:
+            abort(400, "Auf einmal können maximal 100 Discord-Konten freigeschaltet werden.")
+        for target_id in target_ids:
+            if not target_id.isdigit() or not 17 <= len(target_id) <= 20:
+                bulk_errors.append(target_id[:40])
+                continue
+            try:
+                grant_manual_premium(target_id, user_id)
+                bulk_results.append(target_id)
+            except (ValueError, PermissionError):
+                bulk_errors.append(target_id)
     plan = account_plan(user_id)
     included_features = set(PLAN_FEATURES.get(plan, frozenset()))
     rows = []
@@ -1902,15 +1916,44 @@ def premium_page():
         '<a class="button secondary" href="/">Zur Serverübersicht</a></section>'
     )
     if is_premium_admin:
-        granted = request.args.get("granted", "")
-        notice = ('<p class="notice">Premium wurde für Discord-ID <strong>' + html.escape(granted) + '</strong> freigeschaltet.</p>') if granted.isdigit() else ""
+        result_notice = ""
+        if bulk_results:
+            result_notice += (
+                '<div class="notice">✅ Premium für <strong>' + str(len(bulk_results))
+                + '</strong> Discord-Konto/Konten freigeschaltet bzw. verlängert:<br>'
+                + '<code>' + html.escape(", ".join(bulk_results)) + '</code></div>'
+            )
+        if bulk_errors:
+            result_notice += (
+                '<div class="notice">⚠️ Ungültige oder fehlgeschlagene IDs ('
+                + str(len(bulk_errors)) + '):<br><code>'
+                + html.escape(", ".join(bulk_errors)) + '</code></div>'
+            )
+        guild_rows = []
+        if _bot:
+            for guild in sorted(_bot.guilds, key=lambda item: item.name.casefold()):
+                guild_rows.append(
+                    '<li><strong>' + html.escape(guild.name) + '</strong>'
+                    + ' <span class="muted">· ' + str(guild.member_count or 0)
+                    + ' Mitglieder · ID ' + str(guild.id) + '</span></li>'
+                )
+        guild_list = (
+            '<section class="card"><h2>🛡️ Serverübersicht für Admins</h2>'
+            '<p class="muted">Alle Discord-Server, auf denen IronWolf aktuell Mitglied ist.</p>'
+            + ('<ul>' + ''.join(guild_rows) + '</ul>' if guild_rows else '<p class="muted">Der Bot ist aktuell mit keinem Server verbunden oder die Serverliste ist noch nicht verfügbar.</p>')
+            + '</section>'
+        )
         body += (
-            '<section class="card"><h2>🔐 Premium manuell freischalten</h2>'
-            '<p>Nur dieses Administratorkonto kann Premium für andere Discord-Konten vergeben. Die Freischaltung gilt 365 Tage.</p>'
-            + notice +
+            '<section class="card"><h2>🔐 Premium für mehrere Discord-Konten vergeben</h2>'
+            '<p>Nur dieses Administratorkonto kann Premium vergeben. Pro Konto gilt die Freischaltung 365 Tage. '
+            'Du kannst mehrere IDs gleichzeitig einfügen – jeweils eine pro Zeile oder getrennt durch Komma oder Leerzeichen.</p>'
+            + result_notice +
             '<form method="post">' + _csrf_field() +
-            '<label>Discord-Benutzer-ID<input name="discord_user_id" inputmode="numeric" pattern="[0-9]{17,20}" minlength="17" maxlength="20" required placeholder="z. B. 123456789012345678"></label>'
-            '<button type="submit">Premium freischalten</button></form></section>'
+            '<label>Discord-Benutzer-IDs<textarea name="discord_user_ids" rows="6" required '
+            'placeholder="123456789012345678&#10;234567890123456789"></textarea></label>'
+            '<button type="submit">👑 Premium für alle IDs freischalten</button></form>'
+            '<p class="muted">Maximal 100 IDs pro Vorgang. Bereits vorhandenes Premium wird um weitere 365 Tage verlängert.</p></section>'
+            + guild_list
         )
     return _render("Premium · IronWolf", body)
 
