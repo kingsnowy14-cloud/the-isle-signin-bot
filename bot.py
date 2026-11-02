@@ -2144,6 +2144,9 @@ async def wolfanalytics_command(interaction: discord.Interaction, period: app_co
         await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
         return
     cfg = guild_config(interaction.guild.id)
+    if not guild_has_feature(cfg, "wolfanalytics"):
+        await interaction.response.send_message("📊 WolfAnalytics ist eine Premium-Funktion. Aktiviere Premium für diesen Server, um Statistiken und Berichte zu nutzen.", ephemeral=True)
+        return
     channel_id = cfg.get("analytics_log_channel")
     channel = interaction.guild.get_channel(int(channel_id)) if str(channel_id or "").isdigit() else None
     if not isinstance(channel, discord.TextChannel):
@@ -5564,7 +5567,8 @@ async def ai_knowledge_command(interaction: discord.Interaction):
 async def on_message(message: discord.Message):
     # Handle regular member messages only when they belong to a server.
     if message.guild and not message.author.bot:
-        wolfanalytics_record(message.guild.id, "message")
+        if guild_has_feature(guild_config(message.guild.id), "wolfanalytics"):
+            wolfanalytics_record(message.guild.id, "message")
         guild = message.guild
         cfg = guild_config(guild.id)
         _quick_id = cfg.get("quick_support_channel_id")
@@ -6286,7 +6290,8 @@ async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm:
 @bot.event
 async def on_member_join(member: discord.Member):
     if not member.bot:
-        wolfanalytics_record(member.guild.id, "join")
+        if guild_has_feature(guild_config(member.guild.id), "wolfanalytics"):
+            wolfanalytics_record(member.guild.id, "join")
     cfg = guild_config(member.guild.id)
     # Run welcome handling first so other optional modules cannot suppress it.
     await send_welcome_for_member(member, cfg)
@@ -6474,7 +6479,8 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
 @bot.event
 async def on_member_remove(member: discord.Member):
     if not member.bot:
-        wolfanalytics_record(member.guild.id, "leave")
+        if guild_has_feature(guild_config(member.guild.id), "wolfanalytics"):
+            wolfanalytics_record(member.guild.id, "leave")
     # Send the configured goodbye message when a member leaves or is removed.
     cfg = guild_config(member.guild.id)
     leave_channel_id = cfg.get("goodbye_channel")
