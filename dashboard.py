@@ -1239,6 +1239,8 @@ def _module_navigation():
         ("general", "📈 Leveling & XP", "?section=general#settings-panel"),
         ("economy", "💰 Economy", "/economy"),
         ("server-boost", "🚀 Server Boosts", "/server-boost"),
+        ("__ai_category__", "⚙️ Automatisierung & Fortschritt", ""),
+        ("shift-tracker", "⏱️ Schichtverwaltung", "/shifts"),
         ("__ai_category__", "🎮 Gaming", ""),
         ("verified-accounts", "🎮 Gaming Verification", "/verified-accounts"),
         ("__ai_category__", "📊 Statistiken & System", ""),
@@ -4658,6 +4660,163 @@ def dashboard_premium_servers_admin():
         rows.append(f'<label style="display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><input type="checkbox" name="guild_ids" value="{guild.id}"{checked}><span><strong>{html.escape(guild.name)}</strong><br><small>Server-ID: {guild.id}</small></span></label>')
     body = '<section class="card"><span class="pill">OWNER ONLY</span><h1>Premium-Server freischalten</h1><p class="muted">Nur konfigurierte Dashboard-Administratoren sehen diese Seite. Markiere die Server, die manuell Premium erhalten sollen.</p><form method="post">' + _csrf_field() + ''.join(rows) + '<button type="submit">Premium-Server speichern</button></form><p><a href="/">Zur Übersicht</a></p></section>'
     return _render("Owner · Premium-Server", body)
+
+
+@app.route("/guild/<guild_id>/shifts", methods=["GET", "POST"])
+def guild_shifts(guild_id):
+    """Dashboard management for Discord shift panels and live shift state."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    actor = guild.get_member(int(session.get("user_id", "0")))
+    if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+        abort(403, "Du brauchst Administrator- oder Server-verwalten-Rechte.")
+
+    state_file = data_path("shift_tracker.json")
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {"guilds": {}}
+    except (OSError, json.JSONDecodeError):
+        state = {"guilds": {}}
+    guild_data = state.setdefault("guilds", {}).setdefault(gid, {"panels": {}, "shifts": {}})
+    guild_data.setdefault("panels", {})
+    guild_data.setdefault("shifts", {})
+
+    def save_shift_state():
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_file.with_suffix(".tmp")
+        temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, state_file)
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        action = request.form.get("action", "")
+        if action == "create":
+            name = request.form.get("name", "").strip()
+            channel_id = request.form.get("channel_id", "").strip()
+            log_channel_id = request.form.get("log_channel_id", "").strip()
+            try:
+                pause_minutes = int(request.form.get("pause_minutes", "15"))
+            except ValueError:
+                abort(400, "Ungültige Pausenlänge.")
+            if not 2 <= len(name) <= 50 or not 1 <= pause_minutes <= 480:
+                abort(400, "Name muss 2–50 Zeichen lang sein; Pause 1–480 Minuten.")
+            channel = guild.get_channel(int(channel_id)) if channel_id.isdigit() else None
+            log_channel = guild.get_channel(int(log_channel_id)) if log_channel_id.isdigit() else None
+            if not isinstance(channel, discord.TextChannel) or not isinstance(log_channel, discord.TextChannel):
+                abort(400, "Bitte gültige Textkanäle für Panel und Protokoll auswählen.")
+            from bot import guild_config
+            premium = guild_has_feature(guild_config(guild.id), "shift_tracker")
+            limit = 5 if premium else 2
+            if len(guild_data["panels"]) >= limit:
+                abort(403, f"Das {('Premium' if premium else 'Free')}-Limit von {limit} Schicht-Panels ist erreicht.")
+            cog = _bot.get_cog("ShiftTracker") if _bot else None
+            if cog is None:
+                abort(503, "Das Schicht-Modul ist noch nicht geladen. Bitte versuche es später erneut.")
+            panel_id = secrets.token_hex(4)
+            panel = {
+                "name": name, "log_channel_id": log_channel.id,
+                "panel_channel_id": channel.id, "default_pause_minutes": pause_minutes,
+                "warnings_enabled": request.form.get("warnings_enabled") == "on",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            async def publish_shift_panel():
+                if not channel.permissions_for(guild.me).send_messages or not channel.permissions_for(guild.me).embed_links:
+                    raise PermissionError("IronWolf benötigt im Panel-Kanal „Nachrichten senden“ und „Links einbetten“.")
+                embed = discord.Embed(
+                    title=f"🐺 IronWolf · {name}",
+                    description="Klicke auf **Dienst beginnen**, um deine Schicht zu starten. Pausenlänge kannst du beim Pausenstart selbst festlegen.",
+                    color=discord.Color.blurple(),
+                )
+                embed.add_field(name="Standard-Pause", value=f"{pause_minutes} Minuten", inline=True)
+                embed.add_field(name="Warnungen bei Nein", value="Aktiv" if panel["warnings_enabled"] else "Deaktiviert", inline=True)
+                message = await channel.send(embed=embed, view=__import__("shift_tracker").ShiftPanelView(cog, panel_id))
+                return message.id
+            try:
+                message_id = asyncio.run_coroutine_threadsafe(publish_shift_panel(), _bot.loop).result(timeout=25)
+            except Exception as exc:
+                abort(502, "Panel konnte nicht veröffentlicht werden: " + str(exc)[:250])
+            panel["panel_message_id"] = message_id
+            guild_data["panels"][panel_id] = panel
+            save_shift_state()
+            _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Schicht-Panel {name} erstellt")
+            return redirect(url_for("guild_shifts", guild_id=gid, saved="created"))
+
+        if action == "delete":
+            panel_id = request.form.get("panel_id", "")
+            panel = guild_data["panels"].get(panel_id)
+            if not panel:
+                abort(404, "Schicht-Panel nicht gefunden.")
+            active = [item for item in guild_data["shifts"].values()
+                      if item.get("panel_id") == panel_id and item.get("status") != "ended"]
+            if active:
+                abort(409, "Das Panel hat noch aktive Schichten. Beende diese zuerst.")
+            channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
+            async def remove_panel_message():
+                if isinstance(channel, discord.TextChannel) and panel.get("panel_message_id"):
+                    try:
+                        message = await channel.fetch_message(int(panel["panel_message_id"]))
+                        await message.edit(content="Dieses Schicht-Panel wurde deaktiviert.", embed=None, view=None)
+                    except (discord.NotFound, discord.Forbidden):
+                        pass
+            if _bot:
+                asyncio.run_coroutine_threadsafe(remove_panel_message(), _bot.loop).result(timeout=20)
+            guild_data["panels"].pop(panel_id, None)
+            save_shift_state()
+            _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Schicht-Panel {panel.get('name', panel_id)} gelöscht")
+            return redirect(url_for("guild_shifts", guild_id=gid, saved="deleted"))
+        abort(400, "Unbekannte Aktion.")
+
+    from datetime import datetime as _dt
+    panels = guild_data["panels"]
+    shifts = guild_data["shifts"]
+    from bot import guild_config
+    premium = guild_has_feature(guild_config(guild.id), "shift_tracker")
+    limit = 5 if premium else 2
+    channels = [item for item in guild.text_channels]
+    channel_options = '<option value="">Kanal auswählen …</option>' + ''.join(
+        '<option value="' + str(item.id) + '">' + html.escape(item.name) + '</option>' for item in channels
+    )
+    panel_cards = []
+    for panel_id, panel in panels.items():
+        panel_shifts = [item for item in shifts.values() if item.get("panel_id") == panel_id]
+        active_shifts = [item for item in panel_shifts if item.get("status") != "ended"]
+        shift_rows = []
+        for item in sorted(panel_shifts, key=lambda row: row.get("started_at", ""), reverse=True)[:30]:
+            member = guild.get_member(int(item.get("user_id", 0)))
+            member_name = member.display_name if member else ("User " + str(item.get("user_id", "unbekannt")))
+            started = html.escape(str(item.get("started_at", "—"))[:19].replace("T", " "))
+            status = "🟢 Im Dienst" if item.get("status") == "working" else ("☕ Pause" if item.get("status") == "paused" else "🔴 Beendet")
+            shift_rows.append('<tr><td>' + html.escape(member_name) + '</td><td>' + status + '</td><td>' + started + '</td><td>' + str(int(item.get("warnings", 0))) + '/3</td></tr>')
+        table = ('<div style="overflow-x:auto"><table><thead><tr><th>Mitglied</th><th>Status</th><th>Beginn (UTC)</th><th>Warnungen</th></tr></thead><tbody>' + ''.join(shift_rows) + '</tbody></table></div>') if shift_rows else '<p class="muted">Noch keine Schichten erfasst.</p>'
+        delete_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><button class="secondary" type="submit">Panel löschen</button></form>'
+        panel_cards.append(
+            '<section class="card"><div class="pill">' + str(len(active_shifts)) + ' aktive Schichten</div><h2>' + html.escape(panel.get("name", "Schicht")) + '</h2>'
+            '<p class="muted">Panel: <#' + str(panel.get("panel_channel_id", "")) + '> · Protokoll: <#' + str(panel.get("log_channel_id", "")) + '> · ID <code>' + html.escape(panel_id) + '</code></p>'
+            + table + delete_form + '</section>'
+        )
+    saved = '<div class="notice">✅ Schicht-Panel wurde erstellt.</div>' if request.args.get("saved") == "created" else ('<div class="notice">✅ Schicht-Panel wurde gelöscht.</div>' if request.args.get("saved") == "deleted" else '')
+    body = (
+        '<section class="card hero"><span class="pill">IRONWOLF · SHIFT TRACKER</span><h1>⏱️ Schichtverwaltung</h1>'
+        '<p>Erstelle und verwalte Schicht-Panels direkt im Dashboard. Check-ins, Pausen, Rückmeldungen und Warnungen werden vom Discord-Bot erfasst und im gewählten Protokollkanal gespeichert.</p>'
+        '<div class="grid"><div class="card"><div class="muted">Schicht-Panels</div><h2>' + str(len(panels)) + ' / ' + str(limit) + '</h2></div>'
+        '<div class="card"><div class="muted">Aktive Schichten</div><h2>' + str(sum(1 for item in shifts.values() if item.get("status") != "ended")) + '</h2></div>'
+        '<div class="card"><div class="muted">Plan</div><h2>' + ('Premium' if premium else 'Free') + '</h2></div></div>'
+        + saved +
+        '<h2>Neues Schicht-Panel</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="create">'
+        '<label>Panel-Name (z. B. Polizei, EMS oder Feuerwehr)<input name="name" maxlength="50" minlength="2" required placeholder="Polizei"></label>'
+        '<div class="grid"><label>Panel-Kanal<select name="channel_id" required>' + channel_options + '</select></label>'
+        '<label>Protokoll-Kanal<select name="log_channel_id" required>' + channel_options + '</select></label>'
+        '<label>Standard-Pausenlänge (Minuten)<input type="number" name="pause_minutes" min="1" max="480" value="15" required></label></div>'
+        '<label class="setting-row"><span><strong>Warnung bei „Nein“ aktivieren</strong><small>Nach drei Warnungen wird die Schicht automatisch beendet.</small></span><input type="checkbox" name="warnings_enabled" checked></label>'
+        '<button type="submit">＋ Schicht-Panel erstellen und in Discord veröffentlichen</button></form></section>'
+        '<section><h2>Vorhandene Schicht-Panels</h2>' + (''.join(panel_cards) if panel_cards else '<section class="card"><p>Noch keine Schicht-Panels erstellt.</p></section>') + '</section>'
+        '<p><a href="/guild/' + gid + '">← Zur Serverübersicht</a></p>'
+    )
+    return _render(guild.name + " · Schichtverwaltung", body)
 
 
 @app.route("/guild/<guild_id>/economy", methods=["GET", "POST"])
