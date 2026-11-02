@@ -1,6 +1,8 @@
 """WolfAnalytics: aggregate server activity counters."""
 import json
+import io
 import threading
+from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta, timezone
 from storage import data_path
 
@@ -69,3 +71,52 @@ def build_report(guild_name: str, period: str, stats: dict) -> str:
             f"👋 Members joined: **{stats['joins']:,}**\n"
             f"🚪 Members left: **{stats['leaves']:,}**\n"
             f"💬 Messages sent: **{stats['messages']:,}**")
+
+
+def build_chart(guild_name: str, period: str, stats: dict, chart_type: str = "column") -> io.BytesIO:
+    """Render aggregate activity as a vertical column or horizontal bar chart."""
+    if chart_type not in {"column", "bar"}:
+        raise ValueError("Chart type must be column or bar.")
+    period_label = {"24h": "Last 24 hours", "7day": "Last 7 days", "30day": "Last 30 days"}[period]
+    labels = [("Joins", int(stats.get("joins", 0))), ("Leaves", int(stats.get("leaves", 0))), ("Messages", int(stats.get("messages", 0)))]
+    width, height = (1100, 650) if chart_type == "column" else (1100, 520)
+    image = Image.new("RGB", (width, height), "#101827")
+    draw = ImageDraw.Draw(image)
+    try:
+        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
+        label_font = ImageFont.truetype("DejaVuSans.ttf", 25)
+        value_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 27)
+        small_font = ImageFont.truetype("DejaVuSans.ttf", 18)
+    except OSError:
+        title_font = label_font = value_font = small_font = ImageFont.load_default()
+    draw.text((55, 38), "WolfAnalytics", fill="#F4F7FB", font=title_font)
+    draw.text((58, 92), f"{guild_name[:55]}  ·  {period_label}", fill="#AAB8CC", font=label_font)
+    colors = ["#55C2A3", "#F08A79", "#78A9F5"]
+    if chart_type == "column":
+        base_y, top_y = 520, 190
+        draw.line((90, base_y, 1010, base_y), fill="#536176", width=2)
+        maximum = max((value for _, value in labels), default=0) or 1
+        bar_width, centers = 150, [250, 550, 850]
+        for (label, value), color, center in zip(labels, colors, centers):
+            bar_height = max(4, int((value / maximum) * (base_y - top_y)))
+            x0, x1 = center - bar_width // 2, center + bar_width // 2
+            draw.rounded_rectangle((x0, base_y - bar_height, x1, base_y), radius=16, fill=color)
+            value_text = f"{value:,}"
+            box = draw.textbbox((0, 0), value_text, font=value_font)
+            draw.text((center - (box[2] - box[0]) / 2, base_y - bar_height - 42), value_text, fill="#F4F7FB", font=value_font)
+            box = draw.textbbox((0, 0), label, font=label_font)
+            draw.text((center - (box[2] - box[0]) / 2, base_y + 22), label, fill="#D5DEEA", font=label_font)
+    else:
+        left, right = 270, 1000
+        maximum = max((value for _, value in labels), default=0) or 1
+        for index, ((label, value), color) in enumerate(zip(labels, colors)):
+            y = 205 + index * 105
+            draw.text((65, y + 8), label, fill="#D5DEEA", font=label_font)
+            bar_width = max(4, int((value / maximum) * (right - left)))
+            draw.rounded_rectangle((left, y, left + bar_width, y + 58), radius=13, fill=color)
+            draw.text((min(left + bar_width + 14, 990), y + 12), f"{value:,}", fill="#F4F7FB", font=value_font)
+    draw.text((58, height - 38), "Counts include activity observed since WolfAnalytics was enabled.", fill="#8392A8", font=small_font)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    output.seek(0)
+    return output
