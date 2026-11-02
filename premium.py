@@ -1,7 +1,7 @@
-"""Account-based premium entitlements for IronWolf.
+"""Account-based Premium entitlements for IronWolf.
 
-No payment provider is connected here. Access is granted only by explicit
-Discord user IDs configured in Railway environment variables.
+Premium access can be granted through Railway allowlists, server boosts, or the
+single dashboard administrator. Legacy Premium+ records are normalized to Premium.
 """
 import json
 import os
@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from storage import data_path
 
 GRANTS_FILE = data_path("premium_grants.json")
+PREMIUM_ADMIN_ID = "1493110334280564807"
 
 
 def _now():
@@ -24,41 +25,84 @@ def _read_grants():
 
 
 def _write_grants(grants):
+    GRANTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     GRANTS_FILE.write_text(json.dumps(grants, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def sync_manual_grants():
-    """Track Railway allowlist grants with a persistent 365-day term."""
+    """Sync both current and legacy Railway allowlists as Premium grants."""
     now = _now()
-    active = {}
-    for plan, variable in (("premium", "PREMIUM_USER_IDS"), ("premium_plus", "PREMIUM_PLUS_USER_IDS")):
-        for raw_id in (os.getenv(variable) or "").split(","):
-            uid = raw_id.strip()
-            if uid.isdigit():
-                active[uid] = plan
+    active = set()
+    for variable in ("PREMIUM_USER_IDS", "PREMIUM_PLUS_USER_IDS"):
+        active.update(
+            uid for uid in (item.strip() for item in (os.getenv(variable) or "").split(","))
+            if uid.isdigit()
+        )
     grants = _read_grants()
-    for uid in list(grants):
+    for uid, grant in list(grants.items()):
+        if not isinstance(grant, dict):
+            grants.pop(uid, None)
+            continue
+        # Keep non-allowlist grants, including dashboard grants and server boosts.
+        if uid not in active and grant.get("source") not in {"server_boost", "dashboard_admin"}:
+            grants.pop(uid, None)
+        elif grant.get("plan") == "premium_plus":
+            grant["plan"] = "premium"
+    for uid in active:
         grant = grants.get(uid)
-        # Keep server-boost rewards even though they are not in the Railway allowlist.
-        if uid not in active and not (isinstance(grant, dict) and grant.get("source") == "server_boost"):
-            del grants[uid]
-    for uid, plan in active.items():
-        grant = grants.get(uid)
-        if not isinstance(grant, dict) or grant.get("plan") != plan or grant.get("source") != "manual_allowlist":
-            grants[uid] = {"plan": plan, "source": "manual_allowlist", "granted_at": now.isoformat(), "expires_at": (now + timedelta(days=365)).isoformat(), "expiry_dm_sent": False}
+        if not isinstance(grant, dict) or grant.get("source") != "manual_allowlist":
+            grants[uid] = {
+                "plan": "premium", "source": "manual_allowlist",
+                "granted_at": now.isoformat(),
+                "expires_at": (now + timedelta(days=365)).isoformat(),
+                "expiry_dm_sent": False,
+            }
+        elif grant.get("plan") != "premium":
+            grant["plan"] = "premium"
     _write_grants(grants)
     return grants
 
 
+def grant_manual_premium(user_id, granted_by):
+    """Grant 365 days of Premium; only the configured dashboard admin may do so."""
+    actor = str(granted_by or "")
+    uid = str(user_id or "").strip()
+    if actor != PREMIUM_ADMIN_ID:
+        raise PermissionError("Keine Berechtigung für manuelle Premium-Freischaltungen.")
+    if not uid.isdigit() or len(uid) < 17 or len(uid) > 20:
+        raise ValueError("Bitte eine gültige Discord-Benutzer-ID eingeben.")
+    grants = sync_manual_grants()
+    now = _now()
+    existing = grants.get(uid)
+    expiry = now + timedelta(days=365)
+    if isinstance(existing, dict):
+        try:
+            old_expiry = datetime.fromisoformat(str(existing.get("expires_at", "")).replace("Z", "+00:00"))
+            if old_expiry.tzinfo is None:
+                old_expiry = old_expiry.replace(tzinfo=timezone.utc)
+            if old_expiry > now:
+                expiry = old_expiry + timedelta(days=365)
+        except (TypeError, ValueError):
+            pass
+    grant = {
+        "plan": "premium", "source": "dashboard_admin",
+        "granted_by": actor, "granted_at": now.isoformat(),
+        "expires_at": expiry.isoformat(), "expiry_dm_sent": False,
+    }
+    grants[uid] = grant
+    _write_grants(grants)
+    return grant
+
+
 def grant_server_boost_premium(user_id, guild_id, days=183):
-    """Grant or extend six months of account Premium for boosting the configured server."""
+    """Grant or extend account Premium for boosting the configured server."""
     uid = str(user_id)
     if not uid.isdigit():
         return None
     grants = sync_manual_grants()
     now = _now()
     existing = grants.get(uid)
-    if isinstance(existing, dict) and existing.get("source") == "manual_allowlist":
+    if isinstance(existing, dict) and existing.get("source") in {"manual_allowlist", "dashboard_admin"}:
         return existing
     expiry = now
     if isinstance(existing, dict) and existing.get("source") == "server_boost":
@@ -71,9 +115,7 @@ def grant_server_boost_premium(user_id, guild_id, days=183):
         except (TypeError, ValueError):
             pass
     grant = {
-        "plan": "premium",
-        "source": "server_boost",
-        "guild_id": str(guild_id),
+        "plan": "premium", "source": "server_boost", "guild_id": str(guild_id),
         "granted_at": now.isoformat(),
         "expires_at": (expiry + timedelta(days=days)).isoformat(),
         "expiry_dm_sent": False,
@@ -105,6 +147,7 @@ def mark_expiry_dm_sent(user_id):
         grants[str(user_id)]["expiry_dm_sent"] = True
         _write_grants(grants)
 
+
 PREMIUM_FEATURES = {
     "ticket": "Ticket-System Pro",
     "branding": "Custom Branding",
@@ -120,22 +163,12 @@ PREMIUM_FEATURES = {
 
 PLAN_FEATURES = {
     "free": frozenset(),
-    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications", "shift_tracker", "wolfanalytics"}),
-    "premium_plus": frozenset(PREMIUM_FEATURES),
+    "premium": frozenset(PREMIUM_FEATURES),
 }
 
 
-def _user_ids(variable):
-    """Parse a comma-separated allowlist without exposing it to the UI."""
-    return {
-        item.strip()
-        for item in (os.getenv(variable) or "").split(",")
-        if item.strip().isdigit()
-    }
-
-
 def account_plan(user_id):
-    """Return the non-expired manually granted plan for a Discord account."""
+    """Return the non-expired Premium entitlement for a Discord account."""
     if not user_id or not str(user_id).isdigit():
         return "free"
     grant = sync_manual_grants().get(str(user_id))
@@ -149,11 +182,10 @@ def account_plan(user_id):
         return "free"
     if expiry <= _now():
         return "free"
-    return grant.get("plan") if grant.get("plan") in {"premium", "premium_plus"} else "free"
+    return "premium" if grant.get("plan") in {"premium", "premium_plus"} else "free"
 
 
 def has_feature(user_id, feature):
-    """Check a known feature against the account's current allowlisted plan."""
     if feature not in PREMIUM_FEATURES:
         return False
     return feature in PLAN_FEATURES[account_plan(user_id)]
@@ -164,12 +196,10 @@ def feature_label(feature):
 
 
 def guild_trial_active(guild_config):
-    """Return whether this server's one-time 15-day Premium trial is active."""
     if not isinstance(guild_config, dict) or not guild_config.get("premium_trial_used"):
         return False
-    raw_expiry = guild_config.get("premium_trial_expires_at")
     try:
-        expiry = datetime.fromisoformat(str(raw_expiry or "").replace("Z", "+00:00"))
+        expiry = datetime.fromisoformat(str(guild_config.get("premium_trial_expires_at") or "").replace("Z", "+00:00"))
         if expiry.tzinfo is None:
             expiry = expiry.replace(tzinfo=timezone.utc)
     except (TypeError, ValueError):
@@ -178,29 +208,22 @@ def guild_trial_active(guild_config):
 
 
 def guild_has_feature(guild_config, feature):
-    """Resolve a feature from a manual server grant, linked account, or active trial."""
     if not isinstance(guild_config, dict) or feature not in PREMIUM_FEATURES:
         return False
     override_plan = guild_config.get("premium_server_override")
-    if override_plan in PLAN_FEATURES and override_plan != "free":
-        return feature in PLAN_FEATURES[override_plan]
+    if override_plan in {"premium", "premium_plus"}:
+        return feature in PLAN_FEATURES["premium"]
     if guild_trial_active(guild_config):
         return True
-    owner_id = guild_config.get("premium_owner_id")
-    owner_plan = account_plan(owner_id)
-    if owner_plan != "free":
-        return feature in PLAN_FEATURES[owner_plan]
-    return False
+    return account_plan(guild_config.get("premium_owner_id")) == "premium"
 
 
 def guild_plan(guild_config):
-    """Return the effective plan for a guild, including overrides and trials."""
     if not isinstance(guild_config, dict):
         return "free"
     override = guild_config.get("premium_server_override")
     if override in {"premium", "premium_plus"}:
-        return override
+        return "premium"
     if guild_trial_active(guild_config):
-        return "premium_plus"
-    owner_plan = account_plan(guild_config.get("premium_owner_id"))
-    return owner_plan if owner_plan in {"premium", "premium_plus"} else "free"
+        return "premium"
+    return account_plan(guild_config.get("premium_owner_id"))
