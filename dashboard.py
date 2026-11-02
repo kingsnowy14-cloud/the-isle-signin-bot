@@ -6315,7 +6315,7 @@ def guild_wolfanalytics(guild_id):
         '<div class="card"><strong>💬 Nachrichten</strong><h2>' + format(stats["messages"], ",") + '</h2></div></div>'
         '<p class="muted">Hinweis: Die Erfassung beginnt mit dem Aktivieren von WolfAnalytics. Frühere Aktivitäten werden nicht rückwirkend gezählt.</p></section>'
         '<section class="card"><h2>Discord-Berichte</h2><p>Aktueller Berichtskanal: ' + channel_text + '</p>'
-        '<p>Wähle den Berichtskanal unter <a href="/guild/' + str(guild.id) + '/settings?section=channels">Servereinstellungen → Kanäle</a>. Der Bot kann dort einen Statistikbericht als Bild posten.</p></section>'
+        '<p>Wähle den Berichtskanal unter <a href="/guild/' + str(guild.id) + '?section=channels">Servereinstellungen → Kanäle</a>. Der Bot kann dort einen Statistikbericht als Bild posten.</p></section>'
     )
     return _page("WolfAnalytics · Statistiken", body)
 
