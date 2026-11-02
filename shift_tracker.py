@@ -335,8 +335,12 @@ class ShiftTracker(commands.Cog):
                 if not isinstance(channel, discord.TextChannel):
                     continue
                 try:
+                    reminder_text = str(panel.get("pause_reminder_message", "⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Wenn du nicht innerhalb von {warning_minutes} Minuten reagierst, erhältst du automatisch eine Verwarnung."))[:1500]
+                    reminder_text = (reminder_text.replace("{mention}", f"<@{user_id}>")
+                                     .replace("{name}", str(panel.get("name", "Schicht"))[:50])
+                                     .replace("{warning_minutes}", str(max(1, min(60, int(panel.get("warning_delay_minutes", 5) or 5))))))
                     message = await channel.send(
-                        f"<@{user_id}> ⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Die Verwarnungsfrist wurde von der Administration festgelegt.",
+                        reminder_text,
                         view=PausePromptView(self, panel_id, user_id),
                         allowed_mentions=discord.AllowedMentions(users=True),
                     )
