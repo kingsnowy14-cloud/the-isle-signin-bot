@@ -842,7 +842,7 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/image-generator">🎨 KI-Bildgenerator</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
         + ('<a href="/admin/premium-servers">👑 Premium Servers</a>' if logged_in and is_premium_admin else '')
-        + '<a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
+        + '<a href="https://discord.gg/KDKs5WPgaC" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
         + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
         + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop App</a>'
         + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Log out</button></form>' if logged_in else '<a href="/login">Log in with Discord</a>')
@@ -1680,7 +1680,7 @@ def _public_status_panel():
         '<div class="notice"><small>Befehle</small><h2>' + str(prefix_count + slash_count) + '</h2><small>' + str(prefix_count) + ' Prefix · ' + str(slash_count) + ' Slash</small></div>'
         '</div>'
         '<p><a class="button" href="' + invite_url + '" target="_blank" rel="noopener noreferrer">🐺 IronWolf einladen</a> '
-        '<a class="button secondary" href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">💬 Support öffnen</a></p>'
+        '<a class="button secondary" href="https://discord.gg/KDKs5WPgaC" target="_blank" rel="noopener noreferrer">💬 Support öffnen</a></p>'
         '<p class="muted"><small>Hinweis: Die Werte aktualisieren sich beim Neuladen der Seite.</small></p>'
         '</section>'
     )
@@ -1720,7 +1720,7 @@ def index():
 <div class="notice">🔐 Die Anmeldung erfolgt über Discord. Du kannst nur Server verwalten, auf denen du „Server verwalten“ oder Administrator-Rechte besitzt und auf denen der Bot online ist.</div>
 <a class="button" href="/login">Sign in with Discord</a> <a class="button secondary" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ IronWolf für Windows herunterladen</a>
 <div class="notice">Windows-App: Nach der Installation kann IronWolf beim Windows-Anmelden starten. Die Discord-Anmeldung bleibt weiterhin erforderlich.</div>
-<div class="notice">✨ <strong>Premium costs €5 per year.</strong> Fragen oder Nachrichten? <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Join our Discord</a>.</div>
+<div class="notice">✨ <strong>Premium costs €5 per year.</strong> Fragen oder Nachrichten? <a href="https://discord.gg/KDKs5WPgaC" target="_blank" rel="noopener noreferrer">Join our Discord</a>.</div>
 <h2>Was du hier machen kannst</h2><ul><li>Serverbezogene Einstellungen mit Formularen ändern</li><li>Prefix- und Slash-Befehle einzeln aktivieren/deaktivieren</li><li>Neue Python-Modulvorlagen erstellen und herunterladen</li></ul></section>"""
         if not _oauth_ready():
             body += '<div class="card"><h2>Einmalige Einrichtung nötig</h2><p>Setze in Railway die Variablen <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>, <code>DASHBOARD_REDIRECT_URI</code> und <code>DASHBOARD_SECRET_KEY</code>. Als Redirect URI muss exakt die öffentliche URL plus <code>/callback</code> in der Discord Developer Portal OAuth2-Einstellung stehen.</p></div>'
@@ -1741,7 +1741,7 @@ def index():
         if not bot_guild:
             continue
         cards.append(f'<a class="card server-card" style="display:block;text-decoration:none" href="/guild/{gid}"><span class="pill">● BOT VERBUNDEN</span><h2 style="margin-top:14px">{html.escape(item.get("name","Server"))}</h2><p class="muted">Einstellungen, Befehle und Module verwalten</p><strong>Server öffnen ↗</strong></a>')
-    body = '<section class="card hero"><span class="pill">WELCOME TO IRONWOLF</span><h1 style="margin-top:14px">Your Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord Servers bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium costs €5 per year.</strong> <a href="https://discord.gg/T3AYmFmbrS" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
+    body = '<section class="card hero"><span class="pill">WELCOME TO IRONWOLF</span><h1 style="margin-top:14px">Your Control Center 🐺</h1><p>Hier steuerst du deine verbundenen Discord Servers bequem über eine Oberfläche.</p><div class="notice">✨ <strong>Premium costs €5 per year.</strong> <a href="https://discord.gg/KDKs5WPgaC" target="_blank" rel="noopener noreferrer">Nachrichten auf Discord ↗</a></div><div class="grid"><div><h2>So funktioniert es</h2><ol><li>Wähle unten den Server aus, den du verwalten möchtest.</li><li>Unter <strong>Einstellungen</strong> legst du Kanäle, Rollen und Serveroptionen fest.</li><li>Unter <strong>Module</strong> aktivierst oder deaktivierst du Funktionen für diesen Server.</li><li>Öffne <strong>Befehle</strong>, um Prefix- und Slash-Befehle gruppiert zu verwalten.</li><li>Nutze die <strong>Aktionszentrale</strong> für unterstützte Moderationsaktionen.</li></ol></div><div><h2>Wichtige Hinweise</h2><ul><li>Du brauchst Administrator- oder Server-verwalten-Rechte.</li><li>Der Bot muss auf dem Server online sein.</li><li>Änderungen an Modulen und Befehlen gelten nur für den ausgewählten Server.</li><li>Gefährliche Aktionen benötigen zusätzliche Bestätigung und passende Rechte.</li></ul></div></div></section><h2>Deine Server</h2><p class="muted">Wähle einen Server, um seine Einstellungen zu öffnen.</p>'
     body += _public_status_panel()
     body += '<p><a class="button" href="/premium">✨ Manage Premium →</a></p>'
     body += '<div class="grid">' + ("".join(cards) or '<div class="card">No matching servers found. Prüfe deine Discord-Rechte und ob IronWolf auf dem Server ist.</div>') + '</div>'
