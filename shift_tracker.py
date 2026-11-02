@@ -65,12 +65,12 @@ def _parse_time(raw):
 
 class PauseModal(discord.ui.Modal):
     def __init__(self, cog, panel_id, user_id, default_minutes):
-        super().__init__(title="Pause starten")
+        super().__init__(title="Start a break")
         self.cog = cog
         self.panel_id = panel_id
         self.user_id = user_id
         self.minutes = discord.ui.TextInput(
-            label="Pausendauer in Minuten",
+            label="Break duration (minutes)",
             placeholder="z. B. 15",
             default=str(default_minutes),
             min_length=1,
@@ -80,14 +80,14 @@ class PauseModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("Diese Pause gehört nicht dir.", ephemeral=True)
+            await interaction.response.send_message("This break does not belong to you.", ephemeral=True)
             return
         try:
             minutes = int(str(self.minutes.value))
             if not 1 <= minutes <= 480:
                 raise ValueError
         except ValueError:
-            await interaction.response.send_message("Bitte gib eine Dauer zwischen 1 und 480 Minuten ein.", ephemeral=True)
+            await interaction.response.send_message("Enter a duration between 1 and 480 minutes.", ephemeral=True)
             return
         await self.cog.start_pause(interaction, self.panel_id, minutes)
 
@@ -97,11 +97,11 @@ class ShiftPanelView(discord.ui.View):
         super().__init__(timeout=None)
         self.cog = cog
         self.panel_id = panel_id
-        checkin = discord.ui.Button(label="Dienst beginnen", style=discord.ButtonStyle.success, emoji="🟢",
+        checkin = discord.ui.Button(label="Start shift", style=discord.ButtonStyle.success, emoji="🟢",
                                     custom_id=f"iwshift:in:{panel_id}")
-        pause = discord.ui.Button(label="Pause", style=discord.ButtonStyle.primary, emoji="☕",
+        pause = discord.ui.Button(label="Break", style=discord.ButtonStyle.primary, emoji="☕",
                                   custom_id=f"iwshift:pause:{panel_id}")
-        checkout = discord.ui.Button(label="Dienst beenden", style=discord.ButtonStyle.danger, emoji="🔴",
+        checkout = discord.ui.Button(label="End shift", style=discord.ButtonStyle.danger, emoji="🔴",
                                      custom_id=f"iwshift:out:{panel_id}")
         checkin.callback = self._checkin
         pause.callback = self._pause
@@ -126,7 +126,7 @@ class PausePromptView(discord.ui.View):
         self.cog = cog
         self.panel_id = panel_id
         self.user_id = int(user_id)
-        yes = discord.ui.Button(label="Ja, ich bin zurück", style=discord.ButtonStyle.success,
+        yes = discord.ui.Button(label="I'm back at work", style=discord.ButtonStyle.success,
                                 custom_id=f"iwshift:yes:{panel_id}:{user_id}")
         yes.callback = self._yes
         self.add_item(yes)
@@ -161,17 +161,17 @@ class ShiftTracker(commands.Cog):
     async def checkin(self, interaction, panel_id):
         guild = interaction.guild
         if guild is None:
-            await interaction.response.send_message("Nur auf einem Server möglich.", ephemeral=True)
+            await interaction.response.send_message("This action is only available in a server.", ephemeral=True)
             return
         async with LOCK:
             data = _guild_data(guild.id)
             panel = data["panels"].get(panel_id)
             if not panel:
-                await interaction.response.send_message("Dieses Schicht-Panel existiert nicht mehr.", ephemeral=True)
+                await interaction.response.send_message("This shift panel no longer exists.", ephemeral=True)
                 return
             key = f"{panel_id}:{interaction.user.id}"
             if key in data["shifts"] and data["shifts"][key].get("status") != "ended":
-                await interaction.response.send_message("Du bist in diesem Panel bereits im Dienst.", ephemeral=True)
+                await interaction.response.send_message("You already have an active shift in this panel.", ephemeral=True)
                 return
             data["shifts"][key] = {
                 "panel_id": panel_id, "user_id": interaction.user.id,
@@ -180,13 +180,13 @@ class ShiftTracker(commands.Cog):
                 "warnings": 0, "prompt_message_id": None, "warning_due_at": None,
             }
             _save()
-        await interaction.response.send_message("✅ Dein Dienst wurde gestartet.", ephemeral=True)
+        await interaction.response.send_message("✅ Your shift has started.", ephemeral=True)
         await self.log(guild, panel, f"🟢 {interaction.user.mention} hat **{panel['name']}** begonnen.")
     
     async def open_pause_modal(self, interaction, panel_id):
         shift = self.get_shift(interaction.guild_id, panel_id, interaction.user.id)
         if not shift or shift.get("status") != "working":
-            await interaction.response.send_message("Du musst zuerst im Dienst sein und darfst nicht bereits pausieren.", ephemeral=True)
+            await interaction.response.send_message("You must be on shift and not already on a break.", ephemeral=True)
             return
         panel = _guild_data(interaction.guild_id)["panels"].get(panel_id, {})
         await interaction.response.send_modal(PauseModal(self, panel_id, interaction.user.id, panel.get("default_pause_minutes", 15)))
@@ -196,7 +196,7 @@ class ShiftTracker(commands.Cog):
         async with LOCK:
             shift = self.get_shift(guild.id, panel_id, interaction.user.id)
             if not shift or shift.get("status") != "working":
-                await interaction.response.send_message("Dein Dienst ist nicht aktiv oder du pausierst bereits.", ephemeral=True)
+                await interaction.response.send_message("Your shift is not active or you are already on a break.", ephemeral=True)
                 return
             now = _now()
             shift.update({
@@ -206,12 +206,12 @@ class ShiftTracker(commands.Cog):
             })
             _save()
             panel = _guild_data(guild.id)["panels"].get(panel_id, {})
-        await interaction.response.send_message(f"☕ Pause für **{minutes} Minuten** gestartet.", ephemeral=True)
+        await interaction.response.send_message(f"☕ Your {minutes}-minute break has started.", ephemeral=True)
         await self.log(guild, panel, f"☕ {interaction.user.mention} ist für **{minutes} Minuten** in Pause gegangen.")
 
     async def pause_answer(self, interaction, panel_id, user_id, returned):
         if interaction.user.id != user_id:
-            await interaction.response.send_message("Diese Rückfrage gehört einem anderen Mitglied.", ephemeral=True)
+            await interaction.response.send_message("This prompt belongs to another member.", ephemeral=True)
             return
         guild = interaction.guild
         async with LOCK:
@@ -219,7 +219,7 @@ class ShiftTracker(commands.Cog):
             shift = data["shifts"].get(f"{panel_id}:{user_id}")
             panel = data["panels"].get(panel_id)
             if not shift or shift.get("status") != "paused" or not shift.get("prompt_message_id"):
-                await interaction.response.send_message("Diese Pausenabfrage ist nicht mehr aktiv.", ephemeral=True)
+                await interaction.response.send_message("This break prompt is no longer active.", ephemeral=True)
                 return
             now = _now()
             pause_start = _parse_time(shift.get("pause_started_at"))
@@ -230,31 +230,31 @@ class ShiftTracker(commands.Cog):
             shift["warning_due_at"] = None
             if returned:
                 shift["status"] = "working"
-                result = "Du bist wieder im Dienst. Deine Pause wurde beendet."
+                result = "You are back on shift. Your break has ended."
                 log_message = f"▶️ {interaction.user.mention} ist aus der Pause zurückgekehrt."
             else:
                 shift["status"] = "working"
                 result = f"Your break has ended. Warnings: **{shift.get('warnings', 0)}/3**."
                 log_message = f"▶️ {interaction.user.mention} acknowledged the return-to-work prompt."
             _save()
-        await interaction.response.edit_message(content="Pausenabfrage abgeschlossen.", view=None)
+        await interaction.response.edit_message(content="Break prompt completed.", view=None)
         await interaction.followup.send(result, ephemeral=True)
         await self.log(guild, panel, log_message)
 
     async def set_warning_delay(self, interaction, panel_id, user_id, minutes):
         if interaction.user.id != user_id:
-            await interaction.response.send_message("Diese Rückfrage gehört einem anderen Mitglied.", ephemeral=True)
+            await interaction.response.send_message("This prompt belongs to another member.", ephemeral=True)
             return
         async with LOCK:
             shift = self.get_shift(interaction.guild_id, panel_id, user_id)
             if not shift or shift.get("status") != "paused" or not shift.get("prompt_message_id"):
-                await interaction.response.send_message("Diese Pausenabfrage ist nicht mehr aktiv.", ephemeral=True)
+                await interaction.response.send_message("This break prompt is no longer active.", ephemeral=True)
                 return
             due = _now() + timedelta(minutes=minutes)
             shift["warning_due_at"] = _stamp(due)
             _save()
         await interaction.response.edit_message(
-            content=f"⏳ Verwarnung erfolgt automatisch, wenn du nicht innerhalb von **{minutes} Minuten** auf „Ja, ich bin zurück“ klickst.",
+            content=f"⏳ Verwarnung erfolgt automatisch, wenn du nicht innerhalb von **{minutes} Minuten** auf „I'm back at work“ klickst.",
             view=PausePromptView(self, panel_id, user_id),
         )
 
@@ -265,7 +265,7 @@ class ShiftTracker(commands.Cog):
             shift = data["shifts"].get(f"{panel_id}:{interaction.user.id}")
             panel = data["panels"].get(panel_id)
             if not shift or shift.get("status") == "ended":
-                await interaction.response.send_message("Du hast in diesem Panel keinen aktiven Dienst.", ephemeral=True)
+                await interaction.response.send_message("You do not have an active shift in this panel.", ephemeral=True)
                 return
             now = _now()
             if shift.get("status") == "paused" and shift.get("pause_started_at"):
@@ -274,7 +274,7 @@ class ShiftTracker(commands.Cog):
             worked = max(0, total - int(shift.get("paused_seconds", 0)))
             shift.update({"status": "ended", "ended_at": _stamp(now), "pause_started_at": None, "pause_until": None, "warning_due_at": None, "prompt_message_id": None})
             _save()
-        await interaction.response.send_message(f"🔴 Dienst beendet. Arbeitszeit: **{_duration(worked)}** (Pausen: {_duration(shift.get('paused_seconds', 0))}).", ephemeral=True)
+        await interaction.response.send_message(f"🔴 Shift ended. Worked: **{_duration(worked)}** (Pausen: {_duration(shift.get('paused_seconds', 0))}).", ephemeral=True)
         await self.log(guild, panel, f"🔴 {interaction.user.mention} hat **{panel['name']}** beendet. Gesamtdauer: **{_duration(total)}** · Arbeitszeit: **{_duration(worked)}** · Pausenzeit: **{_duration(shift.get('paused_seconds', 0))}** · Verwarnungen: **{shift.get('warnings', 0)}**.")
 
     @tasks.loop(seconds=20)
@@ -340,7 +340,7 @@ class ShiftTracker(commands.Cog):
         await self.bot.wait_until_ready()
 
     @app_commands.guild_only()
-    @app_commands.command(name="schichtpanel_erstellen", description="Erstellt ein Schicht-Panel mit Check-in, Pause und Check-out.")
+    @app_commands.command(name="schichtpanel_erstellen", description="Create a shift panel with check-in, break and check-out.")
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(name="Name des Panels, z. B. Polizei oder EMS", logkanal="Kanal für alle Schicht-Protokolle",
                            pausenminuten="Vorgeschlagene Pausenlänge", warnungen="Warnung vergeben, wenn jemand Nein auswählt")
@@ -371,11 +371,11 @@ class ShiftTracker(commands.Cog):
             _save()
         embed = discord.Embed(
             title=f"🐺 IronWolf · {panel['name']}",
-            description="Klicke auf **Dienst beginnen**, um deine Schicht zu starten. Pausenlänge kannst du beim Pausenstart selbst festlegen.",
+            description="Click **Start shift** to begin. You can choose your break duration when starting a break.",
             color=discord.Color.blurple(),
         )
-        embed.add_field(name="Standard-Pause", value=f"{pausenminuten} Minuten", inline=True)
-        embed.add_field(name="Warnungen bei Nein", value="Aktiv" if warnungen else "Deaktiviert", inline=True)
+        embed.add_field(name="Default break", value=f"{pausenminuten} Minuten", inline=True)
+        embed.add_field(name="Warnings", value="Aktiv" if warnungen else "Deaktiviert", inline=True)
         try:
             message = await interaction.channel.send(embed=embed, view=ShiftPanelView(self, panel_id))
         except (discord.Forbidden, discord.HTTPException):
@@ -391,29 +391,29 @@ class ShiftTracker(commands.Cog):
         await self.log(guild, panel, f"⚙️ Schicht-Panel **{name}** wurde von {interaction.user.mention} erstellt.")
 
     @app_commands.guild_only()
-    @app_commands.command(name="schichtpanel_liste", description="Zeigt die Schicht-Panels dieses Servers.")
+    @app_commands.command(name="schichtpanel_liste", description="List shift panels on this server.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def list_panels(self, interaction: discord.Interaction):
         panels = _guild_data(interaction.guild_id)["panels"]
         if not panels:
-            await interaction.response.send_message("Noch keine Schicht-Panels vorhanden.", ephemeral=True)
+            await interaction.response.send_message("No shift panels have been created yet.", ephemeral=True)
             return
         lines = [f"• **{p['name']}** · ID `{pid}` · Log: <#{p['log_channel_id']}>" for pid, p in panels.items()]
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     @app_commands.guild_only()
-    @app_commands.command(name="schichtpanel_loeschen", description="Löscht ein Schicht-Panel.")
+    @app_commands.command(name="schichtpanel_loeschen", description="Delete a shift panel.")
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(panel_id="ID aus /schichtpanel_liste")
     async def delete_panel(self, interaction: discord.Interaction, panel_id: str):
         async with LOCK:
             data = _guild_data(interaction.guild_id)
             if panel_id not in data["panels"]:
-                await interaction.response.send_message("Panel-ID nicht gefunden.", ephemeral=True)
+                await interaction.response.send_message("Panel ID not found.", ephemeral=True)
                 return
             active = [s for s in data["shifts"].values() if s.get("panel_id") == panel_id and s.get("status") != "ended"]
             if active:
-                await interaction.response.send_message("Das Panel hat noch aktive Schichten. Bitte erst alle Schichten beenden.", ephemeral=True)
+                await interaction.response.send_message("This panel still has active shifts. End them before deleting the panel.", ephemeral=True)
                 return
             panel = data["panels"].pop(panel_id)
             _save()
@@ -421,7 +421,7 @@ class ShiftTracker(commands.Cog):
         if channel:
             try:
                 msg = await channel.fetch_message(int(panel.get("panel_message_id", 0)))
-                await msg.edit(content="Dieses Schicht-Panel wurde deaktiviert.", embed=None, view=None)
+                await msg.edit(content="This shift panel has been deactivated.", embed=None, view=None)
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 pass
         await interaction.response.send_message(f"Panel **{panel['name']}** wurde gelöscht.", ephemeral=True)
