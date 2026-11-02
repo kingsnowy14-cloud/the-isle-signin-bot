@@ -49,10 +49,10 @@ def _duration(seconds):
     hours, remainder = divmod(seconds, 3600)
     minutes, secs = divmod(remainder, 60)
     if hours:
-        return f"{hours} Std. {minutes} Min."
+        return f"{hours} hr {minutes} Min."
     if minutes:
-        return f"{minutes} Min. {secs} Sek."
-    return f"{secs} Sek."
+        return f"{minutes} min {secs} sec"
+    return f"{secs} sec"
 
 
 def _parse_time(raw):
@@ -354,7 +354,7 @@ class ShiftTracker(commands.Cog):
             limit = 5 if premium else 2
             if len(data["panels"]) >= limit:
                 await interaction.response.send_message(
-                    f"Du hast das Limit von **{limit} Schicht-Panels** erreicht ({'Premium' if premium else 'Free'}).",
+                    f"Du hast das Limit von **{limit} Shift panels** erreicht ({'Premium' if premium else 'Free'}).",
                     ephemeral=True,
                 )
                 return
@@ -386,8 +386,8 @@ class ShiftTracker(commands.Cog):
         async with LOCK:
             _guild_data(guild.id)["panels"][panel_id]["panel_message_id"] = message.id
             _save()
-        await interaction.response.send_message(f"✅ Schicht-Panel **{name}** erstellt. ID: `{panel_id}` · Limit: {limit}.", ephemeral=True)
-        await self.log(guild, panel, f"⚙️ Schicht-Panel **{name}** wurde von {interaction.user.mention} erstellt.")
+        await interaction.response.send_message(f"✅ Shift panel **{name}** erstellt. ID: `{panel_id}` · Limit: {limit}.", ephemeral=True)
+        await self.log(guild, panel, f"⚙️ Shift panel **{name}** wurde von {interaction.user.mention} erstellt.")
 
     @app_commands.guild_only()
     @app_commands.command(name="schichtpanel_liste", description="List shift panels on this server.")
