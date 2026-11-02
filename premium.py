@@ -114,13 +114,12 @@ PREMIUM_FEATURES = {
     "invite_tracker": "Invite Tracker",
     "server_boost": "Server-Boost-System",
     "applications": "Pro application system (unlimited panels and questions)",
-    "emergency_hamburg": "Emergency Hamburg public server monitor",
     "shift_tracker": "Schicht- und Zeiterfassungssystem",
 }
 
 PLAN_FEATURES = {
     "free": frozenset(),
-    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications", "emergency_hamburg", "shift_tracker"}),
+    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications", "shift_tracker"}),
     "premium_plus": frozenset(PREMIUM_FEATURES),
 }
 
