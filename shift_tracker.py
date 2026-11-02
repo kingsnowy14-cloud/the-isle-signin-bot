@@ -130,17 +130,6 @@ class PausePromptView(discord.ui.View):
                                 custom_id=f"iwshift:yes:{panel_id}:{user_id}")
         yes.callback = self._yes
         self.add_item(yes)
-        delay = discord.ui.Select(
-            placeholder="Verwarnung erst nach …",
-            custom_id=f"iwshift:grace:{panel_id}:{user_id}",
-            options=[
-                discord.SelectOption(label=f"{minutes} Minute" if minutes == 1 else f"{minutes} Minuten",
-                                     value=str(minutes))
-                for minutes in (1, 3, 5, 10, 15)
-            ],
-        )
-        delay.callback = self._delay
-        self.add_item(delay)
 
     async def _yes(self, interaction):
         await self.cog.pause_answer(interaction, self.panel_id, self.user_id, True)
@@ -355,6 +344,8 @@ class ShiftTracker(commands.Cog):
                         current = self.get_shift(guild.id, panel_id, user_id)
                         if current and current.get("status") == "paused" and not current.get("prompt_message_id"):
                             current["prompt_message_id"] = message.id
+                            delay_minutes = max(1, min(60, int(panel.get("warning_delay_minutes", 5) or 5)))
+                            current["warning_due_at"] = _stamp(_now() + timedelta(minutes=delay_minutes))
                             _save()
                         else:
                             await message.delete()
