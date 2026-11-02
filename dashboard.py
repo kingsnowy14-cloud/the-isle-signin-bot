@@ -29,6 +29,7 @@ from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
+from wolfanalytics import get_stats as wolfanalytics_get_stats
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
 ADMINISTRATOR = 0x8
@@ -83,6 +84,7 @@ CHANNEL_SETTINGS = {
     "levelup_channel": "Level-up channel",
     "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Security log channel",
+    "analytics_log_channel": "WolfAnalytics report channel",
     "verify_channel": "Verifizierungskanal",
     "registration_channel": "Anmeldekanal",
     "ticket_log_channel": "Ticket-Logkanal",
@@ -838,6 +840,7 @@ def _page(title, body):
         + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
+        + ('<a href="/guild/' + match.group(1) + '/wolfanalytics">📊 WolfAnalytics</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/ai">🤖 KI-Wissen</a>' if logged_in and match else '')
         + ('<a href="/guild/' + match.group(1) + '/image-generator">🎨 KI-Bildgenerator</a>' if logged_in and match else '')
         + '<a href="/feedback">💬 Feedback</a>'
@@ -6266,6 +6269,55 @@ def guild_wolfshield(guild_id):
         '</ol><p><a href="/guild/' + gid + '/wolfpulse">WolfPulse · Berechtigungen prüfen ↗</a> · <a href="/guild/' + gid + '">Zur Server-Konfiguration ↗</a></p></section>'
     )
     return _page("WolfShield · Anti-Raid", body)
+
+
+
+@app.route("/guild/<guild_id>/wolfanalytics")
+def guild_wolfanalytics(guild_id):
+    """Private, server-scoped activity analytics page."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    period = request.args.get("period", "24h")
+    if period not in {"24h", "7day", "30day"}:
+        abort(400, "Ungültiger Statistikzeitraum.")
+    chart_type = request.args.get("chart", "column")
+    if chart_type not in {"column", "bar"}:
+        abort(400, "Ungültiger Diagrammtyp.")
+    stats = wolfanalytics_get_stats(guild.id, period)
+    labels = {"24h": "Letzte 24 Stunden", "7day": "Letzte 7 Tage", "30day": "Letzte 30 Tage"}
+    items = [("Joins", stats["joins"], "#55c2a3"), ("Leaves", stats["leaves"], "#f08a79"), ("Nachrichten", stats["messages"], "#78a9f5")]
+    maximum = max((value for _, value, _ in items), default=0) or 1
+    if chart_type == "column":
+        chart_html = '<div style="height:300px;display:flex;align-items:end;justify-content:space-around;gap:18px;padding:25px 12px 0;border-bottom:1px solid var(--border,#334155)">'
+        for label, value, color in items:
+            bar_height = max(4, int(value / maximum * 220))
+            chart_html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:end;height:100%;gap:9px"><strong>' + format(value, ",") + '</strong><div style="width:min(100%,110px);height:' + str(bar_height) + 'px;background:' + color + ';border-radius:12px 12px 3px 3px"></div><span>' + label + '</span></div>'
+        chart_html += '</div>'
+    else:
+        chart_html = '<div style="display:grid;gap:24px;padding:20px 0">'
+        for label, value, color in items:
+            chart_html += '<div><div style="display:flex;justify-content:space-between;margin-bottom:8px"><strong>' + label + '</strong><strong>' + format(value, ",") + '</strong></div><div style="height:25px;background:var(--surface-2,#263244);border-radius:8px;overflow:hidden"><div style="height:100%;width:' + str(max(1, value / maximum * 100)) + '%;background:' + color + ';border-radius:8px"></div></div></div>'
+        chart_html += '</div>'
+    period_links = ''.join('<a class="button secondary" href="/guild/' + str(guild.id) + '/wolfanalytics?period=' + key + '&chart=' + chart_type + '">' + label + '</a>' for key, label in [("24h", "24 Stunden"), ("7day", "7 Tage"), ("30day", "30 Tage")])
+    chart_links = ''.join('<a class="button secondary" href="/guild/' + str(guild.id) + '/wolfanalytics?period=' + period + '&chart=' + key + '">' + label + '</a>' for key, label in [("column", "Säulendiagramm"), ("bar", "Balkendiagramm")])
+    cfg = _guild_config(guild.id)
+    configured_channel = cfg.get("analytics_log_channel")
+    channel = guild.get_channel(int(configured_channel)) if str(configured_channel or "").isdigit() else None
+    channel_text = channel.mention if channel else "Noch kein Berichtskanal ausgewählt"
+    body = (
+        '<section class="card"><h1>📊 WolfAnalytics</h1><p class="muted">Serveraktivität im Überblick: Beitritte, Austritte und Nachrichten. Es werden nur Zähler und Zeitstempel gespeichert – keine Nachrichteninhalte.</p>'
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:18px 0">' + period_links + '</div>'
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">' + chart_links + '</div>'
+        '<h2>' + labels[period] + '</h2><div class="card">' + chart_html + '</div>'
+        '<div class="grid"><div class="card"><strong>👋 Joins</strong><h2>' + format(stats["joins"], ",") + '</h2></div>'
+        '<div class="card"><strong>🚪 Leaves</strong><h2>' + format(stats["leaves"], ",") + '</h2></div>'
+        '<div class="card"><strong>💬 Nachrichten</strong><h2>' + format(stats["messages"], ",") + '</h2></div></div>'
+        '<p class="muted">Hinweis: Die Erfassung beginnt mit dem Aktivieren von WolfAnalytics. Frühere Aktivitäten werden nicht rückwirkend gezählt.</p></section>'
+        '<section class="card"><h2>Discord-Berichte</h2><p>Aktueller Berichtskanal: ' + channel_text + '</p>'
+        '<p>Wähle den Berichtskanal unter <a href="/guild/' + str(guild.id) + '/settings?section=channels">Servereinstellungen → Kanäle</a>. Der Bot kann dort einen Statistikbericht als Bild posten.</p></section>'
+    )
+    return _page("WolfAnalytics · Statistiken", body)
 
 
 @app.route("/guild/<guild_id>/wolfchronicle", methods=["GET", "POST"])
