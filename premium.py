@@ -43,11 +43,15 @@ def sync_manual_grants():
         if not isinstance(grant, dict):
             grants.pop(uid, None)
             continue
-        # Keep non-allowlist grants, including dashboard grants and server boosts.
-        if uid not in active and grant.get("source") not in {"server_boost", "dashboard_admin"}:
-            grants.pop(uid, None)
-        elif grant.get("plan") == "premium_plus":
+        # Migrate persisted Premium+ users before allowlist cleanup so their
+        # existing unexpired entitlement survives removal of the legacy env var.
+        if grant.get("plan") == "premium_plus":
             grant["plan"] = "premium"
+            if grant.get("source") == "manual_allowlist":
+                grant["source"] = "legacy_migration"
+        # Keep migrated grants, dashboard grants, and server-boost rewards.
+        if uid not in active and grant.get("source") not in {"server_boost", "dashboard_admin", "legacy_migration"}:
+            grants.pop(uid, None)
     for uid in active:
         grant = grants.get(uid)
         if not isinstance(grant, dict) or grant.get("source") != "manual_allowlist":
