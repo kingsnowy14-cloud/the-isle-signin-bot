@@ -305,8 +305,7 @@ class ShiftTracker(commands.Cog):
                         current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (pause_end - pause_start).total_seconds()))
                         current["pause_started_at"] = None
                         current["pause_until"] = None
-                        if panel.get("warnings_enabled", True):
-                            current["warnings"] = int(current.get("warnings", 0)) + 1
+                        current["warnings"] = int(current.get("warnings", 0)) + 1
                         warning_count = int(current.get("warnings", 0))
                         ended = warning_count >= 3
                         if ended:
