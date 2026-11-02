@@ -8943,11 +8943,17 @@ async def translate_command(ctx, channel_or_language: str, target: str = None):
     else:
         target = str(target or "").lower()
         match = re.fullmatch(r"<#(\d+)>", first)
-        channel_id = match.group(1) if match else first
-        if not channel_id.isdigit():
+        if first.startswith("#"):
+            channel = discord.utils.get(ctx.guild.text_channels, name=first[1:])
+        elif match:
+            channel = ctx.guild.get_channel(int(match.group(1)))
+        elif first.isdigit():
+            channel = ctx.guild.get_channel(int(first))
+        else:
+            channel = None
+        if channel is None:
             await ctx.reply("Usage: `!translate #channel en`, `!translate #channel de`, or `!translate #channel off`. You can also use `!translate en` in the current channel.", mention_author=False)
             return
-        channel = ctx.guild.get_channel(int(channel_id))
     if not isinstance(channel, discord.TextChannel) or channel.guild.id != ctx.guild.id:
         await ctx.reply("Please select a text channel from this server.", mention_author=False)
         return
