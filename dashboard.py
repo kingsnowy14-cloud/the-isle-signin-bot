@@ -6282,13 +6282,26 @@ def guild_wolfanalytics(guild_id):
     if period not in {"24h", "7day", "30day"}:
         abort(400, "Ungültiger Statistikzeitraum.")
     chart_type = request.args.get("chart", "column")
-    if chart_type not in {"column", "bar"}:
+    if chart_type not in {"column", "bar", "line"}:
         abort(400, "Ungültiger Diagrammtyp.")
     stats = wolfanalytics_get_stats(guild.id, period)
     labels = {"24h": "Letzte 24 Stunden", "7day": "Letzte 7 Tage", "30day": "Letzte 30 Tage"}
     items = [("Joins", stats["joins"], "#55c2a3"), ("Leaves", stats["leaves"], "#f08a79"), ("Nachrichten", stats["messages"], "#78a9f5")]
     maximum = max((value for _, value, _ in items), default=0) or 1
-    if chart_type == "column":
+    if chart_type == "line":
+        timeline = wolfanalytics_get_timeline(guild.id, period)
+        chart_html = '<div style="height:300px;padding:20px 8px"><svg viewBox="0 0 900 260" role="img" aria-label="Aktivitätsverlauf" style="width:100%;height:100%;overflow:visible">'
+        colors = {"joins": "#55c2a3", "leaves": "#f08a79", "messages": "#78a9f5"}
+        maximum = max((bucket[key] for bucket in timeline for key in colors), default=0) or 1
+        for key, color in colors.items():
+            points = []
+            for index, bucket in enumerate(timeline):
+                x = 20 + index / max(1, len(timeline) - 1) * 860
+                y = 235 - bucket[key] / maximum * 210
+                points.append(f"{x:.1f},{y:.1f}")
+            chart_html += '<polyline fill="none" stroke="' + color + '" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" points="' + ' '.join(points) + '"/>'
+        chart_html += '</svg><div style="display:flex;gap:24px;flex-wrap:wrap"><span>🟢 Joins</span><span>🔴 Leaves</span><span>🔵 Nachrichten</span></div></div>'
+    elif chart_type == "column":
         chart_html = '<div style="height:300px;display:flex;align-items:end;justify-content:space-around;gap:18px;padding:25px 12px 0;border-bottom:1px solid var(--border,#334155)">'
         for label, value, color in items:
             bar_height = max(4, int(value / maximum * 220))
@@ -6300,7 +6313,7 @@ def guild_wolfanalytics(guild_id):
             chart_html += '<div><div style="display:flex;justify-content:space-between;margin-bottom:8px"><strong>' + label + '</strong><strong>' + format(value, ",") + '</strong></div><div style="height:25px;background:var(--surface-2,#263244);border-radius:8px;overflow:hidden"><div style="height:100%;width:' + str(max(1, value / maximum * 100)) + '%;background:' + color + ';border-radius:8px"></div></div></div>'
         chart_html += '</div>'
     period_links = ''.join('<a class="button secondary" href="/guild/' + str(guild.id) + '/wolfanalytics?period=' + key + '&chart=' + chart_type + '">' + label + '</a>' for key, label in [("24h", "24 Stunden"), ("7day", "7 Tage"), ("30day", "30 Tage")])
-    chart_links = ''.join('<a class="button secondary" href="/guild/' + str(guild.id) + '/wolfanalytics?period=' + period + '&chart=' + key + '">' + label + '</a>' for key, label in [("column", "Säulendiagramm"), ("bar", "Balkendiagramm")])
+    chart_links = ''.join('<a class="button secondary" href="/guild/' + str(guild.id) + '/wolfanalytics?period=' + period + '&chart=' + key + '">' + label + '</a>' for key, label in [("column", "Säulendiagramm"), ("bar", "Balkendiagramm"), ("line", "📈 Liniendiagramm")])
     cfg = _guild_config(guild.id)
     configured_channel = cfg.get("analytics_log_channel")
     channel = guild.get_channel(int(configured_channel)) if str(configured_channel or "").isdigit() else None
