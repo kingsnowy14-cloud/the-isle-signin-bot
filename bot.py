@@ -2150,12 +2150,15 @@ async def wolfanalytics_command(interaction: discord.Interaction, period: app_co
         return
     stats = wolfanalytics_get_stats(interaction.guild.id, period.value)
     chart_image = wolfanalytics_build_chart(interaction.guild.name, period.value, stats, chart.value)
+    dashboard_base = os.getenv("DASHBOARD_PUBLIC_URL", "https://ironwolf-bot.up.railway.app").strip().rstrip("/")
+    analytics_url = f"{dashboard_base}/guild/{interaction.guild.id}/wolfanalytics"
     embed = discord.Embed(
         title=f"WolfAnalytics · {interaction.guild.name}",
         description=wolfanalytics_build_report(interaction.guild.name, period.value, stats),
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
+    embed.add_field(name="📊 Server-Modul öffnen", value=f"[WolfAnalytics direkt im Dashboard öffnen]({analytics_url})", inline=False)
     embed.set_image(url="attachment://wolfanalytics.png")
     await interaction.response.defer(ephemeral=True, thinking=True)
     try:
