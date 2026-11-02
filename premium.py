@@ -115,11 +115,12 @@ PREMIUM_FEATURES = {
     "server_boost": "Server-Boost-System",
     "applications": "Pro application system (unlimited panels and questions)",
     "shift_tracker": "Schicht- und Zeiterfassungssystem",
+    "wolfanalytics": "WolfAnalytics",
 }
 
 PLAN_FEATURES = {
     "free": frozenset(),
-    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications", "shift_tracker"}),
+    "premium": frozenset({"ticket", "branding", "custom_bot", "invite_tracker", "server_boost", "applications", "shift_tracker", "wolfanalytics"}),
     "premium_plus": frozenset(PREMIUM_FEATURES),
 }
 
