@@ -4779,6 +4779,35 @@ def guild_shifts(guild_id):
             save_shift_state()
             _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Pausen-Erinnerung für {panel.get('name', panel_id)} angepasst")
             return redirect(url_for("guild_shifts", guild_id=gid, saved="reminder_message"))
+        if action == "delete_all":
+            panel_items = list(guild_data["panels"].items())
+            async def remove_all_panel_messages():
+                for old_id, old_panel in panel_items:
+                    old_channel = guild.get_channel(int(old_panel.get("panel_channel_id", 0)))
+                    if isinstance(old_channel, discord.TextChannel) and old_panel.get("panel_message_id"):
+                        try:
+                            old_message = await old_channel.fetch_message(int(old_panel["panel_message_id"]))
+                            await old_message.edit(content="This shift panel has been removed by a server administrator.", embed=None, view=None)
+                        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                            pass
+            if _bot and panel_items:
+                try:
+                    asyncio.run_coroutine_threadsafe(remove_all_panel_messages(), _bot.loop).result(timeout=30)
+                except Exception as exc:
+                    abort(502, "Could not deactivate all Discord shift panels: " + str(exc)[:200])
+            removed_ids = set(guild_data["panels"])
+            for item in guild_data["shifts"].values():
+                if item.get("panel_id") in removed_ids and item.get("status") != "ended":
+                    item["status"] = "ended"
+                    item["ended_at"] = datetime.now(timezone.utc).isoformat()
+                    item["pause_started_at"] = None
+                    item["pause_until"] = None
+                    item["warning_due_at"] = None
+                    item["prompt_message_id"] = None
+            guild_data["panels"] = {}
+            save_shift_state()
+            _audit_dashboard_change(guild.id, "Shift management", session.get("user_id"), f"Removed all {len(panel_items)} shift panels")
+            return redirect(url_for("guild_shifts", guild_id=gid, saved="deleted_all"))
         if action == "delete":
             panel_id = request.form.get("panel_id", "")
             panel = guild_data["panels"].get(panel_id)
@@ -4839,8 +4868,9 @@ def guild_shifts(guild_id):
             '<p class="muted">Panel: ' + html.escape(panel_channel_name) + ' · Protokoll: ' + html.escape(log_channel_name) + ' · ID <code>' + html.escape(panel_id) + '</code></p>'
             + table + warning_delay_form + reminder_form + delete_form + '</section>'
         )
-    saved_messages = {"created": "Schicht-Panel wurde erstellt.", "deleted": "Schicht-Panel wurde gelöscht.", "warning_delay": "Verwarnungsfrist wurde gespeichert.", "reminder_message": "Pausen-Nachricht wurde gespeichert."}
+    saved_messages = {"created": "Shift panel created.", "deleted_all": "All shift panels were removed and active shifts were ended.", "deleted": "Shift panel deleted.", "warning_delay": "Verwarnungsfrist wurde gespeichert.", "reminder_message": "Pausen-Nachricht wurde gespeichert."}
     saved = '<div class="notice">✅ ' + saved_messages.get(request.args.get("saved", ""), "") + '</div>' if request.args.get("saved") in saved_messages else ""
+    delete_all_form = '<form method="post" onsubmit="return confirm(&quot;Delete every shift panel and end active shifts?&quot;)">' + _csrf_field() + '<input type="hidden" name="action" value="delete_all"><button class="secondary" type="submit">Delete all shift panels</button></form>'
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF · SHIFT TRACKER</span><h1>⏱️ Schichtverwaltung</h1>'
         '<p>Erstelle und verwalte Schicht-Panels direkt im Dashboard. Check-ins, Pausen, Rückmeldungen und Warnungen werden vom Discord-Bot erfasst und im gewählten Protokollkanal gespeichert.</p>'
@@ -4857,7 +4887,7 @@ def guild_shifts(guild_id):
         '<label>Nachricht bei Pausenende <small>Platzhalter: {mention}, {name}, {warning_minutes}</small><textarea name="pause_reminder_message" maxlength="1500" rows="4">' + "⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Wenn du nicht innerhalb von {warning_minutes} Minuten reagierst, erhältst du automatisch eine Verwarnung." + '</textarea></label>'
         '<label class="setting-row"><span><strong>Warnung bei „Nein“ aktivieren</strong><small>Nach drei Warnungen wird die Schicht automatisch beendet.</small></span><input type="checkbox" name="warnings_enabled" checked></label>'
         '<button type="submit">＋ Schicht-Panel erstellen und in Discord veröffentlichen</button></form></section>'
-        '<section><h2>Vorhandene Schicht-Panels</h2>' + (''.join(panel_cards) if panel_cards else '<section class="card"><p>Noch keine Schicht-Panels erstellt.</p></section>') + '</section>'
+        '<section><h2>Existing shift panels</h2>' + delete_all_form + (''.join(panel_cards) if panel_cards else '<section class="card"><p>Noch keine Schicht-Panels erstellt.</p></section>') + '</section>'
         '<p><a href="/guild/' + gid + '">← Zur Serverübersicht</a></p>'
     )
     return _render(guild.name + " · Schichtverwaltung", body)
