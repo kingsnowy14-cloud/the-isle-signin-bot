@@ -98,6 +98,24 @@ def grant_manual_premium(user_id, granted_by):
     return grant
 
 
+
+def revoke_manual_premium(user_id, revoked_by):
+    """Revoke only dashboard-admin grants; preserve boosts and allowlist entitlements."""
+    if str(revoked_by or "") != PREMIUM_ADMIN_ID:
+        raise PermissionError("Keine Berechtigung zum Widerrufen von Premium.")
+    uid = str(user_id or "").strip()
+    if not uid.isdigit() or not 17 <= len(uid) <= 20:
+        raise ValueError("Ungültige Discord-Benutzer-ID.")
+    grants = sync_manual_grants()
+    grant = grants.get(uid)
+    if not isinstance(grant, dict):
+        return False
+    if grant.get("source") != "dashboard_admin":
+        raise PermissionError("Diese Freischaltung stammt nicht aus der Admin-Verwaltung und bleibt unverändert.")
+    grants.pop(uid, None)
+    _write_grants(grants)
+    return True
+
 def grant_server_boost_premium(user_id, guild_id, days=183):
     """Grant or extend account Premium for boosting the configured server."""
     uid = str(user_id)
