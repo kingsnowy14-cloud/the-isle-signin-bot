@@ -29,7 +29,7 @@ from storage import data_path
 from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
-from wolfanalytics import get_stats as wolfanalytics_get_stats
+from wolfanalytics import get_stats as wolfanalytics_get_stats, get_timeline as wolfanalytics_get_timeline
 DISCORD_API = "https://discord.com/api/v10"
 MANAGE_GUILD = 0x20
 ADMINISTRATOR = 0x8
