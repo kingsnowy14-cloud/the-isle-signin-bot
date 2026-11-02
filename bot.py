@@ -2161,7 +2161,30 @@ async def wolfanalytics_command(interaction: discord.Interaction, period: app_co
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(name="📊 Server-Modul öffnen", value=f"[WolfAnalytics direkt im Dashboard öffnen]({analytics_url})", inline=False)
+    embed.add_field(name="📊 WolfAnalytics", value=f"[Statistikseite öffnen]({analytics_url})", inline=False)
+    module_links = [
+        ("👋 Welcome & Goodbye", "/welcome"), ("🎭 Reaction Roles", "/reaction-roles"),
+        ("💬 Anonymous Feedback", "/feedback"), ("🎂 Birthdays", "/birthdays"),
+        ("📈 Leveling & XP", "?section=general#settings-panel"), ("👥 Team List", "/teamlist"),
+        ("🧪 Security Lab", "/security-lab"), ("🔐 Verification", "/verification"),
+        ("🎮 Gaming Verification", "/verified-accounts"), ("🍯 Honeypot", "/honeypot"),
+        ("🛡️ Ping Protection", "/ping-protection"), ("⚙️ Protection Settings", "?section=security#settings-panel"),
+        ("🎮 Action Center", "/actions"), ("🎟️ Ticket Panels", "/tickets"),
+        ("🤖 AI Ticket Support", "/ai"), ("🆘 Quick Support", "/quick-support"),
+        ("🔊 Temporary Voice", "/temporary-voice"), ("✉️ Message Builder", "/messages"),
+        ("📣 Automation", "/automation"), ("📝 Applications", "/applications"),
+        ("🎨 Server Branding", "/branding"), ("🎭 Roles & Rewards", "?section=roles#settings-panel"),
+        ("📡 Channels & Logs", "?section=channels#settings-panel"), ("📊 Server Statistics", "/server-statistics"),
+        ("✨ Premium", "/premium"), ("🚀 Server Boosts", "/server-boost"), ("💰 Economy", "/economy"),
+        ("🪪 Member ID Cards", "/ausweis"), ("📈 Live Statistics", "/stats"),
+        ("⌘ Commands", "/commands"), ("📋 System-Logs", "/server-logs"),
+        ("⌘ Command Log", "/command-log"), ("📜 Audit Log", "/audit-log"),
+        ("🩺 System Health", "/health"), ("🗄️ Backup & Restore", "/backup"),
+        ("🧩 Module Manager", "?section=modules"), ("🛠️ Module Template", "?section=template"),
+    ]
+    module_lines = [f"[{name}]({dashboard_base}/guild/{interaction.guild.id}{path})" for name, path in module_links]
+    embed.add_field(name="🧭 Alle Server-Module · 1/2", value=" • ".join(module_lines[:19]), inline=False)
+    embed.add_field(name="🧭 Alle Server-Module · 2/2", value=" • ".join(module_lines[19:]), inline=False)
     embed.set_image(url="attachment://wolfanalytics.png")
     await interaction.response.defer(ephemeral=True, thinking=True)
     try:
