@@ -285,7 +285,12 @@ class ShiftTracker(commands.Cog):
             if guild is None:
                 continue
             for shift in list(data.get("shifts", {}).values()):
-                if shift.get("status") not in {"paused", "awaiting_return"} or shift.get("prompt_message_id"):
+                status = shift.get("status")
+                if status not in {"paused", "awaiting_return"}:
+                    continue
+                if status == "paused" and shift.get("prompt_message_id"):
+                    continue
+                if status == "awaiting_return" and _parse_time(shift.get("warning_due_at")) > now:
                     continue
                 panel_id = shift.get("panel_id")
                 panel = data.get("panels", {}).get(panel_id)
@@ -341,7 +346,7 @@ class ShiftTracker(commands.Cog):
                 try:
                     async with LOCK:
                         current = self.get_shift(guild.id, panel_id, user_id)
-                        if not current or current.get("status") not in {"paused", "awaiting_return"} or current.get("prompt_message_id") or _parse_time(current.get("warning_due_at")) > _now():
+                        if not current or current.get("status") not in {"paused", "awaiting_return"} or (current.get("status") == "paused" and current.get("prompt_message_id")) or _parse_time(current.get("warning_due_at")) > _now():
                             continue
                         pause_start = _parse_time(current.get("pause_started_at"))
                         pause_end = _parse_time(current.get("pause_until"))
