@@ -8942,7 +8942,7 @@ async def translate_command(ctx, channel_or_language: str, target: str = None):
         target = first.lower()
     else:
         target = str(target or "").lower()
-        match = re.fullmatch(r"<#(\\d+)>", first)
+        match = re.fullmatch(r"<#(\d+)>", first)
         channel_id = match.group(1) if match else first
         if not channel_id.isdigit():
             await ctx.reply("Usage: `!translate #channel en`, `!translate #channel de`, or `!translate #channel off`. You can also use `!translate en` in the current channel.", mention_author=False)
