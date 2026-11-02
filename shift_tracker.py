@@ -218,7 +218,7 @@ class ShiftTracker(commands.Cog):
             data = _guild_data(guild.id)
             shift = data["shifts"].get(f"{panel_id}:{user_id}")
             panel = data["panels"].get(panel_id)
-            if not shift or shift.get("status") != "paused" or not shift.get("prompt_message_id"):
+            if not shift or shift.get("status") != "awaiting_return" or not shift.get("prompt_message_id"):
                 await interaction.response.send_message("This break prompt is no longer active.", ephemeral=True)
                 return
             now = _now()
@@ -285,11 +285,54 @@ class ShiftTracker(commands.Cog):
             if guild is None:
                 continue
             for shift in list(data.get("shifts", {}).values()):
-                if shift.get("status") != "paused" or shift.get("prompt_message_id"):
+                if shift.get("status") not in {"paused", "awaiting_return"} or shift.get("prompt_message_id"):
                     continue
                 panel_id = shift.get("panel_id")
                 panel = data.get("panels", {}).get(panel_id)
-                if not panel or _parse_time(shift.get("pause_until")) > now:
+                if not panel:
+                    continue
+                pause_until = _parse_time(shift.get("pause_until"))
+                if now < pause_until:
+                    continue
+                grace_minutes = max(1, min(60, int(panel.get("warning_delay_minutes", 5) or 5)))
+                warning_due_at = shift.get("warning_due_at")
+                if not warning_due_at:
+                    warning_due_at = _stamp(pause_until + timedelta(minutes=grace_minutes))
+                    shift["warning_due_at"] = warning_due_at
+                    _save()
+                if now < _parse_time(warning_due_at):
+                    user_id = int(shift.get("user_id", 0))
+                    channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
+                    if not isinstance(channel, discord.TextChannel):
+                        continue
+                    try:
+                        async with LOCK:
+                            current = self.get_shift(guild.id, panel_id, user_id)
+                            if not current or current.get("status") != "paused" or current.get("prompt_message_id") or _parse_time(current.get("warning_due_at")) <= _now():
+                                continue
+                            pause_start = _parse_time(current.get("pause_started_at"))
+                            pause_end = _parse_time(current.get("pause_until"))
+                            current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (pause_end - pause_start).total_seconds()))
+                            current["pause_started_at"] = None
+                            current["pause_until"] = None
+                            current["status"] = "working"
+                            current["prompt_message_id"] = None
+                            _save()
+                        reminder_text = str(panel.get("pause_reminder_message", "⏰ Your break is over, {mention}. Please confirm that you are back at work within {warning_minutes} minutes."))[:1500]
+                        reminder_text = (reminder_text.replace("{mention}", f"<@{user_id}>").replace("{name}", str(panel.get("name", "Shift"))[:50]).replace("{warning_minutes}", str(grace_minutes)))
+                        view = PausePromptView(self, panel_id, user_id)
+                        message = await channel.send(reminder_text, view=view, allowed_mentions=discord.AllowedMentions(users=True))
+                        async with LOCK:
+                            current = self.get_shift(guild.id, panel_id, user_id)
+                            if current and current.get("status") == "working" and not current.get("prompt_message_id"):
+                                current["status"] = "awaiting_return"
+                                current["prompt_message_id"] = message.id
+                                _save()
+                            else:
+                                await message.delete()
+                        await self.log(guild, panel, f"⏳ <@{user_id}> has {grace_minutes} minutes to confirm their return. No warning has been issued yet.")
+                    except (discord.Forbidden, discord.HTTPException) as exc:
+                        print(f"[SHIFT] Return prompt failed for {user_id}: {type(exc).__name__}: {exc}", flush=True)
                     continue
                 user_id = int(shift.get("user_id", 0))
                 channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
@@ -298,14 +341,14 @@ class ShiftTracker(commands.Cog):
                 try:
                     async with LOCK:
                         current = self.get_shift(guild.id, panel_id, user_id)
-                        if not current or current.get("status") != "paused" or current.get("prompt_message_id") or _parse_time(current.get("pause_until")) > _now():
+                        if not current or current.get("status") not in {"paused", "awaiting_return"} or current.get("prompt_message_id") or _parse_time(current.get("warning_due_at")) > _now():
                             continue
                         pause_start = _parse_time(current.get("pause_started_at"))
                         pause_end = _parse_time(current.get("pause_until"))
-                        current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (pause_end - pause_start).total_seconds()))
+                        current["warnings"] = int(current.get("warnings", 0)) + 1
+                        current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (now - pause_start).total_seconds()))
                         current["pause_started_at"] = None
                         current["pause_until"] = None
-                        current["warnings"] = int(current.get("warnings", 0)) + 1
                         warning_count = int(current.get("warnings", 0))
                         ended = warning_count >= 3
                         if ended:
@@ -330,7 +373,7 @@ class ShiftTracker(commands.Cog):
                             _save()
                         else:
                             await message.delete()
-                    await self.log(guild, panel, f"⚠️ <@{user_id}> received an immediate warning when the break ended ({warning_count}/3).")
+                    await self.log(guild, panel, f"⚠️ <@{user_id}> missed the return deadline and received warning {warning_count}/3.")
                 except (discord.Forbidden, discord.HTTPException) as exc:
                     print(f"[SHIFT] Break-end warning failed for {user_id}: {type(exc).__name__}: {exc}", flush=True)
 
