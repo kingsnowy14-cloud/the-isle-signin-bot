@@ -26,7 +26,7 @@ from discord import app_commands
 import requests
 from flask import Flask, abort, redirect, request, session, url_for, make_response, send_file
 from storage import data_path
-from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active, grant_manual_premium, PREMIUM_ADMIN_ID
+from premium import PREMIUM_FEATURES, PLAN_FEATURES, account_plan, guild_has_feature, guild_trial_active, grant_manual_premium, revoke_manual_premium, sync_manual_grants, PREMIUM_ADMIN_ID
 from wolfmirror import simulate_scenario, SCENARIOS
 from wolfchronicle import INCIDENT_TYPES, SEVERITIES, STATUSES, create_incident, list_incidents, update_incident
 from wolfanalytics import get_stats as wolfanalytics_get_stats, get_timeline as wolfanalytics_get_timeline
@@ -847,8 +847,7 @@ def _page(title, body):
 <style>
 :root{{--bg:#080b12;--panel:#101725;--panel2:#151f30;--text:#f2f5fb;--muted:#98a7bd;--accent:#72c7ff;--accent2:#b7e5ff;--border:rgba(154,177,211,.17);--shadow:0 22px 70px rgba(0,0,0,.34);--glow:rgba(91,141,255,.14);}}
 *{{box-sizing:border-box}}html{{scroll-behavior:smooth;scroll-padding-top:100px}}
-body{{margin:0;background:radial-gradient(ellipse at 5% 0%,rgba(91,141,255,.16),transparent 34%),radial-gradient(ellipse at 94% 4%,rgba(114,199,255,.13),transparent 28%),linear-gradient(180deg,#0b1020 0%,var(--bg) 58%,#070910 100%);color:var(--text);font:15px/1.7 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;min-height:100vh}}
-nav{{position:sticky;top:0;z-index:10;display:flex;gap:18px;align-items:center;padding:14px max(20px,calc((100vw - 1240px)/2));border-bottom:1px solid rgba(154,177,211,.15);background:rgba(8,11,18,.82);backdrop-filter:blur(22px);box-shadow:0 8px 35px rgba(0,0,0,.16)}}.top-nav{{flex-wrap:nowrap;gap:10px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}}.top-nav .brand-mark{{flex:0 0 auto;margin-right:auto}}.top-nav a.nav-server{{flex:0 0 auto;padding:7px 10px;font-size:13px}}.top-nav .nav-logout{{flex:0 0 auto;margin:0}}.top-nav .nav-logout-button{{padding:7px 10px;border:1px solid var(--border);border-radius:11px;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015));color:var(--text);font-weight:800;cursor:pointer}}
+body{{margin:0;background:radial-gradient(ellipse at 5% 0%,rgba(91,141,255,.16),transparent 34%),radial-gradient(ellipse at 94% 4%,rgba(114,199,255,.13),transparent 28%),linear-gradient(180deg,#0b1020 0%,var(--bg) 58%,#070910 100%);color:var(--text);font:15px/1.7 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;min-height:100vh}}nav{{position:sticky;top:0;z-index:10;display:flex;gap:18px;align-items:center;padding:14px max(20px,calc((100vw - 1240px)/2));border-bottom:1px solid rgba(154,177,211,.15);background:rgba(8,11,18,.82);backdrop-filter:blur(22px);box-shadow:0 8px 35px rgba(0,0,0,.16)}}.top-nav{{flex-wrap:nowrap;gap:10px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}}.top-nav .brand-mark{{flex:0 0 auto;margin-right:auto}}.top-nav a.nav-server{{flex:0 0 auto;padding:7px 10px;font-size:13px}}.top-nav .nav-logout{{flex:0 0 auto;margin:0}}.top-nav .nav-logout-button{{padding:7px 10px;border:1px solid var(--border);border-radius:11px;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015));color:var(--text);font-weight:800;cursor:pointer}}
 nav a:first-child{{font-weight:1000;font-size:19px;letter-spacing:1.4px;text-decoration:none;color:var(--text);text-shadow:0 0 22px rgba(91,141,255,.35)}}nav a:first-child::first-letter{{color:var(--accent)}}nav span{{flex:1}}nav a:not(:first-child){{padding:8px 13px;border:1px solid var(--border);border-radius:11px;text-decoration:none;font-weight:800;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015));transition:transform .18s,border-color .18s,box-shadow .18s}}nav a:not(:first-child):hover{{transform:translateY(-2px);border-color:rgba(114,199,255,.7);box-shadow:0 0 20px rgba(91,141,255,.12);color:var(--accent)}}nav a.nav-server{{background:linear-gradient(120deg,rgba(91,141,255,.2),rgba(114,199,255,.12));border-color:rgba(125,161,231,.42);color:#e9f0ff}}a{{color:var(--accent);text-underline-offset:4px}}
 main{{max-width:1240px;margin:42px auto;padding:0 24px 54px}}main>p:last-child{{border-top:1px solid var(--border);padding-top:18px;margin-top:38px}}h1,h2,h3{{line-height:1.22;letter-spacing:-.4px}}h1{{font-size:clamp(30px,4vw,46px);margin:0 0 12px;font-weight:950;letter-spacing:-1px}}h2{{font-size:21px;margin:0 0 13px;font-weight:850}}h3{{font-size:14px;margin:22px 0 9px;color:var(--accent);text-transform:uppercase;letter-spacing:1px}}main>p.muted{{margin-top:0;margin-bottom:26px}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:22px;align-items:start}}.grid>.card,.grid>div>.card{{margin:0 0 20px}}
@@ -1022,6 +1021,19 @@ nav:not(.module-nav) .nav-logout-button{{width:100%;min-height:39px;padding:8px 
 @media(max-width:899px){{nav:not(.module-nav){{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:12px;}}nav:not(.module-nav) .brand-mark,nav:not(.module-nav) .cursor-picker-label{{grid-column:1/-1;}}nav:not(.module-nav) a:not(.brand-mark){{min-width:0;font-size:11px!important;}}}}
 @media(max-width:420px){{nav:not(.module-nav){{grid-template-columns:1fr;}}nav:not(.module-nav) .brand-mark,nav:not(.module-nav) .cursor-picker-label{{grid-column:1;}}}}
 
+/* IronWolf dashboard design refresh */
+.iw-hero{{position:relative;overflow:hidden;border-radius:24px;border:1px solid rgba(139,157,255,.3);background:radial-gradient(ellipse at 90% 0%,rgba(91,141,255,.24),transparent 42%),linear-gradient(130deg,#111b32 0%,#171a31 58%,#21182d 100%);box-shadow:0 22px 60px rgba(0,0,0,.24)}}
+.iw-hero:after{{content:"";position:absolute;right:-65px;bottom:-110px;width:240px;height:240px;border:1px solid rgba(160,180,255,.12);border-radius:50%;box-shadow:0 0 0 24px rgba(160,180,255,.025),0 0 0 48px rgba(160,180,255,.02);pointer-events:none}}
+main{{max-width:1320px}}
+.card{{border:1px solid rgba(139,157,255,.13);background:linear-gradient(145deg,rgba(20,29,48,.96),rgba(13,20,35,.96));box-shadow:0 12px 34px rgba(0,0,0,.16)}}
+.card:hover{{border-color:rgba(139,157,255,.35);box-shadow:0 18px 42px rgba(0,0,0,.24),0 0 24px rgba(129,140,248,.07)}}
+.notice{{background:linear-gradient(110deg,rgba(129,140,248,.09),rgba(100,239,208,.035));border:1px solid rgba(139,157,255,.16)}}
+button,.button{{font-weight:850;letter-spacing:.01em;transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}}
+button:not(:disabled):hover,.button:hover{{transform:translateY(-1px);filter:brightness(1.08);box-shadow:0 8px 20px rgba(99,102,241,.18)}}
+table{{border:1px solid var(--border);border-radius:12px;overflow:hidden}}
+tbody tr:nth-child(even){{background:rgba(255,255,255,.018)}}
+td,th{{padding:13px 12px}}
+@media(prefers-reduced-motion:reduce){{.card,button,.button{{transition:none}}.card:hover,button:hover,.button:hover{{transform:none}}}}
 {custom_theme_css}
 /* Keep every top-level dashboard control in one horizontal row */
 nav:not(.module-nav){{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;gap:7px!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;}}
@@ -1697,8 +1709,7 @@ def _public_status_panel():
         '<section class="card" id="ironwolf-status">'
         '<span class="pill">IRONWOLF LIVE STATUS</span>'
         '<h2 style="margin-top:14px"><span style="color:' + status_color + '">● ' + status_label + '</span></h2>'
-        '<p class="muted">Status wird direkt aus dem laufenden Bot-Prozess ermittelt.</p>'
-        '<div class="grid">'
+        '<p class="muted">Status wird direkt aus dem laufenden Bot-Prozess ermittelt.</p>'        '<div class="grid">'
         '<div class="notice"><small>Discord Servers</small><h2>' + str(guild_count) + '</h2></div>'
         '<div class="notice"><small>Erfasste Mitglieder</small><h2>' + str(member_count) + '</h2></div>'
         '<div class="notice"><small>Befehle</small><h2>' + str(prefix_count + slash_count) + '</h2><small>' + str(prefix_count) + ' Prefix · ' + str(slash_count) + ' Slash</small></div>'
@@ -1955,7 +1966,85 @@ def premium_page():
             '<p class="muted">Maximal 100 IDs pro Vorgang. Bereits vorhandenes Premium wird um weitere 365 Tage verlängert.</p></section>'
             + guild_list
         )
+        body += '<p><a class="button" href="/premium/users">👥 Premium-Benutzer verwalten →</a></p>'
     return _render("Premium · IronWolf", body)
+
+
+@app.route("/premium/users", methods=["GET", "POST"])
+def premium_users_admin():
+    login = _require_login()
+    if login:
+        return login
+    actor_id = str(session.get("user_id", ""))
+    if actor_id != PREMIUM_ADMIN_ID:
+        abort(403)
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        target_id = request.form.get("discord_user_id", "").strip()
+        try:
+            revoked = revoke_manual_premium(target_id, actor_id)
+        except (ValueError, PermissionError) as exc:
+            abort(400, str(exc))
+        return redirect(url_for("premium_users_admin", result="revoked" if revoked else "missing"))
+    grants = sync_manual_grants()
+    rows = []
+    source_labels = {
+        "dashboard_admin": "Admin-Freischaltung",
+        "manual_allowlist": "Railway-Allowlist",
+        "legacy_migration": "Migrierte Freischaltung",
+        "server_boost": "Server-Boost",
+    }
+    now = datetime.now(timezone.utc)
+    for target_id, grant in sorted(grants.items(), key=lambda item: str(item[0])):
+        if not isinstance(grant, dict):
+            continue
+        expiry_raw = str(grant.get("expires_at", ""))
+        try:
+            expiry_dt = datetime.fromisoformat(expiry_raw.replace("Z", "+00:00"))
+            if expiry_dt.tzinfo is None:
+                expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+            expiry_label = expiry_dt.strftime("%d.%m.%Y")
+            status_label = "Aktiv" if expiry_dt > now else "Abgelaufen"
+        except (TypeError, ValueError):
+            expiry_label, status_label = "Unbekannt", "Unbekannt"
+        source = str(grant.get("source", "unknown"))
+        action = (
+            '<form method="post" onsubmit="return confirm(\'Premium für dieses Konto wirklich widerrufen?\')">'
+            + _csrf_field()
+            + '<input type="hidden" name="discord_user_id" value="' + html.escape(str(target_id), quote=True) + '">'
+            + '<button class="secondary" type="submit">Widerrufen</button></form>'
+            if source == "dashboard_admin"
+            else '<span class="muted">Geschützt</span>'
+        )
+        rows.append(
+            '<tr><td><code>' + html.escape(str(target_id)) + '</code></td>'
+            + '<td>' + html.escape(source_labels.get(source, source)) + '</td>'
+            + '<td>' + html.escape(expiry_label) + '</td>'
+            + '<td>' + html.escape(status_label) + '</td><td>' + action + '</td></tr>'
+        )
+    notice = ""
+    if request.args.get("result") == "revoked":
+        notice = '<div class="notice">✅ Admin-Premium wurde widerrufen.</div>'
+    elif request.args.get("result") == "missing":
+        notice = '<div class="notice">Für diese ID wurde keine Admin-Freischaltung gefunden.</div>'
+    table = (
+        '<div style="overflow-x:auto"><table><thead><tr><th>Discord-ID</th><th>Quelle</th><th>Gültig bis</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'
+        + ''.join(rows)
+        + '</tbody></table></div>'
+        if rows else '<p class="muted">Noch keine Premium-Freischaltungen vorhanden.</p>'
+    )
+    body = (
+        '<section class="iw-hero"><span class="iw-kicker">IRONWOLF · ADMIN CENTER</span>'
+        '<h1>👥 Premium-Benutzerverwaltung</h1>'
+        '<p>Verwalte Premium-Zugänge zentral. Freischaltungen aus Railway-Allowlisten und Server-Boosts werden angezeigt, können hier aber nicht versehentlich entfernt werden.</p>'
+        '<a class="button secondary" href="/premium">← Zur Premium-Übersicht</a></section>'
+        + notice
+        + '<section class="card"><h2>Alle Premium-Konten</h2>'
+        '<p class="muted">Nur manuell über das Dashboard vergebene Premium-Zugänge können hier widerrufen werden.</p>'
+        + table + '</section>'
+    )
+    return _render("Premium-Benutzerverwaltung · IronWolf", body)
 
 @app.route("/guild/<guild_id>/premium", methods=["GET", "POST"])
 def guild_premium(guild_id):
@@ -2547,7 +2636,6 @@ def teamlist_dashboard(guild_id):
     members_html += '</section>'
     body = f'<span class="pill">IRONWOLF · TEAMLISTE</span><h1 style="margin-top:12px">👥 Teamliste · {html.escape(guild.name)}</h1><p class="muted">Die Teamliste nutzt die aktuellen Discord-Rollen und kann in einen Kanal gesendet werden.</p><div class="section-nav"><a href="/guild/{gid}">🏠 Übersicht</a><a href="/guild/{gid}/teamlist">👥 Teamliste</a><a href="/guild/{gid}/isle-roster">🦖 The Isle Spieler</a></div>' + form + members_html
     return _render("Teamliste", body)
-
 
 @app.route("/guild/<guild_id>/verified-accounts", methods=["GET", "POST"])
 def guild_verified_accounts(guild_id):
@@ -3397,8 +3485,7 @@ def guild_reaction_roles(guild_id):
     body += '<label for="channel_id">Textkanal</label><select id="channel_id" name="channel_id" required>' + channel_options + '</select>'
     body += '<label for="message_text">Deine Nachricht</label><textarea id="message_text" name="message_text" required maxlength="2000" rows="5" placeholder="Schreibe hier die Nachricht, die im ausgewählten Kanal erscheinen soll …"></textarea><small>Maximal 2000 Zeichen. Die Nachricht wird vom Bot gesendet.</small>'
     body += '<label for="emoji">Server emoji (optional)</label><select id="emoji" name="emoji">' + emoji_options + '</select>'
-    if not server_emojis:
-        body += '<p class="muted">Auf diesem Server sind keine benutzerdefinierten Emojis verfügbar. Du kannst stattdessen ein normales Emoji eingeben.</p>'
+    if not server_emojis:        body += '<p class="muted">Auf diesem Server sind keine benutzerdefinierten Emojis verfügbar. Du kannst stattdessen ein normales Emoji eingeben.</p>'
     body += '<label for="emoji_manual">Or enter an emoji manually (optional)</label><input id="emoji_manual" name="emoji_manual" type="text" maxlength="100" placeholder="e.g. ✅ (overrides the selection)"><small>Leave both emoji fields empty to accept every emoji reaction.</small>'
     body += '<label for="role_id">Role to assign</label><select id="role_id" name="role_id" required>' + role_options + '</select><button type="submit">📨 Nachricht senden & Reaktionsrolle erstellen</button></form></section>'
     body += '<section class="card"><h2>📋 Configured reaction roles</h2>'
@@ -4247,8 +4334,7 @@ function removeManualButton(n){
  row.querySelectorAll("input").forEach(i=>i.value="");row.querySelectorAll("select").forEach(s=>s.selectedIndex=0);
  row.hidden=true;updateButtonType(row.querySelector(".scnx-button-type"));updateScnxPreview();
 }
-function updateScnxPreview(){
- const val=id=>document.getElementById(id)?.value||"";
+function updateScnxPreview(){ const val=id=>document.getElementById(id)?.value||"";
  document.getElementById("scnx-preview-message").textContent=val("message")||"Deine Nachricht erscheint hier …";
  const title=val("embed_title"),desc=val("embed_description");
  document.getElementById("scnx-preview-embed").hidden=!(title||desc);
@@ -5097,8 +5183,7 @@ def guild_verification(guild_id):
     gid = str(guild.id)
     cfg = _guild_config(guild.id)
     result_html = ""
-    if request.method == "POST":
-        if not _csrf_ok():
+    if request.method == "POST":        if not _csrf_ok():
             abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
         actor = guild.get_member(int(session.get("user_id", "0")))
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
@@ -5947,8 +6032,7 @@ def guild_commands(guild_id):
             command_html += f'<div class="row command-entry" data-command-search="{html.escape((command_name + " " + item["kind"] + " " + item["cog"]).casefold(), quote=True)}"><div><strong>{html.escape(command_name)}</strong>{premium_marker}<br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
         command_html += '</section>'
     command_html += '</div><button type="submit">Save changes</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
-    command_html += """<script>
-(function(){
+    command_html += """<script>(function(){
   const input=document.getElementById('command-search');
   const groups=document.querySelectorAll('#command-groups .command-group');
   const count=document.getElementById('command-search-count');
@@ -6602,5 +6686,4 @@ def guild_wolfmirror(guild_id):
         '<a href="/guild/' + str(guild.id) + '/wolfpulse">WolfPulse prüfen ↗</a></p></section>'
     )
     return _page("WolfMirror · Security Digital Twin", body)
-
 
