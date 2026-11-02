@@ -4689,6 +4689,9 @@ def guild_shifts(guild_id):
         temporary = state_file.with_suffix(".tmp")
         temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(temporary, state_file)
+        shift_module = sys.modules.get("shift_tracker")
+        if shift_module is not None:
+            shift_module.STATE = state
 
     if request.method == "POST":
         if not _csrf_ok():
@@ -4793,9 +4796,13 @@ def guild_shifts(guild_id):
             shift_rows.append('<tr><td>' + html.escape(member_name) + '</td><td>' + status + '</td><td>' + started + '</td><td>' + str(int(item.get("warnings", 0))) + '/3</td></tr>')
         table = ('<div style="overflow-x:auto"><table><thead><tr><th>Mitglied</th><th>Status</th><th>Beginn (UTC)</th><th>Warnungen</th></tr></thead><tbody>' + ''.join(shift_rows) + '</tbody></table></div>') if shift_rows else '<p class="muted">Noch keine Schichten erfasst.</p>'
         delete_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><button class="secondary" type="submit">Panel löschen</button></form>'
+        panel_channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
+        log_channel = guild.get_channel(int(panel.get("log_channel_id", 0)))
+        panel_channel_name = "#" + panel_channel.name if panel_channel else "Kanal nicht verfügbar"
+        log_channel_name = "#" + log_channel.name if log_channel else "Kanal nicht verfügbar"
         panel_cards.append(
             '<section class="card"><div class="pill">' + str(len(active_shifts)) + ' aktive Schichten</div><h2>' + html.escape(panel.get("name", "Schicht")) + '</h2>'
-            '<p class="muted">Panel: <#' + str(panel.get("panel_channel_id", "")) + '> · Protokoll: <#' + str(panel.get("log_channel_id", "")) + '> · ID <code>' + html.escape(panel_id) + '</code></p>'
+            '<p class="muted">Panel: ' + html.escape(panel_channel_name) + ' · Protokoll: ' + html.escape(log_channel_name) + ' · ID <code>' + html.escape(panel_id) + '</code></p>'
             + table + delete_form + '</section>'
         )
     saved = '<div class="notice">✅ Schicht-Panel wurde erstellt.</div>' if request.args.get("saved") == "created" else ('<div class="notice">✅ Schicht-Panel wurde gelöscht.</div>' if request.args.get("saved") == "deleted" else '')
