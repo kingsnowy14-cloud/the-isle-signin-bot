@@ -4725,6 +4725,7 @@ def guild_shifts(guild_id):
                 "name": name, "log_channel_id": log_channel.id,
                 "panel_channel_id": channel.id, "default_pause_minutes": pause_minutes,
                 "warning_delay_minutes": warning_delay_minutes,
+                "pause_reminder_message": (request.form.get("pause_reminder_message", "").strip() or "⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Wenn du nicht innerhalb von {warning_minutes} Minuten reagierst, erhältst du automatisch eine Verwarnung.")[:1500],
                 "warnings_enabled": request.form.get("warnings_enabled") == "on",
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -4766,6 +4767,18 @@ def guild_shifts(guild_id):
             save_shift_state()
             _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Verwarnungsfrist für {panel.get('name', panel_id)} auf {warning_delay_minutes} Minuten gesetzt")
             return redirect(url_for("guild_shifts", guild_id=gid, saved="warning_delay"))
+        if action == "set_reminder_message":
+            panel_id = request.form.get("panel_id", "")
+            panel = guild_data["panels"].get(panel_id)
+            if not panel:
+                abort(404, "Schicht-Panel nicht gefunden.")
+            reminder_message = request.form.get("pause_reminder_message", "").strip()
+            if not reminder_message or len(reminder_message) > 1500:
+                abort(400, "Die Nachricht darf nicht leer sein und maximal 1500 Zeichen enthalten.")
+            panel["pause_reminder_message"] = reminder_message
+            save_shift_state()
+            _audit_dashboard_change(guild.id, "Schichtverwaltung", session.get("user_id"), f"Pausen-Erinnerung für {panel.get('name', panel_id)} angepasst")
+            return redirect(url_for("guild_shifts", guild_id=gid, saved="reminder_message"))
         if action == "delete":
             panel_id = request.form.get("panel_id", "")
             panel = guild_data["panels"].get(panel_id)
@@ -4814,6 +4827,8 @@ def guild_shifts(guild_id):
             shift_rows.append('<tr><td>' + html.escape(member_name) + '</td><td>' + status + '</td><td>' + started + '</td><td>' + str(int(item.get("warnings", 0))) + '/3</td></tr>')
         table = ('<div style="overflow-x:auto"><table><thead><tr><th>Mitglied</th><th>Status</th><th>Beginn (UTC)</th><th>Warnungen</th></tr></thead><tbody>' + ''.join(shift_rows) + '</tbody></table></div>') if shift_rows else '<p class="muted">Noch keine Schichten erfasst.</p>'
         warning_delay_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="set_warning_delay"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><label>Automatische Verwarnung nach (Minuten, 1–60)<input type="number" name="warning_delay_minutes" min="1" max="60" required value="' + str(int(panel.get("warning_delay_minutes", 5) or 5)) + '"></label><button type="submit">Verwarnungszeit speichern</button></form>'
+        reminder_value = html.escape(str(panel.get("pause_reminder_message", "⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Wenn du nicht innerhalb von {warning_minutes} Minuten reagierst, erhältst du automatisch eine Verwarnung.")), quote=False)
+        reminder_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="set_reminder_message"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><label>Nachricht bei Pausenende <small>Platzhalter: {mention}, {name}, {warning_minutes}</small><textarea name="pause_reminder_message" maxlength="1500" required rows="4">' + reminder_value + '</textarea></label><button type="submit">Pausen-Nachricht speichern</button></form>'
         delete_form = '<form method="post" style="margin-top:12px">' + _csrf_field() + '<input type="hidden" name="action" value="delete"><input type="hidden" name="panel_id" value="' + html.escape(panel_id, quote=True) + '"><button class="secondary" type="submit">Panel löschen</button></form>'
         panel_channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
         log_channel = guild.get_channel(int(panel.get("log_channel_id", 0)))
@@ -4822,9 +4837,9 @@ def guild_shifts(guild_id):
         panel_cards.append(
             '<section class="card"><div class="pill">' + str(len(active_shifts)) + ' aktive Schichten</div><h2>' + html.escape(panel.get("name", "Schicht")) + '</h2>'
             '<p class="muted">Panel: ' + html.escape(panel_channel_name) + ' · Protokoll: ' + html.escape(log_channel_name) + ' · ID <code>' + html.escape(panel_id) + '</code></p>'
-            + table + warning_delay_form + delete_form + '</section>'
+            + table + warning_delay_form + reminder_form + delete_form + '</section>'
         )
-    saved_messages = {"created": "Schicht-Panel wurde erstellt.", "deleted": "Schicht-Panel wurde gelöscht.", "warning_delay": "Verwarnungsfrist wurde gespeichert."}
+    saved_messages = {"created": "Schicht-Panel wurde erstellt.", "deleted": "Schicht-Panel wurde gelöscht.", "warning_delay": "Verwarnungsfrist wurde gespeichert.", "reminder_message": "Pausen-Nachricht wurde gespeichert."}
     saved = '<div class="notice">✅ ' + saved_messages.get(request.args.get("saved", ""), "") + '</div>' if request.args.get("saved") in saved_messages else ""
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF · SHIFT TRACKER</span><h1>⏱️ Schichtverwaltung</h1>'
@@ -4839,6 +4854,7 @@ def guild_shifts(guild_id):
         '<label>Protokoll-Kanal<select name="log_channel_id" required>' + channel_options + '</select></label>'
         '<label>Standard-Pausenlänge (Minuten)<input type="number" name="pause_minutes" min="1" max="480" value="15" required></label>'
         '<label>Automatische Verwarnung nach (Minuten, 1–60)<input type="number" name="warning_delay_minutes" min="1" max="60" value="5" required></label></div>'
+        '<label>Nachricht bei Pausenende <small>Platzhalter: {mention}, {name}, {warning_minutes}</small><textarea name="pause_reminder_message" maxlength="1500" rows="4">' + "⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Wenn du nicht innerhalb von {warning_minutes} Minuten reagierst, erhältst du automatisch eine Verwarnung." + '</textarea></label>'
         '<label class="setting-row"><span><strong>Warnung bei „Nein“ aktivieren</strong><small>Nach drei Warnungen wird die Schicht automatisch beendet.</small></span><input type="checkbox" name="warnings_enabled" checked></label>'
         '<button type="submit">＋ Schicht-Panel erstellen und in Discord veröffentlichen</button></form></section>'
         '<section><h2>Vorhandene Schicht-Panels</h2>' + (''.join(panel_cards) if panel_cards else '<section class="card"><p>Noch keine Schicht-Panels erstellt.</p></section>') + '</section>'
