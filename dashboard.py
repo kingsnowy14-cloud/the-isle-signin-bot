@@ -1066,7 +1066,7 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
  let cursorSize=48;try{{cursorSize=Math.max(24,Math.min(88,Number(localStorage.getItem('ironwolf-cursor-size'))||48));}}catch(e){{}}
  function applyCursorSize(value){{cursorSize=Math.max(24,Math.min(88,Number(value)||48));follower.style.setProperty('width',cursorSize+'px','important');follower.style.setProperty('height',cursorSize+'px','important');follower.style.setProperty('transform','translate(-18%,-18%)','important');follower.querySelector('svg').style.setProperty('width',cursorSize+'px','important');follower.querySelector('svg').style.setProperty('height',cursorSize+'px','important');if(sizePicker)sizePicker.value=String(cursorSize);if(sizeOutput)sizeOutput.textContent=cursorSize+' px';try{{localStorage.setItem('ironwolf-cursor-size',String(cursorSize));}}catch(e){{}}}}
  applyCursorSize(cursorSize);
- if(sizePicker)sizePicker.addEventListener('input',function(){applyCursorSize(this.value);});
+ if(sizePicker)sizePicker.addEventListener('input',function(){{applyCursorSize(this.value);}});
  function moveCursor(event){{
   if(event.pointerType==='touch')return;
   follower.style.left=event.clientX+'px';follower.style.top=event.clientY+'px';
