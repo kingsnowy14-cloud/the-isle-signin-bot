@@ -4733,10 +4733,11 @@ def guild_shifts(guild_id):
                     raise PermissionError("IronWolf benötigt im Panel-Kanal „Nachrichten senden“ und „Links einbetten“.")
                 embed = discord.Embed(
                     title=f"🐺 IronWolf · {name}",
-                    description="Klicke auf **Dienst beginnen**, um deine Schicht zu starten. Pausenlänge kannst du beim Pausenstart selbst festlegen.",
+                    description="Klicke auf **Dienst beginnen**, um deine Schicht zu starten. Die Verwarnungsfrist wird von der Administration im Dashboard festgelegt.",
                     color=discord.Color.blurple(),
                 )
                 embed.add_field(name="Standard-Pause", value=f"{pause_minutes} Minuten", inline=True)
+                embed.add_field(name="Verwarnung nach", value=f"{warning_delay_minutes} Minuten", inline=True)
                 embed.add_field(name="Warnungen bei Nein", value="Aktiv" if panel["warnings_enabled"] else "Deaktiviert", inline=True)
                 message = await channel.send(embed=embed, view=__import__("shift_tracker").ShiftPanelView(cog, panel_id))
                 return message.id
