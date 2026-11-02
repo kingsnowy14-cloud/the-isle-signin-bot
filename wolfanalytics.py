@@ -73,13 +73,40 @@ def build_report(guild_name: str, period: str, stats: dict) -> str:
             f"💬 Messages sent: **{stats['messages']:,}**")
 
 
+def get_timeline(guild_id: int, period: str) -> list:
+    """Return time-bucketed aggregate counts for the selected period."""
+    hours = {"24h": 24, "7day": 168, "30day": 720}.get(period)
+    if hours is None:
+        raise ValueError("Period must be 24h, 7day or 30day.")
+    now = datetime.now(timezone.utc)
+    bucket_hours = 1 if period == "24h" else 24
+    count = hours // bucket_hours
+    buckets = [{"joins": 0, "leaves": 0, "messages": 0} for _ in range(count)]
+    cutoff = now - timedelta(hours=hours)
+    with _LOCK:
+        events = list(_load().get(str(guild_id), []))
+    for item in events:
+        try:
+            stamp = datetime.fromisoformat(item["at"])
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if cutoff <= stamp <= now:
+            index = min(count - 1, int((stamp - cutoff).total_seconds() // (bucket_hours * 3600)))
+            key = {"join": "joins", "leave": "leaves", "message": "messages"}.get(item.get("type"))
+            if key:
+                buckets[index][key] += 1
+    return buckets
+
+
 def build_chart(guild_name: str, period: str, stats: dict, chart_type: str = "column") -> io.BytesIO:
-    """Render aggregate activity as a vertical column or horizontal bar chart."""
-    if chart_type not in {"column", "bar"}:
-        raise ValueError("Chart type must be column or bar.")
+    """Render aggregate activity as columns, bars or a time-series line chart."""
+    if chart_type not in {"column", "bar", "line"}:
+        raise ValueError("Chart type must be column, bar or line.")
     period_label = {"24h": "Last 24 hours", "7day": "Last 7 days", "30day": "Last 30 days"}[period]
     labels = [("Joins", int(stats.get("joins", 0))), ("Leaves", int(stats.get("leaves", 0))), ("Messages", int(stats.get("messages", 0)))]
-    width, height = (1100, 650) if chart_type == "column" else (1100, 520)
+    width, height = (1100, 650) if chart_type in {"column", "line"} else (1100, 520)
     image = Image.new("RGB", (width, height), "#101827")
     draw = ImageDraw.Draw(image)
     try:
@@ -92,7 +119,28 @@ def build_chart(guild_name: str, period: str, stats: dict, chart_type: str = "co
     draw.text((55, 38), "WolfAnalytics", fill="#F4F7FB", font=title_font)
     draw.text((58, 92), f"{guild_name[:55]}  ·  {period_label}", fill="#AAB8CC", font=label_font)
     colors = ["#55C2A3", "#F08A79", "#78A9F5"]
-    if chart_type == "column":
+    if chart_type == "line":
+        timeline = stats.get("timeline") or []
+        left, top, right, bottom = 90, 185, 1010, 515
+        draw.line((left, bottom, right, bottom), fill="#536176", width=2)
+        series = [("Joins", "joins", colors[0]), ("Leaves", "leaves", colors[1]), ("Messages", "messages", colors[2])]
+        maximum = max((bucket.get(key, 0) for bucket in timeline for _, key, _ in series), default=0) or 1
+        for label, key, color in series:
+            points = []
+            for index, bucket in enumerate(timeline):
+                x = left + (index / max(1, len(timeline) - 1)) * (right - left)
+                y = bottom - (bucket.get(key, 0) / maximum) * (bottom - top)
+                points.append((int(x), int(y)))
+            if len(points) > 1:
+                draw.line(points, fill=color, width=5)
+            for x, y in points:
+                draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=color)
+        legend_x = 100
+        for label, key, color in series:
+            draw.ellipse((legend_x, 555, legend_x + 14, 569), fill=color)
+            draw.text((legend_x + 22, 550), label, fill="#D5DEEA", font=small_font)
+            legend_x += 270
+    elif chart_type == "column":
         base_y, top_y = 520, 190
         draw.line((90, base_y, 1010, base_y), fill="#536176", width=2)
         maximum = max((value for _, value in labels), default=0) or 1
