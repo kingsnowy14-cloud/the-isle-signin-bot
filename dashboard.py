@@ -837,7 +837,7 @@ def _page(title, body):
         + ('<a class="nav-server" href="/guild/' + match.group(1) + '?section=general">⚙️ Einstellungen</a>' if logged_in and match else '')
         + ('<a class="nav-server" href="/guild/' + match.group(1) + '/security-center">🛡️ Security Center</a>' if logged_in and match else '')
         + ('<a class="nav-admin-premium" href="/premium">👑 Premium Admin</a>' if logged_in and is_premium_admin else '')
-        + ('<label class="cursor-picker-label" for="iw-cursor-choice">✦ Cursor <select id="iw-cursor-choice" aria-label="Cursor-Stil"><option value="wolf">Wolf Glow</option><option value="skeleton">Phantom</option><option value="tree">Neon Forest</option></select></label>' if logged_in else '')
+        + ('<div class="cursor-controls"><label class="cursor-picker-label" for="iw-cursor-choice">✦ Cursor <select id="iw-cursor-choice" aria-label="Cursor-Stil"><option value="wolf">Alpha Wolf</option><option value="direwolf">Direwolf</option><option value="cyberwolf">Cyber Wolf</option><option value="skeleton">Phantom</option><option value="tree">Neon Forest</option><option value="flame">Inferno</option></select></label><label class="cursor-size-label" for="iw-cursor-size">Größe <input id="iw-cursor-size" type="range" min="24" max="88" step="2" value="48" aria-label="Cursor-Größe"><output id="iw-cursor-size-value" for="iw-cursor-size">48 px</output></label></div>' if logged_in else '')
         + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Logout</button></form>' if logged_in else '<a href="/login">Login</a>')
         + '</nav>'
     )
@@ -999,8 +999,12 @@ nav,main{{position:relative;z-index:1}}
 .card,.iw-module-card,.iw-popular-card,.dashboard-metric{{transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease}}
 .card:hover{{transform:translateY(-3px);border-color:rgba(139,157,255,.38);box-shadow:0 16px 38px rgba(0,0,0,.25),0 0 24px rgba(129,140,248,.06)}}
 .iw-spark{{position:fixed;z-index:99999;left:0;top:0;width:13px;height:13px;pointer-events:none;color:#aebaff;font-size:13px;line-height:1;text-shadow:0 0 12px currentColor;animation:iwSpark .65s ease-out forwards}}
+.cursor-controls{{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding:5px 9px;border:1px solid var(--border);border-radius:11px;background:rgba(255,255,255,.025)}}
 .cursor-picker-label select{{border-color:rgba(139,157,255,.35);box-shadow:0 0 14px rgba(129,140,248,.08)}}
 .cursor-picker-label select:hover{{border-color:rgba(139,157,255,.75);box-shadow:0 0 18px rgba(129,140,248,.2)}}
+.cursor-size-label{{display:flex;align-items:center;gap:7px;margin:0;color:var(--muted);font-size:12px;font-weight:850;white-space:nowrap}}
+.cursor-size-label input{{width:100px;accent-color:#9da7ff;cursor:ew-resize}}
+.cursor-size-label output{{min-width:42px;color:#c7ceff;font-variant-numeric:tabular-nums}}
 @media(prefers-reduced-motion:reduce){{body::before{{animation:none}}.iw-spark{{display:none}}.card,.iw-module-card,.iw-popular-card,.dashboard-metric{{transition:none}}}}
 
 
@@ -1028,17 +1032,21 @@ nav:not(.module-nav) .nav-logout{{flex:0 0 auto!important;width:auto!important;}
 nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap!important;}}
 .cursor-picker-label{{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:12px;font-weight:850;color:var(--muted);margin:0}}
 .cursor-picker-label select{{width:auto;min-width:145px;padding:7px 30px 7px 10px;font-size:12px;border-radius:9px}}
-@media(max-width:900px){{.cursor-picker-label{{order:5}}}}
+@media(max-width:900px){{.cursor-controls{{order:5;flex-wrap:wrap}}.cursor-size-label input{{width:84px}}}}
 </style></head><body>{nav}<main id="main-content" tabindex="-1">{body}<p class="muted"><small>IronWolf · Created by KingSnowy</small></p></main>{_selection_menu_script()}
 <script>
 (function(){{
  const picker=document.getElementById('iw-cursor-choice');if(!picker)return;
+ const sizePicker=document.getElementById('iw-cursor-size');const sizeOutput=document.getElementById('iw-cursor-size-value');
  const art={{
- wolf:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#d7e9ff" stroke="#152238" stroke-width="1.5" d="M5 9 13 12 18 9 24 12 31 8 29 18 25 23 23 31 17 27 12 31 11 23 6 18Z"/><path fill="#152238" d="m11 17 4 2-3 2zm11 0-4 2 3 2z"/><path fill="#8cc8ff" d="m16 23 3 2 3-2-3 4z"/></svg>',
+ wolf:'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="wolfFur" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f4fbff"/><stop offset=".55" stop-color="#9fc8ed"/><stop offset="1" stop-color="#527da9"/></linearGradient><linearGradient id="wolfMuzzle" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#eaf5ff"/><stop offset="1" stop-color="#8eaccb"/></linearGradient></defs><path d="M5 5 17 12 24 9 31 12 43 4 40 21 37 30 32 37 24 44 16 38 10 30 7 20Z" fill="url(#wolfFur)" stroke="#172a43" stroke-width="2" stroke-linejoin="round"/><path d="m8 10 8 7-5 1zm32-2-8 9 6-1z" fill="#263e5b"/><path d="m11 21 9 3-7 4zm26 0-9 3 7 4z" fill="#102239"/><path d="m13 22 6 2-5 2zm22 0-6 2 5 2z" fill="#70efff"/><path d="m18 29 6-3 6 3-6 8z" fill="url(#wolfMuzzle)" stroke="#314c68" stroke-width="1.2"/><path d="m21 29 3-2 3 2-3 2z" fill="#101c2d"/><path d="m19 36 5 2 5-2" fill="none" stroke="#233a55" stroke-width="1.5" stroke-linecap="round"/><path d="m16 13 3 5m13-5-3 5" stroke="#fff" stroke-opacity=".7" stroke-width="1.4" stroke-linecap="round"/></svg>',
+ direwolf:'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path d="m4 5 14 8 6-4 7 4 13-8-4 18-5 10-11 12-11-12-5-10Z" fill="#b8c4d5" stroke="#202d42" stroke-width="2" stroke-linejoin="round"/><path d="m8 10 10 9-7 1zm32 0-10 9 7 1z" fill="#384b64"/><path d="m10 24 10 1-8 6zm28 0-10 1 8 6z" fill="#17263c"/><path d="m13 24 6 1-5 3zm22 0-6 1 5 3z" fill="#ffcf68"/><path d="m18 31 6-3 6 3-6 9z" fill="#e4eaf0" stroke="#5d6b7e"/><path d="m21 31 3-2 3 2-3 2z" fill="#17263c"/><path d="m17 38 7 2 7-2" fill="none" stroke="#27394f" stroke-width="1.5"/></svg>',
+ cyberwolf:'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path d="m5 5 13 8 6-4 6 4 13-8-4 18-5 10-10 11-10-11-5-10Z" fill="#273b58" stroke="#68f4ff" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 10 9 9-7 1zm30 0-9 9 7 1z" fill="#101b31" stroke="#68f4ff"/><path d="m11 24 9 1-7 5zm26 0-9 1 7 5z" fill="#081526"/><path d="m13 24 6 1-5 2zm22 0-6 1 5 2z" fill="#6dffff"/><path d="m18 31 6-3 6 3-6 8z" fill="#8cefff" stroke="#1a526c"/><path d="m21 31 3-2 3 2-3 2z" fill="#061323"/><path d="m17 13 4 5m10-5-4 5" stroke="#b6ffff" stroke-width="1.5"/><path d="M7 35h7m20 0h7M5 40h9m20 0h9" stroke="#49dff5" stroke-width="1.2" stroke-linecap="round"/></svg>',
  skeleton:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#f3f0df" stroke="#263044" stroke-width="1.5" d="M18 3a12 12 0 0 0-7 21v7h14v-7A12 12 0 0 0 18 3Z"/><circle cx="13" cy="15" r="3.5" fill="#202b3e"/><circle cx="23" cy="15" r="3.5" fill="#202b3e"/><path fill="#202b3e" d="m18 18-3 5h6zM12 27h12v2H12zm2 4h2v3h-2zm6 0h2v3h-2z"/></svg>',
- tree:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path fill="#ffd75e" stroke="#684b16" stroke-width="1" d="m18 2 2.3 5 5.4.6-4 3.7 1.1 5.3-4.8-2.7-4.8 2.7 1.1-5.3-4-3.7 5.4-.6z"/><path fill="#2fc47b" stroke="#135b45" stroke-width="1.3" d="m18 8-9 11h5l-7 8h8v7h6v-7h8l-7-8h5z"/><circle cx="13" cy="21" r="1.6" fill="#e94d5b"/><circle cx="23" cy="25" r="1.6" fill="#65baff"/><circle cx="18" cy="18" r="1.6" fill="#ffd75e"/></svg>'
+ tree:'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path fill="#ffd75e" stroke="#684b16" stroke-width="1" d="m24 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1z"/><path fill="#2fc47b" stroke="#135b45" stroke-width="1.5" d="m24 10-12 15h7L9 36h11v9h8v-9h11L29 25h7z"/><circle cx="17" cy="29" r="2" fill="#e94d5b"/><circle cx="31" cy="34" r="2" fill="#65baff"/><circle cx="24" cy="23" r="2" fill="#ffd75e"/></svg>',
+ flame:'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><path d="M25 3c4 10-2 12 5 18 1-5 5-7 6-11 8 10 10 19 5 28-4 7-11 9-18 7C8 42 5 30 12 19c2 5 5 6 7 7C16 16 25 12 25 3Z" fill="#ff7b38" stroke="#8b2f32" stroke-width="1.5"/><path d="M25 23c2 5 7 7 5 13-1 4-4 6-8 5-6-2-7-8-3-13 1 3 3 4 4 4-1-4 1-6 2-9Z" fill="#ffe58a"/></svg>'
  }};
- const handArt='<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><path d="M11 17V8a2.5 2.5 0 0 1 5 0v7-9a2.5 2.5 0 0 1 5 0v9-7a2.5 2.5 0 0 1 5 0v9-4a2.5 2.5 0 0 1 5 0v10c0 7-4 11-11 11h-2c-4 0-6-2-8-5l-5-7a2.8 2.8 0 0 1 4-4l2 2z" fill="#f4d7b5" stroke="#182338" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+
  function apply(name){{
   const value=art[name]?name:'wolf';
   picker.value=value;
@@ -1055,6 +1063,10 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
  document.head.appendChild(followerStyle);document.body.appendChild(follower);
  function setInteractiveState(target){{const active=!!(target&&target.closest&&target.closest('a,button,[role="button"],input[type="submit"],input[type="button"]'));follower.classList.toggle('iw-over-link',active);}}
  follower.innerHTML=art[picker.value]||art.wolf;
+ let cursorSize=48;try{cursorSize=Math.max(24,Math.min(88,Number(localStorage.getItem('ironwolf-cursor-size'))||48));}catch(e){}
+ function applyCursorSize(value){cursorSize=Math.max(24,Math.min(88,Number(value)||48));follower.style.setProperty('width',cursorSize+'px','important');follower.style.setProperty('height',cursorSize+'px','important');follower.style.setProperty('transform','translate(-18%,-18%)','important');follower.querySelector('svg').style.setProperty('width',cursorSize+'px','important');follower.querySelector('svg').style.setProperty('height',cursorSize+'px','important');if(sizePicker)sizePicker.value=String(cursorSize);if(sizeOutput)sizeOutput.textContent=cursorSize+' px';try{localStorage.setItem('ironwolf-cursor-size',String(cursorSize));}catch(e){}}
+ applyCursorSize(cursorSize);
+ if(sizePicker)sizePicker.addEventListener('input',function(){applyCursorSize(this.value);});
  function moveCursor(event){{
   if(event.pointerType==='touch')return;
   follower.style.left=event.clientX+'px';follower.style.top=event.clientY+'px';
@@ -1072,10 +1084,13 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
   document.addEventListener('pointermove',function(event){{
    const now=performance.now();if(now-last<48||active>=14)return;last=now;active++;
    const spark=document.createElement('span');spark.className='iw-spark';
-   spark.textContent=picker.value==='skeleton'?'✦':(picker.value==='tree'?'✧':'✧');
+   spark.textContent=picker.value==='skeleton'?'✦':(picker.value==='tree'?'✧':(picker.value==='flame'?'✹':'✧'));
    spark.style.left=event.clientX+'px';spark.style.top=event.clientY+'px';
    if(picker.value==='tree')spark.style.color='#7be6a8';
    else if(picker.value==='skeleton')spark.style.color='#e8e4d5';
+   else if(picker.value==='flame')spark.style.color='#ff9a55';
+   else if(picker.value==='cyberwolf')spark.style.color='#68f4ff';
+   else if(picker.value==='direwolf')spark.style.color='#ffd27a';
    document.body.appendChild(spark);
    spark.addEventListener('animationend',function(){{spark.remove();active=Math.max(0,active-1);}},{{once:true}});
   }},{{passive:true}});
