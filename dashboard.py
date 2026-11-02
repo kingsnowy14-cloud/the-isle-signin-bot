@@ -3004,10 +3004,19 @@ def guild_page(guild_id):
     ]
     def module_cards(items, popular_style=False):
         css_class = "iw-popular-card" if popular_style else "iw-module-card"
-        return '<div class="iw-card-grid">' + "".join(
-            '<a class="' + css_class + (' premium-locked' if suffix == "/ai" and not guild_has_feature(cfg, "ticket") else '') + '" style="' + ('opacity:.48;filter:grayscale(1)' if suffix == "/ai" and not guild_has_feature(cfg, "ticket") else '') + '" href="/guild/' + gid + suffix + '"><span class="iw-icon">' + icon + '</span><span><strong>' + html.escape(title) + '</strong><small>' + html.escape(description) + '</small>' + ('<em>🔒 Premium Funktion</em>' if suffix == "/ai" and not guild_has_feature(cfg, "ticket") else '') + '</span><span class="iw-arrow">↗</span></a>'
-            for icon, title, description, suffix in items
-        ) + '</div>'
+        cards = []
+        for icon, title, description, suffix in items:
+            locked = (suffix == "/ai" and not guild_has_feature(cfg, "ticket")) or (suffix == "/wolfanalytics" and not guild_has_feature(cfg, "wolfanalytics"))
+            premium_note = '<em>🔒 Premium Funktion</em>' if locked else ''
+            cards.append(
+                '<a class="' + css_class + (' premium-locked' if locked else '') +
+                '" style="' + ('opacity:.48;filter:grayscale(1)' if locked else '') +
+                '" href="/guild/' + gid + suffix + '"><span class="iw-icon">' + icon +
+                '</span><span><strong>' + html.escape(title) + '</strong><small>' +
+                html.escape(description) + '</small>' + premium_note +
+                '</span><span class="iw-arrow">↗</span></a>'
+            )
+        return '<div class="iw-card-grid">' + ''.join(cards) + '</div>'
     module_records = _module_records(guild.id)
     command_records = _command_records(guild.id)
     metrics = (("Modules", len(module_records)), ("Active modules", sum(1 for item in module_records if item["enabled"])), ("Active commands", sum(1 for item in command_records if item["enabled"])), ("Disabled commands", sum(1 for item in command_records if not item["enabled"])))
