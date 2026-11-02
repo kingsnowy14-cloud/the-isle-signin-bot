@@ -832,23 +832,11 @@ def _page(title, body):
         except Exception:
             custom_theme_css = ""
     nav = (
-        '<a class="skip-link" href="#main-content">Skip to content</a><nav aria-label="Main navigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
-        + '<label class="cursor-picker-label" for="iw-cursor-choice">🖱️ Cursor <select id="iw-cursor-choice" aria-label="Choose cursor"><option value="wolf">🐺 Wolf</option><option value="skeleton">💀 Skeleton</option><option value="tree">🎄 Christmas tree</option></select></label>'
-        + ('<a class="nav-server" href="/">🎮 Switch server</a>' if logged_in else '')
-        + ('<a class="nav-server" href="/guild/' + match.group(1) + '?section=general">⚙️ Server Settings</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/wolfpulse">🐺 WolfPulse</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/wolfshield">🛡️ WolfShield</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/wolfmirror">🧪 WolfMirror</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/wolfchronicle">📚 WolfChronicle</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/wolfanalytics">📊 WolfAnalytics</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/ai">🤖 KI-Wissen</a>' if logged_in and match else '')
-        + ('<a href="/guild/' + match.group(1) + '/image-generator">🎨 KI-Bildgenerator</a>' if logged_in and match else '')
-        + '<a href="/feedback">💬 Feedback</a>'
-        + ('<a href="/admin/premium-servers">👑 Premium Servers</a>' if logged_in and is_premium_admin else '')
-        + '<a href="https://discord.gg/KDKs5WPgaC" target="_blank" rel="noopener noreferrer">Discord ↗</a>'
-        + '<a href="https://king-snowy-at.base44.app/" target="_blank" rel="noopener noreferrer">🌐 Website ↗</a>'
-        + '<a class="nav-download" href="https://github.com/kingsnowy14-cloud/the-isle-signin-bot/releases/download/desktop-latest/IronWolf-Setup.exe">⬇️ Desktop App</a>'
-        + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Log out</button></form>' if logged_in else '<a href="/login">Log in with Discord</a>')
+        '<a class="skip-link" href="#main-content">Skip to content</a><nav class="top-nav" aria-label="Main navigation"><a href="/" class="brand-mark">🐺 IRONWOLF <span class="muted">/ CONTROL CENTER</span></a>'
+        + ('<a class="nav-server" href="/">🎮 Server wechseln</a>' if logged_in else '')
+        + ('<a class="nav-server" href="/guild/' + match.group(1) + '?section=general">⚙️ Einstellungen</a>' if logged_in and match else '')
+        + ('<a class="nav-server" href="/guild/' + match.group(1) + '/security-center">🛡️ Security Center</a>' if logged_in and match else '')
+        + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Logout</button></form>' if logged_in else '<a href="/login">Login</a>')
         + '</nav>'
     )
     return f"""<!doctype html>
@@ -858,7 +846,7 @@ def _page(title, body):
 :root{{--bg:#080b12;--panel:#101725;--panel2:#151f30;--text:#f2f5fb;--muted:#98a7bd;--accent:#72c7ff;--accent2:#b7e5ff;--border:rgba(154,177,211,.17);--shadow:0 22px 70px rgba(0,0,0,.34);--glow:rgba(91,141,255,.14);}}
 *{{box-sizing:border-box}}html{{scroll-behavior:smooth;scroll-padding-top:100px}}
 body{{margin:0;background:radial-gradient(ellipse at 5% 0%,rgba(91,141,255,.16),transparent 34%),radial-gradient(ellipse at 94% 4%,rgba(114,199,255,.13),transparent 28%),linear-gradient(180deg,#0b1020 0%,var(--bg) 58%,#070910 100%);color:var(--text);font:15px/1.7 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;min-height:100vh}}
-nav{{position:sticky;top:0;z-index:10;display:flex;gap:18px;align-items:center;padding:14px max(20px,calc((100vw - 1240px)/2));border-bottom:1px solid rgba(154,177,211,.15);background:rgba(8,11,18,.82);backdrop-filter:blur(22px);box-shadow:0 8px 35px rgba(0,0,0,.16)}}
+nav{{position:sticky;top:0;z-index:10;display:flex;gap:18px;align-items:center;padding:14px max(20px,calc((100vw - 1240px)/2));border-bottom:1px solid rgba(154,177,211,.15);background:rgba(8,11,18,.82);backdrop-filter:blur(22px);box-shadow:0 8px 35px rgba(0,0,0,.16)}}.top-nav{{flex-wrap:nowrap;gap:10px;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}}.top-nav .brand-mark{{flex:0 0 auto;margin-right:auto}}.top-nav a.nav-server{{flex:0 0 auto;padding:7px 10px;font-size:13px}}.top-nav .nav-logout{{flex:0 0 auto;margin:0}}.top-nav .nav-logout-button{{padding:7px 10px;border:1px solid var(--border);border-radius:11px;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015));color:var(--text);font-weight:800;cursor:pointer}}
 nav a:first-child{{font-weight:1000;font-size:19px;letter-spacing:1.4px;text-decoration:none;color:var(--text);text-shadow:0 0 22px rgba(91,141,255,.35)}}nav a:first-child::first-letter{{color:var(--accent)}}nav span{{flex:1}}nav a:not(:first-child){{padding:8px 13px;border:1px solid var(--border);border-radius:11px;text-decoration:none;font-weight:800;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015));transition:transform .18s,border-color .18s,box-shadow .18s}}nav a:not(:first-child):hover{{transform:translateY(-2px);border-color:rgba(114,199,255,.7);box-shadow:0 0 20px rgba(91,141,255,.12);color:var(--accent)}}nav a.nav-server{{background:linear-gradient(120deg,rgba(91,141,255,.2),rgba(114,199,255,.12));border-color:rgba(125,161,231,.42);color:#e9f0ff}}a{{color:var(--accent);text-underline-offset:4px}}
 main{{max-width:1240px;margin:42px auto;padding:0 24px 54px}}main>p:last-child{{border-top:1px solid var(--border);padding-top:18px;margin-top:38px}}h1,h2,h3{{line-height:1.22;letter-spacing:-.4px}}h1{{font-size:clamp(30px,4vw,46px);margin:0 0 12px;font-weight:950;letter-spacing:-1px}}h2{{font-size:21px;margin:0 0 13px;font-weight:850}}h3{{font-size:14px;margin:22px 0 9px;color:var(--accent);text-transform:uppercase;letter-spacing:1px}}main>p.muted{{margin-top:0;margin-bottom:26px}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:22px;align-items:start}}.grid>.card,.grid>div>.card{{margin:0 0 20px}}
@@ -877,7 +865,7 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 /* Dashboard layout: persistent module sidebar with a focused content area */
 @media(min-width:900px){{
  body{{padding-left:246px}}
- nav:not(.module-nav){{position:sticky;top:0;inset:auto;width:100%;height:auto;overflow:visible;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:11px 22px;background:rgba(11,16,32,.96);border-right:0;border-bottom:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.12)}}
+ nav:not(.module-nav){{position:sticky;top:0;inset:auto;width:100%;height:auto;overflow-x:auto;overflow-y:hidden;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:11px 22px;background:rgba(11,16,32,.96);border-right:0;border-bottom:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.12)}}
  nav:not(.module-nav) a:first-child{{width:auto;padding:7px 10px;margin:0 auto 0 0;border:0;font-size:16px}}
  nav:not(.module-nav) a:not(:first-child){{display:inline-flex;width:auto;min-height:34px;padding:7px 10px;border:1px solid transparent;border-radius:9px;background:transparent;font-size:12px;box-shadow:none;transform:none}}
  nav:not(.module-nav) .nav-logout{{margin:0;padding:0;border:0}}
@@ -889,8 +877,8 @@ button,.button{{display:inline-flex;align-items:center;justify-content:center;ga
 }}
 @media(max-width:899px){{
  body{{padding-left:0}}
- nav:not(.module-nav){{position:sticky;inset:auto;width:auto;height:auto;overflow:visible;flex-direction:row;flex-wrap:wrap;align-items:center;padding:11px 14px}}
- nav:not(.module-nav) a:first-child{{width:100%;padding-bottom:8px;margin-bottom:4px}}
+ nav:not(.module-nav){{position:sticky;inset:auto;width:auto;height:auto;overflow-x:auto;overflow-y:hidden;flex-direction:row;flex-wrap:nowrap;align-items:center;padding:11px 14px}}
+ nav:not(.module-nav) a:first-child{{width:auto;min-width:max-content;padding-bottom:0;margin-bottom:0}}
  nav:not(.module-nav) .nav-logout{{margin:0}}
  .module-nav{{position:relative;width:100%;height:auto;max-height:220px;overflow-x:auto;overflow-y:hidden;flex-direction:row;align-items:center;flex-wrap:nowrap;margin:0 0 18px;padding:10px;border:1px solid var(--border);border-radius:13px}}
  .module-nav-link{{width:auto;white-space:nowrap}}
