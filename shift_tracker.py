@@ -233,16 +233,9 @@ class ShiftTracker(commands.Cog):
                 result = "Du bist wieder im Dienst. Deine Pause wurde beendet."
                 log_message = f"▶️ {interaction.user.mention} ist aus der Pause zurückgekehrt."
             else:
-                shift["warnings"] = int(shift.get("warnings", 0)) + (1 if panel.get("warnings_enabled", True) else 0)
-                if shift["warnings"] >= 3:
-                    shift["status"] = "ended"
-                    shift["ended_at"] = _stamp(now)
-                    result = "⛔ Du hast 3 Warnungen erreicht. Dein Dienst wurde automatisch beendet."
-                    log_message = f"⛔ Dienst von {interaction.user.mention} automatisch beendet (3 Warnungen)."
-                else:
-                    shift["status"] = "working"
-                    result = f"⚠️ Du bist zurück im Dienst. Warnungen: **{shift['warnings']}/3**."
-                    log_message = f"⚠️ {interaction.user.mention}: Nein gewählt. Warnungen: **{shift['warnings']}/3**."
+                shift["status"] = "working"
+                result = f"Your break has ended. Warnings: **{shift.get('warnings', 0)}/3**."
+                log_message = f"▶️ {interaction.user.mention} acknowledged the return-to-work prompt."
             _save()
         await interaction.response.edit_message(content="Pausenabfrage abgeschlossen.", view=None)
         await interaction.followup.send(result, ephemeral=True)
@@ -291,70 +284,56 @@ class ShiftTracker(commands.Cog):
             guild = self.bot.get_guild(int(guild_id))
             if guild is None:
                 continue
-            for key, shift in list(data.get("shifts", {}).items()):
-                if shift.get("status") != "paused":
+            for shift in list(data.get("shifts", {}).values()):
+                if shift.get("status") != "paused" or shift.get("prompt_message_id"):
                     continue
                 panel_id = shift.get("panel_id")
                 panel = data.get("panels", {}).get(panel_id)
-                if not panel:
+                if not panel or _parse_time(shift.get("pause_until")) > now:
                     continue
                 user_id = int(shift.get("user_id", 0))
-                if shift.get("prompt_message_id"):
-                    due_at = shift.get("warning_due_at")
-                    if not due_at or _parse_time(due_at) > now:
-                        continue
-                    async with LOCK:
-                        current = self.get_shift(guild.id, panel_id, user_id)
-                        if not current or current.get("status") != "paused" or not current.get("warning_due_at") or _parse_time(current["warning_due_at"]) > _now():
-                            continue
-                        warned_at = _parse_time(current["warning_due_at"])
-                        pause_start = _parse_time(current.get("pause_started_at"))
-                        current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (warned_at - pause_start).total_seconds()))
-                        current["pause_started_at"] = None
-                        current["pause_until"] = None
-                        current["warning_due_at"] = None
-                        current["prompt_message_id"] = None
-                        current["warnings"] = int(current.get("warnings", 0)) + (1 if panel.get("warnings_enabled", True) else 0)
-                        ended = current["warnings"] >= 3
-                        current["status"] = "ended" if ended else "working"
-                        if ended:
-                            current["ended_at"] = _stamp(warned_at)
-                        _save()
-                    channel_for_edit = guild.get_channel(int(panel.get("panel_channel_id", 0)))
-                    if isinstance(channel_for_edit, discord.TextChannel):
-                        try:
-                            old_message = await channel_for_edit.fetch_message(int(shift["prompt_message_id"]))
-                            await old_message.edit(content=("⛔ Dienst automatisch beendet: 3 Verwarnungen erreicht." if ended else f"⚠️ Automatische Verwarnung ({current['warnings']}/3). Du bist wieder im Dienst."), view=None)
-                        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                            pass
-                    await self.log(guild, panel, (f"⛔ Dienst von <@{user_id}> nach Ablauf der Rückmeldefrist automatisch beendet (3 Verwarnungen)." if ended else f"⚠️ <@{user_id}> erhielt nach Ablauf der Rückmeldefrist automatisch eine Verwarnung ({current['warnings']}/3)."))
-                    continue
-                if _parse_time(shift.get("pause_until")) > now:
-                    continue
                 channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
                 if not isinstance(channel, discord.TextChannel):
                     continue
                 try:
-                    reminder_text = str(panel.get("pause_reminder_message", "⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Bitte bestätige mit „Ja“. Wenn du nicht innerhalb von {warning_minutes} Minuten reagierst, erhältst du automatisch eine Verwarnung."))[:1500]
-                    reminder_text = (reminder_text.replace("{mention}", f"<@{user_id}>")
-                                     .replace("{name}", str(panel.get("name", "Schicht"))[:50])
-                                     .replace("{warning_minutes}", str(max(1, min(60, int(panel.get("warning_delay_minutes", 5) or 5))))))
-                    message = await channel.send(
-                        reminder_text,
-                        view=PausePromptView(self, panel_id, user_id),
-                        allowed_mentions=discord.AllowedMentions(users=True),
-                    )
+                    async with LOCK:
+                        current = self.get_shift(guild.id, panel_id, user_id)
+                        if not current or current.get("status") != "paused" or current.get("prompt_message_id") or _parse_time(current.get("pause_until")) > _now():
+                            continue
+                        pause_start = _parse_time(current.get("pause_started_at"))
+                        pause_end = _parse_time(current.get("pause_until"))
+                        current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (pause_end - pause_start).total_seconds()))
+                        current["pause_started_at"] = None
+                        current["pause_until"] = None
+                        if panel.get("warnings_enabled", True):
+                            current["warnings"] = int(current.get("warnings", 0)) + 1
+                        warning_count = int(current.get("warnings", 0))
+                        ended = warning_count >= 3
+                        if ended:
+                            current.update({"status": "ended", "ended_at": _stamp(now), "warning_due_at": None, "prompt_message_id": None})
+                        _save()
+                    if ended:
+                        total = max(0, int((now - _parse_time(current["started_at"])).total_seconds()))
+                        paused = int(current.get("paused_seconds", 0))
+                        worked = max(0, total - paused)
+                        await channel.send(f"⛔ <@{user_id}> reached 3 warnings. The shift has been terminated for misconduct (dismissed for misconduct).", allowed_mentions=discord.AllowedMentions.none())
+                        await self.log(guild, panel, f"⛔ <@{user_id}> was dismissed for misconduct after reaching 3 warnings. Total: **{_duration(total)}** · Worked: **{_duration(worked)}** · Breaks: **{_duration(paused)}** · Warnings: **{warning_count}/3**.")
+                        continue
+                    reminder_text = str(panel.get("pause_reminder_message", "⏰ Your break is over, {mention}. Please confirm that you are back at work using the button below."))[:1500]
+                    reminder_text = (reminder_text.replace("{mention}", f"<@{user_id}>").replace("{name}", str(panel.get("name", "Shift"))[:50]).replace("{warning_minutes}", str(max(1, min(60, int(panel.get("warning_delay_minutes", 5) or 5))))))
+                    reminder_text += f"\n\n⚠️ Warning recorded immediately: **{warning_count}/3**."
+                    message = await channel.send(reminder_text, view=PausePromptView(self, panel_id, user_id), allowed_mentions=discord.AllowedMentions(users=True))
                     async with LOCK:
                         current = self.get_shift(guild.id, panel_id, user_id)
                         if current and current.get("status") == "paused" and not current.get("prompt_message_id"):
                             current["prompt_message_id"] = message.id
-                            delay_minutes = max(1, min(60, int(panel.get("warning_delay_minutes", 5) or 5)))
-                            current["warning_due_at"] = _stamp(_now() + timedelta(minutes=delay_minutes))
+                            current["warning_due_at"] = None
                             _save()
                         else:
                             await message.delete()
+                    await self.log(guild, panel, f"⚠️ <@{user_id}> received an immediate warning when the break ended ({warning_count}/3).")
                 except (discord.Forbidden, discord.HTTPException) as exc:
-                    print(f"[SHIFT] Pause reminder failed for {user_id}: {type(exc).__name__}: {exc}", flush=True)
+                    print(f"[SHIFT] Break-end warning failed for {user_id}: {type(exc).__name__}: {exc}", flush=True)
 
     @pause_worker.before_loop
     async def before_pause_worker(self):
