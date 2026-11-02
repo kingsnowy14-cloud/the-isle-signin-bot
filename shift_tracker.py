@@ -128,18 +128,25 @@ class PausePromptView(discord.ui.View):
         self.user_id = int(user_id)
         yes = discord.ui.Button(label="Ja, ich bin zurück", style=discord.ButtonStyle.success,
                                 custom_id=f"iwshift:yes:{panel_id}:{user_id}")
-        no = discord.ui.Button(label="Nein", style=discord.ButtonStyle.danger,
-                               custom_id=f"iwshift:no:{panel_id}:{user_id}")
         yes.callback = self._yes
-        no.callback = self._no
         self.add_item(yes)
-        self.add_item(no)
+        delay = discord.ui.Select(
+            placeholder="Verwarnung erst nach …",
+            custom_id=f"iwshift:grace:{panel_id}:{user_id}",
+            options=[
+                discord.SelectOption(label=f"{minutes} Minute" if minutes == 1 else f"{minutes} Minuten",
+                                     value=str(minutes))
+                for minutes in (1, 3, 5, 10, 15)
+            ],
+        )
+        delay.callback = self._delay
+        self.add_item(delay)
 
     async def _yes(self, interaction):
         await self.cog.pause_answer(interaction, self.panel_id, self.user_id, True)
 
-    async def _no(self, interaction):
-        await self.cog.pause_answer(interaction, self.panel_id, self.user_id, False)
+    async def _delay(self, interaction):
+        await self.cog.set_warning_delay(interaction, self.panel_id, self.user_id, int(interaction.data["values"][0]))
 
 
 class ShiftTracker(commands.Cog):
@@ -181,7 +188,7 @@ class ShiftTracker(commands.Cog):
                 "panel_id": panel_id, "user_id": interaction.user.id,
                 "started_at": _stamp(_now()), "status": "working",
                 "paused_seconds": 0, "pause_started_at": None, "pause_until": None,
-                "warnings": 0, "prompt_message_id": None,
+                "warnings": 0, "prompt_message_id": None, "warning_due_at": None,
             }
             _save()
         await interaction.response.send_message("✅ Dein Dienst wurde gestartet.", ephemeral=True)
@@ -231,6 +238,7 @@ class ShiftTracker(commands.Cog):
             shift["pause_started_at"] = None
             shift["pause_until"] = None
             shift["prompt_message_id"] = None
+            shift["warning_due_at"] = None
             if returned:
                 shift["status"] = "working"
                 result = "Du bist wieder im Dienst. Deine Pause wurde beendet."
@@ -251,6 +259,23 @@ class ShiftTracker(commands.Cog):
         await interaction.followup.send(result, ephemeral=True)
         await self.log(guild, panel, log_message)
 
+    async def set_warning_delay(self, interaction, panel_id, user_id, minutes):
+        if interaction.user.id != user_id:
+            await interaction.response.send_message("Diese Rückfrage gehört einem anderen Mitglied.", ephemeral=True)
+            return
+        async with LOCK:
+            shift = self.get_shift(interaction.guild_id, panel_id, user_id)
+            if not shift or shift.get("status") != "paused" or not shift.get("prompt_message_id"):
+                await interaction.response.send_message("Diese Pausenabfrage ist nicht mehr aktiv.", ephemeral=True)
+                return
+            due = _now() + timedelta(minutes=minutes)
+            shift["warning_due_at"] = _stamp(due)
+            _save()
+        await interaction.response.edit_message(
+            content=f"⏳ Verwarnung erfolgt automatisch, wenn du nicht innerhalb von **{minutes} Minuten** auf „Ja, ich bin zurück“ klickst.",
+            view=PausePromptView(self, panel_id, user_id),
+        )
+
     async def checkout(self, interaction, panel_id, reason):
         guild = interaction.guild
         async with LOCK:
@@ -265,7 +290,7 @@ class ShiftTracker(commands.Cog):
                 shift["paused_seconds"] = int(shift.get("paused_seconds", 0) + (now - _parse_time(shift["pause_started_at"])).total_seconds())
             total = max(0, int((now - _parse_time(shift["started_at"])).total_seconds()))
             worked = max(0, total - int(shift.get("paused_seconds", 0)))
-            shift.update({"status": "ended", "ended_at": _stamp(now), "pause_started_at": None, "pause_until": None})
+            shift.update({"status": "ended", "ended_at": _stamp(now), "pause_started_at": None, "pause_until": None, "warning_due_at": None, "prompt_message_id": None})
             _save()
         await interaction.response.send_message(f"🔴 Dienst beendet. Arbeitszeit: **{_duration(worked)}** (Pausen: {_duration(shift.get('paused_seconds', 0))}).", ephemeral=True)
         await self.log(guild, panel, f"🔴 {interaction.user.mention} hat **{panel['name']}** beendet. Arbeitszeit: **{_duration(worked)}** · Warnungen: **{shift.get('warnings', 0)}**.")
@@ -278,21 +303,51 @@ class ShiftTracker(commands.Cog):
             if guild is None:
                 continue
             for key, shift in list(data.get("shifts", {}).items()):
-                if shift.get("status") != "paused" or shift.get("prompt_message_id"):
-                    continue
-                if _parse_time(shift.get("pause_until")) > now:
+                if shift.get("status") != "paused":
                     continue
                 panel_id = shift.get("panel_id")
                 panel = data.get("panels", {}).get(panel_id)
                 if not panel:
                     continue
+                user_id = int(shift.get("user_id", 0))
+                if shift.get("prompt_message_id"):
+                    due_at = shift.get("warning_due_at")
+                    if not due_at or _parse_time(due_at) > now:
+                        continue
+                    async with LOCK:
+                        current = self.get_shift(guild.id, panel_id, user_id)
+                        if not current or current.get("status") != "paused" or not current.get("warning_due_at") or _parse_time(current["warning_due_at"]) > _now():
+                            continue
+                        warned_at = _parse_time(current["warning_due_at"])
+                        pause_start = _parse_time(current.get("pause_started_at"))
+                        current["paused_seconds"] = int(current.get("paused_seconds", 0) + max(0, (warned_at - pause_start).total_seconds()))
+                        current["pause_started_at"] = None
+                        current["pause_until"] = None
+                        current["warning_due_at"] = None
+                        current["prompt_message_id"] = None
+                        current["warnings"] = int(current.get("warnings", 0)) + (1 if panel.get("warnings_enabled", True) else 0)
+                        ended = current["warnings"] >= 3
+                        current["status"] = "ended" if ended else "working"
+                        if ended:
+                            current["ended_at"] = _stamp(warned_at)
+                        _save()
+                    channel_for_edit = guild.get_channel(int(panel.get("panel_channel_id", 0)))
+                    if isinstance(channel_for_edit, discord.TextChannel):
+                        try:
+                            old_message = await channel_for_edit.fetch_message(int(shift["prompt_message_id"]))
+                            await old_message.edit(content=("⛔ Dienst automatisch beendet: 3 Verwarnungen erreicht." if ended else f"⚠️ Automatische Verwarnung ({current['warnings']}/3). Du bist wieder im Dienst."), view=None)
+                        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                            pass
+                    await self.log(guild, panel, (f"⛔ Dienst von <@{user_id}> nach Ablauf der Rückmeldefrist automatisch beendet (3 Verwarnungen)." if ended else f"⚠️ <@{user_id}> erhielt nach Ablauf der Rückmeldefrist automatisch eine Verwarnung ({current['warnings']}/3)."))
+                    continue
+                if _parse_time(shift.get("pause_until")) > now:
+                    continue
                 channel = guild.get_channel(int(panel.get("panel_channel_id", 0)))
                 if not isinstance(channel, discord.TextChannel):
                     continue
-                user_id = int(shift.get("user_id", 0))
                 try:
                     message = await channel.send(
-                        f"<@{user_id}> ⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit?",
+                        f"<@{user_id}> ⏰ Deine Pause ist vorbei. Bist du wieder einsatzbereit? Wähle unten, wie lange ich auf deine Rückmeldung warten soll.",
                         view=PausePromptView(self, panel_id, user_id),
                         allowed_mentions=discord.AllowedMentions(users=True),
                     )
