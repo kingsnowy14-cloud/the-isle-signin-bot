@@ -8498,6 +8498,43 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not register IronWolf feature cogs: {type(exc).__name__}: {exc}")
 
+    # Load the persistent shift tracking module before slash-command sync.
+    if not getattr(bot, "_shift_tracker_loaded", False):
+        try:
+            await bot.load_extension("shift_tracker")
+            bot._shift_tracker_loaded = True
+            print("[SHIFT] Shift tracker module loaded.", flush=True)
+        except Exception as exc:
+            print(f"[SHIFT] Could not load shift tracker: {type(exc).__name__}: {exc}", flush=True)
+
+    # Restore persistent shift panel and pending pause-response buttons.
+    if getattr(bot, "_shift_tracker_loaded", False):
+        try:
+            from shift_tracker import STATE as SHIFT_STATE, ShiftPanelView, PausePromptView
+            restored_panels = 0
+            restored_prompts = 0
+            for guild_id, shift_data in SHIFT_STATE.get("guilds", {}).items():
+                for panel_id, panel in shift_data.get("panels", {}).items():
+                    message_id = panel.get("panel_message_id")
+                    try:
+                        bot.add_view(ShiftPanelView(bot.get_cog("ShiftTracker"), panel_id),
+                                     message_id=int(message_id) if message_id else None)
+                        restored_panels += 1
+                    except Exception as exc:
+                        print(f"[SHIFT] Could not restore panel {panel_id}: {type(exc).__name__}: {exc}", flush=True)
+                for shift in shift_data.get("shifts", {}).values():
+                    if shift.get("status") == "paused" and shift.get("prompt_message_id"):
+                        try:
+                            bot.add_view(PausePromptView(bot.get_cog("ShiftTracker"),
+                                                        shift["panel_id"], int(shift["user_id"])),
+                                         message_id=int(shift["prompt_message_id"]))
+                            restored_prompts += 1
+                        except Exception as exc:
+                            print(f"[SHIFT] Could not restore pause prompt: {type(exc).__name__}: {exc}", flush=True)
+            print(f"[SHIFT] Restored {restored_panels} panels and {restored_prompts} pause prompts.", flush=True)
+        except Exception as exc:
+            print(f"[SHIFT] View restoration failed: {type(exc).__name__}: {exc}", flush=True)
+
     # Load the opt-in security suite once before slash-command sync.
     if not getattr(bot, "_security_suite_loaded", False):
         try:
