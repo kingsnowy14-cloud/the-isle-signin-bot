@@ -6278,6 +6278,15 @@ def guild_wolfanalytics(guild_id):
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
+    cfg = _guild_config(guild.id)
+    if not guild_has_feature(cfg, "wolfanalytics"):
+        body = (
+            '<section class="card"><h1>📊 WolfAnalytics · Premium</h1>'
+            '<p>WolfAnalytics ist eine Premium-Funktion – genau wie das Schicht- und Zeiterfassungssystem.</p>'
+            '<p>Aktiviere Premium für diesen Server, um Statistiken, Diagramme und Discord-Berichte freizuschalten.</p>'
+            '<a class="button" href="/guild/' + str(guild.id) + '/premium">✨ Premium verwalten</a></section>'
+        )
+        return _page("WolfAnalytics · Premium erforderlich", body)
     period = request.args.get("period", "24h")
     if period not in {"24h", "7day", "30day"}:
         abort(400, "Ungültiger Statistikzeitraum.")
