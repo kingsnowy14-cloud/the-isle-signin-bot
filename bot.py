@@ -6025,33 +6025,35 @@ async def notify_bot_server_change(guild: discord.Guild, joined: bool):
             timestamp=datetime.now(timezone.utc),
         )
 
-        if joined:
-            inviter_text = "Unknown — Discord audit-log access may be missing."
-            try:
-                async for entry in guild.audit_logs(
-                    limit=10,
-                    action=discord.AuditLogAction.bot_add,
-                ):
-                    target = getattr(entry, "target", None)
-                    target_id = getattr(target, "id", None) or getattr(entry, "target_id", None)
-                    if bot.user and target_id == bot.user.id:
-                        inviter = entry.user
-                        inviter_text = (
-                            f"{inviter.mention} (`{inviter}`, ID: `{inviter.id}`)"
-                            if inviter else "Unknown"
-                        )
-                        break
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                print(f"[SERVER-LOG] Could not read inviter audit log for guild {guild.id}: {type(exc).__name__}: {exc}")
-            embed.add_field(name="Invited by", value=inviter_text, inline=False)
+        actor_text = "Unknown — Discord audit-log access may be missing."
+        audit_action = discord.AuditLogAction.bot_add if joined else discord.AuditLogAction.kick
+        try:
+            async for entry in guild.audit_logs(limit=15, action=audit_action):
+                target = getattr(entry, "target", None)
+                target_id = getattr(target, "id", None) or getattr(entry, "target_id", None)
+                if bot.user and target_id == bot.user.id:
+                    actor = entry.user
+                    actor_text = (
+                        f"{actor.mention} (`{actor}`, ID: `{actor.id}`)"
+                        if actor else "Unknown"
+                    )
+                    break
+        except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
+            event_name = "inviter" if joined else "remover"
+            print(f"[SERVER-LOG] Could not read {event_name} audit log for guild {guild.id}: {type(exc).__name__}: {exc}")
 
+        embed.add_field(
+            name="Invited by" if joined else "Removed by",
+            value=actor_text,
+            inline=False,
+        )
         embed.add_field(
             name="Event",
             value="Bot added to this server" if joined else "Bot removed from this server",
             inline=True,
         )
         embed.set_footer(text="IronWolf · Global Server Logs")
-        await channel.send(embed=embed)
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
         print(f"[SERVER-LOG] Sent {'join' if joined else 'leave'} notice for guild {guild.id}.")
     except (discord.HTTPException, discord.Forbidden, ValueError) as exc:
         print(f"[SERVER-LOG] Could not send server change notice: {type(exc).__name__}: {exc}")
