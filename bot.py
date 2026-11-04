@@ -28,6 +28,7 @@ from wolfmirror import simulate_scenario
 from wolfchronicle import create_incident, list_incidents
 from wolfanalytics import record as wolfanalytics_record, get_stats as wolfanalytics_get_stats, build_report as wolfanalytics_build_report, build_chart as wolfanalytics_build_chart, get_timeline as wolfanalytics_get_timeline
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
+from github_backup import github_backup_worker
 
 
 # Install:
@@ -57,6 +58,7 @@ _automation_worker_task = None
 _birthday_worker_task = None
 _historical_main_server_invite_task = None
 _mainserver_announcement_task = None
+_github_backup_task = None
 
 
 async def dashboard_command_enabled(guild_id, key):
@@ -8516,6 +8518,9 @@ async def the_isle_bau_error(ctx, error):
 @bot.event
 async def on_ready():
     migrate_all_guild_configs()
+    global _github_backup_task
+    if _github_backup_task is None or _github_backup_task.done():
+        _github_backup_task = asyncio.create_task(github_backup_worker(), name="github-daily-backup")
     global _mainserver_announcement_task
     if _mainserver_announcement_task is None or _mainserver_announcement_task.done():
         _mainserver_announcement_task = asyncio.create_task(
