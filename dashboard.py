@@ -2793,20 +2793,21 @@ def auto_nickname_dashboard(guild_id):
     body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Configure a nickname prefix for each role. The member’s original Discord username is added after the prefix.</p>'
     if request.args.get("saved"):
         body += '<div class="notice">AutoNickname rules saved.</div>'
-    body += '<p><strong>' + str(len(rules)) + ' / ' + str(limit) + ' rules used</strong> · ' + ('Premium' if premium else 'Free') + ' plan</p>'
-    body += '<form method="post">' + _csrf_field()
+    remaining_rules = max(0, limit - len(rules))
+    body += '<p><strong>' + str(len(rules)) + ' / ' + str(limit) + ' rules used</strong> · ' + str(remaining_rules) + ' more available · ' + ('Premium' if premium else 'Free') + ' plan</p>'
+    body += '<form method="post"><div style="display:flex;flex-direction:column;gap:12px;width:100%;">' + _csrf_field()
     role_list = sorted(roles, key=lambda item: item.position, reverse=True)
     for index in range(limit):
         item = rules[index] if index < len(rules) else {}
         selected_role = str(item.get("role_id") or "")
         nickname = str(item.get("nickname") or "")
-        body += '<div class="card"><h3>Rule ' + str(index + 1) + '</h3><label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
+        body += '<div class="card" style="display:block;width:100%;box-sizing:border-box;"><h3>Rule ' + str(index + 1) + '</h3><label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
         for role in role_list:
             chosen = " selected" if str(role.id) == selected_role else ""
             body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
         body += '</select><label>Nickname prefix</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Text before the original username"></div>'
     body += '<small>When a member receives a configured role, the nickname becomes “prefix + original username”. Discord nicknames are limited to 32 characters.</small>'
-    body += '<button type="submit">Save AutoNickname Rules</button></form>'
+    body += '</div><button type="submit">Save AutoNickname Rules</button></form>'
     body += '<p class="muted">IronWolf needs Manage Nicknames permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
     return _render("AutoNickname · IronWolf", body)
