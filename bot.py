@@ -7292,13 +7292,15 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     try:
         auto_cfg = config.get(str(after.guild.id), {})
         trigger_role_id = auto_cfg.get("auto_nickname_role_id")
-        target_nickname = str(auto_cfg.get("auto_nickname_value") or "").strip()[:32]
-        if trigger_role_id and target_nickname:
+        nickname_prefix = str(auto_cfg.get("auto_nickname_value") or "").strip()
+        if trigger_role_id and nickname_prefix:
             trigger_role = after.guild.get_role(int(trigger_role_id))
             gained_role_ids = {role.id for role in after.roles} - {role.id for role in before.roles}
             if trigger_role is not None and trigger_role.id in gained_role_ids:
                 bot_member = after.guild.me
                 if bot_member is not None and bot_member.guild_permissions.manage_nicknames and after.top_role < bot_member.top_role:
+                    # Keep the original Discord username after the configured prefix.
+                    target_nickname = f"{nickname_prefix} {after.name}"[:32]
                     if after.nick != target_nickname:
                         await after.edit(nick=target_nickname, reason="AutoNickname: configured role was assigned")
     except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
