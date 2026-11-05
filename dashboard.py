@@ -2771,8 +2771,8 @@ def auto_nickname_dashboard(guild_id):
     for role in sorted(roles, key=lambda item: item.position, reverse=True):
         chosen = " selected" if str(role.id) == selected_role else ""
         body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
-    body += '</select><label>Nickname to assign</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Enter the nickname">'
-    body += '<small>When a member receives the selected role, IronWolf changes their server nickname to this text. Discord nicknames can contain up to 32 characters. Leave the role empty to disable AutoNickname.</small>'
+    body += '</select><label>Nickname prefix</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Enter the text before the original name">'
+    body += '<small>When a member receives the selected role, IronWolf sets the nickname to this text followed by their original Discord username. The combined nickname is limited to 32 characters. Leave the role empty to disable AutoNickname.</small>'
     body += '<button type="submit">Save AutoNickname</button></form>'
     body += '<p class="muted">IronWolf needs Change Nickname permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
