@@ -1248,6 +1248,7 @@ def _module_navigation():
         ("welcome", "👋 Welcome & Goodbye", "/welcome"),
         ("birthdays", "🎂 Birthdays", "/birthdays"),
         ("team-management", "👥 Team Management", "/team-management"),
+        ("auto-nickname", "🏷️ AutoNickname", "/auto-nickname"),
         ("teamlist", "👥 Team List", "/teamlist"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
         ("applications", "📝 Applications", "/applications"),
@@ -2731,6 +2732,51 @@ def birthday_dashboard(guild_id):
     body += '<section class="card"><h2>🧭 Schnellzugriff</h2><a class="button secondary" href="/guild/' + gid + '/commands">Befehle & Slash-Commands ansehen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht →</a></section>'
     return _render("Geburtstagskalender", body)
 
+
+
+@app.route("/guild/<guild_id>/auto-nickname", methods=["GET", "POST"])
+def auto_nickname_dashboard(guild_id):
+    """Configure a role-triggered Discord nickname."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    roles = [r for r in guild.roles if not r.is_default() and not r.managed]
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Reload the page.")
+        actor_id = str(session.get("user_id", ""))
+        actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild or actor.guild_permissions.manage_roles):
+            abort(403, "Administrator, Manage Server, or Manage Roles permission is required.")
+        role_id = request.form.get("role_id", "").strip()
+        nickname = request.form.get("nickname", "").strip()
+        if role_id and not any(str(r.id) == role_id for r in roles):
+            abort(400, "Select a valid role.")
+        if len(nickname) > 32:
+            abort(400, "Nickname must be 32 characters or fewer.")
+        cfg["auto_nickname_role_id"] = int(role_id) if role_id else None
+        cfg["auto_nickname_value"] = nickname
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "AutoNickname", actor_id, "AutoNickname settings updated")
+        return redirect(url_for("auto_nickname_dashboard", guild_id=str(guild.id), saved="1"))
+
+    selected_role = str(cfg.get("auto_nickname_role_id") or "")
+    nickname = str(cfg.get("auto_nickname_value") or "")
+    body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Automatically set a member nickname when they receive the selected role.</p>'
+    if request.args.get("saved"):
+        body += '<div class="notice">AutoNickname settings saved.</div>'
+    body += '<form method="post">' + _csrf_field()
+    body += '<label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
+    for role in sorted(roles, key=lambda item: item.position, reverse=True):
+        chosen = " selected" if str(role.id) == selected_role else ""
+        body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
+    body += '</select><label>Nickname to assign</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Enter the nickname">'
+    body += '<small>When a member receives the selected role, IronWolf changes their server nickname to this text. Discord nicknames can contain up to 32 characters. Leave the role empty to disable AutoNickname.</small>'
+    body += '<button type="submit">Save AutoNickname</button></form>'
+    body += '<p class="muted">IronWolf needs Change Nickname permission and its highest role must be above the member whose nickname it changes.</p>'
+    body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
+    return _render("AutoNickname · IronWolf", body)
 
 
 @app.route("/guild/<guild_id>/team-management", methods=["GET", "POST"])
