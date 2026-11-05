@@ -9398,6 +9398,22 @@ _IRONWOLF_DIRECTORY_CHANNEL_ID = 1566192543375433869
 _ironwolf_guild_directory_lock = asyncio.Lock()
 
 
+async def ironwolf_guild_directory_refresh_loop():
+    """Refresh the private server directory every five minutes."""
+    while not bot.is_closed():
+        await asyncio.sleep(300)
+        try:
+            await refresh_ironwolf_guild_directory()
+        except Exception as exc:
+            print(
+                f"[GUILD DIRECTORY] Scheduled refresh failed: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
+
+_ironwolf_guild_directory_refresh_task = None
+
+
 async def refresh_ironwolf_guild_directory():
     """Create or update the server directory in the configured private channel."""
     async with _ironwolf_guild_directory_lock:
@@ -9544,7 +9560,12 @@ async def refresh_ironwolf_guild_directory():
 
 @bot.listen("on_ready")
 async def ironwolf_guild_directory_on_ready():
+    global _ironwolf_guild_directory_refresh_task
     await refresh_ironwolf_guild_directory()
+    if _ironwolf_guild_directory_refresh_task is None or _ironwolf_guild_directory_refresh_task.done():
+        _ironwolf_guild_directory_refresh_task = asyncio.create_task(
+            ironwolf_guild_directory_refresh_loop()
+        )
 
 
 @bot.listen("on_guild_join")
