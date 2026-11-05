@@ -1253,9 +1253,9 @@ def _module_navigation():
         ("tickets", "🎟️ Support Tickets", "/tickets"),
         ("rp-control", "🎭 RP Start / Stop", "/rp-control"),
         ("quick-support", "🆘 Quick Support", "/quick-support"),
-        ("__ai_category__", "🎨 KI & Kreativität", ""),
-        ("ai", "🤖 AI Assistant & Wissen", "/ai"),
-        ("image-generator", "🖼️ Bildgenerierung", "/image-generator"),
+        ("__ai_category__", "🎨 AI & Creativity", ""),
+        ("ai", "🤖 AI Assistant & Knowledge", "/ai"),
+        ("image-generator", "🖼️ Image Generation", "/image-generator"),
         ("messages", "✉️ Message Builder", "/messages"),
         ("branding", "🎨 Server Branding", "/branding"),
         ("custom-bot", "🤖 Custom Bot Profile", "/custom-bot"),
@@ -1911,7 +1911,7 @@ def premium_page():
         '<section class="card hero"><span class="pill">IRONWOLF PREMIUM</span><h1 style="margin-top:14px">Dein Premium-Konto</h1>'
         '<p>Dein Zugriff wird an dein angemeldetes Discord-Konto gebunden.</p>'
         '<div class="notice">Aktueller Plan: <strong>' + ("Premium" if plan == "premium" else "Free") + '</strong>'
-        + (' · Gültig bis: <strong>' + html.escape(own_expiry) + '</strong>' if plan == "premium" and own_expiry else '')
+        + (' · Valid until: <strong>' + html.escape(own_expiry) + '</strong>' if plan == "premium" and own_expiry else '')
         + '</div>'
         '<p>Dein Plan und die enthaltenen Funktionen werden bei jedem Seitenaufruf direkt aus deinem aktuellen Premium-Zugang geladen.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
@@ -2023,7 +2023,7 @@ def premium_users_admin():
     elif request.args.get("result") == "missing":
         notice = '<div class="notice">Für diese ID wurde keine Admin-Freischaltung gefunden.</div>'
     table = (
-        '<div style="overflow-x:auto"><table><thead><tr><th>Discord-ID</th><th>Quelle</th><th>Plan</th><th>Gültig bis</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'
+        '<div style="overflow-x:auto"><table><thead><tr><th>Discord-ID</th><th>Quelle</th><th>Plan</th><th>Valid until</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'
         + ''.join(rows)
         + '</tbody></table></div>'
         if rows else '<p class="muted">Noch keine Premium-Freischaltungen vorhanden.</p>'
