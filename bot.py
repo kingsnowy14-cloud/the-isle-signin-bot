@@ -9391,6 +9391,144 @@ async def englisch_command_error(ctx, error):
         )
 
 
+# ----------------------- IRONWOLF SERVER DIRECTORY -----------------------
+# Keep a live directory of every Discord server where IronWolf is currently installed.
+_IRONWOLF_DIRECTORY_GUILD_ID = 1558583861519056979
+_IRONWOLF_DIRECTORY_CHANNEL_ID = 1566192543375433869
+_ironwolf_guild_directory_lock = asyncio.Lock()
+
+
+async def refresh_ironwolf_guild_directory():
+    """Create or update the server directory in the configured private channel."""
+    async with _ironwolf_guild_directory_lock:
+        target_guild = bot.get_guild(_IRONWOLF_DIRECTORY_GUILD_ID)
+        if target_guild is None:
+            print(
+                f"[GUILD DIRECTORY] Target server {_IRONWOLF_DIRECTORY_GUILD_ID} is not available.",
+                flush=True,
+            )
+            return
+
+        channel = target_guild.get_channel(_IRONWOLF_DIRECTORY_CHANNEL_ID)
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(_IRONWOLF_DIRECTORY_CHANNEL_ID)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+                print(
+                    f"[GUILD DIRECTORY] Could not access target channel: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                return
+
+        if not isinstance(channel, discord.TextChannel) or channel.guild.id != _IRONWOLF_DIRECTORY_GUILD_ID:
+            print("[GUILD DIRECTORY] Configured channel is not a text channel in the target server.", flush=True)
+            return
+
+        guilds = sorted(bot.guilds, key=lambda item: (item.name.casefold(), item.id))
+        pages = [guilds[index:index + 20] for index in range(0, len(guilds), 20)] or [[]]
+        embeds = []
+        for page_number, page_guilds in enumerate(pages, start=1):
+            embed = discord.Embed(
+                title="🐺 IronWolf · Aktuelle Serverliste",
+                description=(
+                    f"IronWolf ist aktuell auf **{len(guilds)} Discord-Servern** eingeladen.\n"
+                    "Diese Übersicht wird automatisch aktualisiert, wenn IronWolf einem Server beitritt oder ihn verlässt."
+                ),
+                color=discord.Color.blurple(),
+                timestamp=datetime.now(timezone.utc),
+            )
+            if page_guilds:
+                for item in page_guilds:
+                    member_count = item.member_count
+                    value = f"Server-ID: `{item.id}`"
+                    if member_count is not None:
+                        value += f" · Mitglieder: **{member_count:,}**"
+                    embed.add_field(
+                        name=discord.utils.escape_markdown(item.name)[:256],
+                        value=value,
+                        inline=False,
+                    )
+            else:
+                embed.add_field(name="Keine Server gefunden", value="IronWolf ist derzeit auf keinem Server.", inline=False)
+            embed.set_footer(text=f"Seite {page_number}/{len(pages)} · Nur aktuelle Servermitgliedschaften")
+            embeds.append(embed)
+
+        saved_ids = data.setdefault("ironwolf_guild_directory_message_ids", [])
+        if not isinstance(saved_ids, list):
+            saved_ids = []
+        message_ids = []
+        for index, embed in enumerate(embeds):
+            message = None
+            if index < len(saved_ids):
+                try:
+                    message = await channel.fetch_message(int(saved_ids[index]))
+                except (ValueError, TypeError, discord.NotFound):
+                    message = None
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(
+                        f"[GUILD DIRECTORY] Could not update page {index + 1}: {type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+                    return
+            try:
+                if message is None:
+                    message = await channel.send(
+                        embed=embed,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                else:
+                    await message.edit(
+                        embed=embed,
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
+                message_ids.append(message.id)
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(
+                    f"[GUILD DIRECTORY] Could not publish page {index + 1}: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                return
+
+        # Keep old page messages harmlessly in place if the directory shrinks.
+        for old_id in saved_ids[len(embeds):]:
+            try:
+                old_message = await channel.fetch_message(int(old_id))
+                await old_message.edit(
+                    content="🐺 IronWolf · Diese Seite wird nicht mehr benötigt.",
+                    embed=None,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except (ValueError, TypeError, discord.NotFound):
+                pass
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(
+                    f"[GUILD DIRECTORY] Could not clear an old directory page: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+
+        data["ironwolf_guild_directory_message_ids"] = message_ids
+        save_json(DATA_FILE, data)
+        print(
+            f"[GUILD DIRECTORY] Updated directory with {len(guilds)} servers in channel {_IRONWOLF_DIRECTORY_CHANNEL_ID}.",
+            flush=True,
+        )
+
+
+@bot.listen("on_ready")
+async def ironwolf_guild_directory_on_ready():
+    await refresh_ironwolf_guild_directory()
+
+
+@bot.listen("on_guild_join")
+async def ironwolf_guild_directory_on_join(guild):
+    await refresh_ironwolf_guild_directory()
+
+
+@bot.listen("on_guild_remove")
+async def ironwolf_guild_directory_on_remove(guild):
+    await refresh_ironwolf_guild_directory()
+
+
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN environment variable is missing.")
