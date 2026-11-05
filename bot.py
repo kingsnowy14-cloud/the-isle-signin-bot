@@ -8557,6 +8557,11 @@ class RPControlView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(RPStatusButton(guild_id, "start"))
         self.add_item(RPStatusButton(guild_id, "stop"))
+        settings = guild_config(int(guild_id)).get("rp_panel", {})
+        link_label = str(settings.get("link_label", "")).strip()
+        link_url = str(settings.get("link_url", "")).strip()
+        if link_label and link_url.startswith("https://"):
+            self.add_item(discord.ui.Button(label=link_label[:80], style=discord.ButtonStyle.link, url=link_url))
 
 
 class RPStatusButton(discord.ui.Button):
@@ -8586,9 +8591,12 @@ class RPStatusButton(discord.ui.Button):
             return
         status = "STARTED" if self.action == "start" else "STOPPED"
         color = discord.Color.green() if self.action == "start" else discord.Color.red()
+        announcement = str(settings.get("start_message" if self.action == "start" else "stop_message", "")).strip()
+        if not announcement:
+            announcement = "Roleplay is now starting!" if self.action == "start" else "Roleplay has ended."
         status_embed = discord.Embed(
             title="🟢 Roleplay Started" if self.action == "start" else "🔴 Roleplay Stopped",
-            description=f"Roleplay has been **{status.lower()}** by {member.mention}.",
+            description=announcement + f"\\n\\nStatus changed by {member.mention}.",
             color=color,
             timestamp=datetime.now(timezone.utc),
         )
@@ -8608,23 +8616,26 @@ class RPStatusButton(discord.ui.Button):
                 await interaction.response.send_message("I could not publish the RP status. Please check my channel permissions.", ephemeral=True)
 
 
-async def _send_rp_panel(guild_id, channel_id, role_id, title, description):
+async def _send_rp_panel(guild_id, channel_id, role_id, title, description, start_message="Roleplay is now starting!", stop_message="Roleplay has ended.", link_label="", link_url=""):
     guild = bot.get_guild(int(guild_id))
     channel = guild.get_channel(int(channel_id)) if guild else None
     if not isinstance(channel, discord.TextChannel):
         raise ValueError("The selected text channel is unavailable.")
     cfg = guild_config(guild.id)
     previous_status = cfg.get("rp_panel", {}).get("status", "not set")
+    cfg["rp_panel"] = {
+        "channel_id": int(channel_id), "role_id": int(role_id),
+        "title": title, "description": description,
+        "start_message": start_message, "stop_message": stop_message,
+        "link_label": link_label, "link_url": link_url,
+        "status": previous_status,
+    }
     embed = discord.Embed(title=title, description=description, color=discord.Color.blurple())
     embed.add_field(name="Current RP status", value=str(previous_status).upper(), inline=False)
     view = RPControlView(guild.id)
     bot.add_view(view)
     message = await channel.send(embed=embed, view=view)
-    cfg["rp_panel"] = {
-        "channel_id": int(channel_id), "role_id": int(role_id),
-        "title": title, "description": description, "message_id": message.id,
-        "status": previous_status,
-    }
+    cfg["rp_panel"]["message_id"] = message.id
     save_json(CONFIG_FILE, config)
     return {"channel_name": channel.name, "message_id": message.id}
 
