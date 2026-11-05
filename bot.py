@@ -7288,6 +7288,22 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 except (discord.Forbidden, discord.HTTPException) as exc:
                     print(f"[SERVER BOOST] Could not remove booster role in guild {after.guild.id}: {type(exc).__name__}")
 
+    # AutoNickname: apply the configured nickname when the trigger role is newly added.
+    try:
+        auto_cfg = config.get(str(after.guild.id), {})
+        trigger_role_id = auto_cfg.get("auto_nickname_role_id")
+        target_nickname = str(auto_cfg.get("auto_nickname_value") or "").strip()[:32]
+        if trigger_role_id and target_nickname:
+            trigger_role = after.guild.get_role(int(trigger_role_id))
+            gained_role_ids = {role.id for role in after.roles} - {role.id for role in before.roles}
+            if trigger_role is not None and trigger_role.id in gained_role_ids:
+                bot_member = after.guild.me
+                if bot_member is not None and bot_member.guild_permissions.change_nickname and after < bot_member:
+                    if after.nick != target_nickname:
+                        await after.edit(nick=target_nickname, reason="AutoNickname: configured role was assigned")
+    except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[AutoNickname] Could not set nickname for member {after.id} in guild {after.guild.id}: {type(exc).__name__}: {exc}", flush=True)
+
     if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
         return
 
