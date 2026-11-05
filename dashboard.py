@@ -2902,43 +2902,57 @@ def team_management_dashboard(guild_id):
             print("[DASHBOARD] Team action failed: " + type(exc).__name__, flush=True)
             return _render("Team action failed", '<section class="card"><h1>Team action failed</h1><p>Check bot permissions, role order, and channel permissions.</p></section>', 500)
 
-    body = '<section class="card"><span class="pill">TEAM MANAGEMENT</span><h1>Team Management</h1><p>Manage team roles and member ranks here. All action announcements go to your selected channel.</p>'
+    selected_action = request.args.get("action", "").strip()
+    action_labels = {
+        "uprank": ("Team Uprank", "Promote a team member to the next higher rank."),
+        "downrank": ("Team Downrank", "Move a team member to the next lower rank."),
+        "team_ban": ("Team Ban", "Suspend a team member and choose when their previous roles return."),
+        "team_kick": ("Team Kick", "Remove team roles only. The member stays in the Discord server."),
+    }
+    body = '<section class="card"><span class="pill">TEAM MANAGEMENT</span><h1>Team Management</h1><p>Choose what you want to do.</p>'
     if request.args.get("saved"):
         body += '<div class="notice">Team settings saved.</div>'
     if request.args.get("result"):
         body += '<div class="notice">Team action completed and announcement sent.</div>'
-    body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="team_action" value="save_settings">'
-    body += '<h2>Team roles</h2><label>High Team role</label><select name="high_team_role_id">' + role_options(cfg.get("high_team_role_id")) + '</select>'
-    body += '<label>Team Ban role</label><select name="team_ban_role_id">' + role_options(cfg.get("team_ban_role_id")) + '</select>'
-    body += '<label>Team member roles</label><div class="role-picker">'
-    chosen_team = {str(x) for x in cfg.get("team_role_ids", [])}
-    for role_id, role in sorted(roles.items(), key=lambda item: item[1].position, reverse=True):
-        checked = " checked" if role_id in chosen_team else ""
-        body += '<label class="role-option"><input type="checkbox" name="team_role_ids" value="' + role_id + '"' + checked + '><span>' + html.escape(role.name) + '</span></label>'
-    body += '</div><h2>Rank order</h2><p class="muted">Rank 1 is the highest rank. Set ranks in order.</p>'
-    ladder = [str(x) for x in cfg.get(ladder_key, [])]
-    for index in range(1, 9):
-        chosen = ladder[index - 1] if len(ladder) >= index else ""
-        body += '<label>Rank ' + str(index) + '</label><select name="rank_' + str(index) + '">' + role_options(chosen) + '</select>'
-    body += '<label>Action announcement channel</label><select name="team_channel_id"><option value="">— Select channel —</option>'
-    selected_channel = str(cfg.get("team_management_channel_id") or "")
-    for channel in sorted(guild.text_channels, key=lambda item: item.position):
-        selected = " selected" if str(channel.id) == selected_channel else ""
-        body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
-    body += '</select><button type="submit">Save Team Settings</button></form></section>'
-    body += '<section class="card"><h2>Team actions</h2><p>Select an action first. The matching options and explanation will appear below.</p><form method="post">' + _csrf_field()
-    body += '<label for="team_action">Select team action</label><select id="team_action" name="team_action" required>'
-    body += '<option value="uprank">Team Uprank</option><option value="downrank">Team Downrank</option><option value="team_ban">Team Ban / Suspension</option><option value="team_kick">Team Kick</option></select>'
-    body += '<div id="team_action_help" class="notice" style="margin:12px 0">Promote the selected member to the next higher rank. The announcement shows the old and new role.</div>'
-    body += '<div id="team_ban_options" style="display:none"><label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select><small>Temporary bans automatically restore the member\'s previous team roles when they expire.</small></div>'
-    body += '<label>Member</label><select name="member_id" required><option value="">— Select member —</option>'
-    for member in sorted(guild.members, key=lambda m: m.display_name.casefold()):
-        body += '<option value="' + str(member.id) + '">' + html.escape(member.display_name) + ' (' + str(member.id) + ')</option>'
-    body += '</select>'
-    body += '<label>Reason (required)</label><textarea name="reason" maxlength="500" required placeholder="Enter the reason for this action"></textarea>'
-    body += '<button type="submit" class="danger">Apply selected action and send announcement</button></form></section>'
-    body += '<script>(function(){const action=document.getElementById("team_action");const help=document.getElementById("team_action_help");const ban=document.getElementById("team_ban_options");const descriptions={uprank:"Promote the member to the next higher rank. The announcement includes the previous role and the new role.",downrank:"Move the member to the next lower rank. The announcement includes the previous role and the new role.",team_ban:"Remove the member\'s team roles and apply the Team Ban role. Choose a duration; temporary bans restore the previous team roles automatically.",team_kick:"Remove the member\'s team roles only. The member stays in the Discord server."};function update(){help.textContent=descriptions[action.value]||"";ban.style.display=action.value==="team_ban"?"block":"none";}action.addEventListener("change",update);update();})();</script>'
-    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes. Team Kick never removes the member from the Discord server.</p>'
+    if selected_action not in action_labels:
+        body += '<div class="grid">'
+        for key, (label, description) in action_labels.items():
+            body += '<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '/team-management?action=' + key + '"><h2>' + label + ' →</h2><p class="muted">' + description + '</p></a>'
+        body += '</div><p><a class="button secondary" href="/guild/' + gid + '/team-management?action=settings">⚙️ Team Settings</a></p></section>'
+        return _render("Team Management · IronWolf", body)
+    if selected_action == "settings":
+        body += '<h2>Team roles and ranks</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="team_action" value="save_settings">'
+        body += '<label>High Team role</label><select name="high_team_role_id">' + role_options(cfg.get("high_team_role_id")) + '</select>'
+        body += '<label>Team Ban role</label><select name="team_ban_role_id">' + role_options(cfg.get("team_ban_role_id")) + '</select>'
+        body += '<label>Team member roles</label><div class="role-picker">'
+        chosen_team = {str(x) for x in cfg.get("team_role_ids", [])}
+        for role_id, role in sorted(roles.items(), key=lambda item: item[1].position, reverse=True):
+            checked = " checked" if role_id in chosen_team else ""
+            body += '<label class="role-option"><input type="checkbox" name="team_role_ids" value="' + role_id + '"' + checked + '><span>' + html.escape(role.name) + '</span></label>'
+        body += '</div><h2>Rank order</h2><p class="muted">Rank 1 is the highest rank. Set ranks in order.</p>'
+        ladder = [str(x) for x in cfg.get(ladder_key, [])]
+        for index in range(1, 9):
+            chosen = ladder[index - 1] if len(ladder) >= index else ""
+            body += '<label>Rank ' + str(index) + '</label><select name="rank_' + str(index) + '">' + role_options(chosen) + '</select>'
+        body += '<label>Action announcement channel</label><select name="team_channel_id"><option value="">— Select channel —</option>'
+        selected_channel = str(cfg.get("team_management_channel_id") or "")
+        for channel in sorted(guild.text_channels, key=lambda item: item.position):
+            selected = " selected" if str(channel.id) == selected_channel else ""
+            body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
+        body += '</select><button type="submit">Save Team Settings</button></form>'
+    else:
+        label, description = action_labels[selected_action]
+        body += '<h2>' + label + '</h2><p class="muted">' + description + '</p><form method="post">' + _csrf_field()
+        body += '<input type="hidden" name="team_action" value="' + selected_action + '">'
+        if selected_action == "team_ban":
+            body += '<label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select><small>Temporary bans automatically restore the member\'s previous team roles when they expire.</small>'
+        body += '<label>Member</label><select name="member_id" required><option value="">— Select member —</option>'
+        for member in sorted(guild.members, key=lambda m: m.display_name.casefold()):
+            body += '<option value="' + str(member.id) + '">' + html.escape(member.display_name) + ' (' + str(member.id) + ')</option>'
+        body += '</select><label>Reason (required)</label><textarea name="reason" maxlength="500" required placeholder="Enter the reason for this action"></textarea>'
+        body += '<button type="submit" class="danger">Confirm ' + label + '</button></form>'
+    body += '<p><a href="/guild/' + gid + '/team-management">← Back to Team Management menu</a></p>'
+    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes. Team Kick never removes the member from the Discord server.</p></section>'
     return _render("Team Management · IronWolf", body)
 
 
