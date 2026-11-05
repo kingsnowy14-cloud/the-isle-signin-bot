@@ -2946,7 +2946,7 @@ def team_management_dashboard(guild_id):
         body += '<div class="notice">Team settings saved.</div>'
     if request.args.get("result"):
         body += '<div class="notice">Team action completed and announcement sent.</div>'
-    if selected_action not in action_labels:
+    if selected_action not in action_labels and selected_action != "settings" and not selected_action.startswith("setting_"):
         body += '<div class="grid">'
         for key, (label, description) in action_labels.items():
             body += '<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '/team-management?action=' + key + '"><h2>' + label + ' →</h2><p class="muted">' + description + '</p></a>'
