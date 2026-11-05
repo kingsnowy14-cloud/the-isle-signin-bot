@@ -2761,6 +2761,38 @@ def team_management_dashboard(guild_id):
             abort(403, "Administrator or Manage Roles permission is required.")
         action = request.form.get("team_action", "save_settings")
 
+        if action == "save_one_setting":
+            setting = request.form.get("setting", "").strip()
+            if setting == "team_roles":
+                values = request.form.getlist("team_role_ids")
+                if any(value not in roles for value in values):
+                    abort(400, "Invalid team role.")
+                cfg["team_role_ids"] = list(dict.fromkeys(values))
+            elif setting in {"high_role", "ban_role"}:
+                value = request.form.get("role_id", "").strip()
+                if value and value not in roles:
+                    abort(400, "Invalid role.")
+                cfg["high_team_role_id" if setting == "high_role" else "team_ban_role_id"] = int(value) if value else None
+            elif setting == "channel":
+                value = request.form.get("channel_id", "").strip()
+                if value and value not in channels:
+                    abort(400, "Invalid channel.")
+                cfg["team_management_channel_id"] = int(value) if value else None
+            elif setting == "rank_roles":
+                ladder = []
+                for index in range(1, 9):
+                    value = request.form.get("rank_" + str(index), "").strip()
+                    if value:
+                        if value not in roles or value in ladder:
+                            abort(400, "Invalid or duplicate rank role.")
+                        ladder.append(value)
+                cfg[ladder_key] = ladder
+            else:
+                abort(400, "Unknown team setting.")
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Team Management Setting", actor_id, setting + " updated")
+            return redirect(url_for("team_management_dashboard", guild_id=gid, action="settings", saved="1"))
+
         if action == "save_settings":
             team_ids = request.form.getlist("team_role_ids")
             if any(value not in roles for value in team_ids):
@@ -2921,25 +2953,48 @@ def team_management_dashboard(guild_id):
         body += '</div><p><a class="button secondary" href="/guild/' + gid + '/team-management?action=settings">⚙️ Team Settings</a></p></section>'
         return _render("Team Management · IronWolf", body)
     if selected_action == "settings":
-        body += '<h2>Team roles and ranks</h2><form method="post">' + _csrf_field() + '<input type="hidden" name="team_action" value="save_settings">'
-        body += '<label>High Team role</label><select name="high_team_role_id">' + role_options(cfg.get("high_team_role_id")) + '</select>'
-        body += '<label>Team Ban role</label><select name="team_ban_role_id">' + role_options(cfg.get("team_ban_role_id")) + '</select>'
-        body += '<label>Team member roles</label><div class="role-picker">'
-        chosen_team = {str(x) for x in cfg.get("team_role_ids", [])}
-        for role_id, role in sorted(roles.items(), key=lambda item: item[1].position, reverse=True):
-            checked = " checked" if role_id in chosen_team else ""
-            body += '<label class="role-option"><input type="checkbox" name="team_role_ids" value="' + role_id + '"' + checked + '><span>' + html.escape(role.name) + '</span></label>'
-        body += '</div><h2>Rank order</h2><p class="muted">Rank 1 is the highest rank. Set ranks in order.</p>'
-        ladder = [str(x) for x in cfg.get(ladder_key, [])]
-        for index in range(1, 9):
-            chosen = ladder[index - 1] if len(ladder) >= index else ""
-            body += '<label>Rank ' + str(index) + '</label><select name="rank_' + str(index) + '">' + role_options(chosen) + '</select>'
-        body += '<label>Action announcement channel</label><select name="team_channel_id"><option value="">— Select channel —</option>'
-        selected_channel = str(cfg.get("team_management_channel_id") or "")
-        for channel in sorted(guild.text_channels, key=lambda item: item.position):
-            selected = " selected" if str(channel.id) == selected_channel else ""
-            body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
-        body += '</select><button type="submit">Save Team Settings</button></form>'
+        setting_labels = [
+            ("team_roles", "Team Member Roles", "Choose which roles count as team roles."),
+            ("high_role", "High Team Role", "Choose the senior team role."),
+            ("ban_role", "Team Ban Role", "Choose the role used for Team Bans."),
+            ("rank_roles", "Rank Roles", "Set the rank ladder used by Uprank and Downrank."),
+            ("channel", "Announcement Channel", "Choose where team action announcements are posted."),
+        ]
+        body += '<h2>Team Settings</h2><p class="muted">Choose one setting to edit.</p><div class="grid">'
+        for key, label, description in setting_labels:
+            body += '<a class="card" style="display:block;text-decoration:none" href="/guild/' + gid + '/team-management?action=setting_' + key + '"><h2>' + label + ' →</h2><p class="muted">' + description + '</p></a>'
+        body += '</div>'
+    elif selected_action.startswith("setting_"):
+        setting = selected_action[len("setting_"):]
+        body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="team_action" value="save_one_setting"><input type="hidden" name="setting" value="' + html.escape(setting) + '">'
+        if setting == "team_roles":
+            body += '<h2>Team Member Roles</h2><p class="muted">Select every role that should count as a team role.</p><div class="role-picker">'
+            chosen_team = {str(x) for x in cfg.get("team_role_ids", [])}
+            for role_id, role in sorted(roles.items(), key=lambda item: item[1].position, reverse=True):
+                checked = " checked" if role_id in chosen_team else ""
+                body += '<label class="role-option"><input type="checkbox" name="team_role_ids" value="' + role_id + '"' + checked + '><span>' + html.escape(role.name) + '</span></label>'
+            body += '</div>'
+        elif setting == "high_role":
+            body += '<h2>High Team Role</h2><label>Choose role</label><select name="role_id">' + role_options(cfg.get("high_team_role_id")) + '</select>'
+        elif setting == "ban_role":
+            body += '<h2>Team Ban Role</h2><label>Choose role</label><select name="role_id">' + role_options(cfg.get("team_ban_role_id")) + '</select>'
+        elif setting == "channel":
+            body += '<h2>Announcement Channel</h2><label>Choose channel</label><select name="channel_id"><option value="">— Select channel —</option>'
+            selected_channel = str(cfg.get("team_management_channel_id") or "")
+            for channel in sorted(guild.text_channels, key=lambda item: item.position):
+                selected = " selected" if str(channel.id) == selected_channel else ""
+                body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
+            body += '</select>'
+        elif setting == "rank_roles":
+            body += '<h2>Rank Roles</h2><p class="muted">Choose the roles in order from highest to lowest. Leave unused positions empty.</p>'
+            ladder = [str(x) for x in cfg.get(ladder_key, [])]
+            rank_names = ["Highest rank", "Second highest", "Third highest", "Fourth highest", "Fifth highest", "Sixth highest", "Seventh highest", "Lowest rank"]
+            for index, rank_name in enumerate(rank_names, start=1):
+                chosen = ladder[index - 1] if len(ladder) >= index else ""
+                body += '<label>' + rank_name + '</label><select name="rank_' + str(index) + '">' + role_options(chosen) + '</select>'
+        else:
+            abort(404)
+        body += '<button type="submit">Save</button></form>'
     else:
         label, description = action_labels[selected_action]
         body += '<h2>' + label + '</h2><p class="muted">' + description + '</p><form method="post">' + _csrf_field()
