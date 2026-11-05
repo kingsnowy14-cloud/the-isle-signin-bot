@@ -6100,10 +6100,20 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
             "💡 Share ideas and suggest new features\n"
             "📢 Follow updates, announcements, and improvements\n"
             "🤝 Get help and connect with other IronWolf users\n\n"
-            "**Join the official main server:**\n"
+            "**Permissions for the best experience**\n"
+            "For full functionality, grant IronWolf the **Administrator** permission. "
+            "This is the simplest setup, but it gives broad access. If you prefer limited access, "
+            "grant only the permissions your enabled modules need, including: "
+            "**View Channels, Send Messages, Embed Links, Read Message History, Manage Channels, "
+            "Manage Roles, Manage Messages, Kick Members, Ban Members, Moderate Members, and View Audit Log**. "
+            "Some features will be unavailable without their specific permissions. "
+            "Keep the IronWolf role below trusted staff roles and above roles it must manage.\n\n"
+            "**Join the official IronWolf community:**\n"
             "https://discord.gg/KDKs5WPgaC\n\n"
-            "Thanks for being part of IronWolf!\n"
-            "— **The IronWolf Team**"
+            "Thank you for trusting IronWolf with your server. Your support helps us improve, "
+            "build better tools, and create a safer and more welcoming community. "
+            "We truly appreciate every server owner and every member who gives IronWolf a chance.\n\n"
+            "With gratitude,\n**The IronWolf Team**"
         ),
         color=discord.Color.blurple(),
         timestamp=datetime.now(timezone.utc),
@@ -6160,7 +6170,10 @@ async def on_guild_join(guild: discord.Guild):
     # Always log the guild join, even when this guild is not enabled in the dashboard.
     await notify_bot_server_change(guild, joined=True)
 
-    # DM the person who invited IronWolf; never post this announcement in the guild.\n    await send_main_server_inviter_dm(guild)\n\n    target = guild.system_channel
+    # Send the inviter a setup guide and the official community link.
+    await send_main_server_inviter_dm(guild)
+
+    target = guild.system_channel
     if target is None or not target.permissions_for(guild.me).send_messages:
         target = next(
             (
@@ -6173,6 +6186,34 @@ async def on_guild_join(guild: discord.Guild):
     if target is None:
         print(f"[WELCOME] No channel available to post welcome message in guild {guild.id}.")
         return
+
+    setup_embed = discord.Embed(
+        title="🐺 Thank You for Choosing IronWolf!",
+        description=(
+            f"Hello, **{discord.utils.escape_markdown(guild.name)}**! Thank you for inviting **IronWolf**. "
+            "We are excited to be part of your community and appreciate your trust.\n\n"
+            "**Recommended permissions for full functionality**\n"
+            "The simplest setup is the **Administrator** permission. It allows all current features to work "
+            "with fewer permission issues, but it grants broad access to your server. "
+            "For a more restricted setup, grant only the permissions required by the modules you enable:\n"
+            "• View Channels\n• Send Messages\n• Embed Links\n• Read Message History\n"
+            "• Manage Channels\n• Manage Roles\n• Manage Messages\n• Kick Members\n"
+            "• Ban Members\n• Moderate Members\n• View Audit Log\n\n"
+            "Some features will not work unless their required permissions are granted. "
+            "Keep the IronWolf role below trusted staff roles and above any roles it needs to manage.\n\n"
+            "**Official IronWolf community:** https://discord.gg/KDKs5WPgaC\n\n"
+            "Thank you for welcoming us. We are grateful for your support and look forward to helping "
+            "your server grow with useful tools, better moderation, and a great community experience.\n"
+            "— **The IronWolf Team**"
+        ),
+        color=discord.Color.blurple(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    setup_embed.set_footer(text="IronWolf · Thank you for your trust")
+    try:
+        await target.send(embed=setup_embed, allowed_mentions=discord.AllowedMentions.none())
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[WELCOME] Could not send setup message in guild {guild.id}: {type(exc).__name__}: {exc}")
 
     # Discord allows at most 10 embeds per message; send further pages in batches.
     try:
