@@ -1284,7 +1284,6 @@ def _module_navigation():
         ("__ai_category__", "📊 Statistiken & System", ""),
         ("server-statistics", "📊 Server Statistics", "/server-statistics"),
         ("stats", "📈 Live Statistics", "/stats"),
-        ("commands", "⌘ Commands", "/commands"),
         ("audit-log", "📜 Audit Log", "/audit-log"),
         ("health", "🩺 System Health", "/health"),
         ("backup", "🗄️ Backup & Restore", "/backup"),
@@ -1416,7 +1415,7 @@ def _dashboard_language():
 
 def _render(title, body, status=200):
     language = _dashboard_language()
-    body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
+    body = _translate_dashboard(_module_navigation() + body, language)
     title = _translate_dashboard(title, language)
     current_path = html.escape(request.path + (("?" + request.query_string.decode("utf-8", "ignore")) if request.query_string else ""), quote=True)
     rendered_page = _page(title, body)
@@ -6069,78 +6068,12 @@ def guild_applications(guild_id):
 
 @app.route("/guild/<guild_id>/commands", methods=["GET", "POST"])
 def guild_commands(guild_id):
+    # Command management is intentionally removed from the dashboard UI.
+    # Keep the endpoint safe for old bookmarks without exposing the command list.
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
-    gid = str(guild.id)
-    cfg = _guild_config(guild.id)
-    if request.method == "POST":
-        if not _csrf_ok():
-            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
-        if request.form.get("action") != "commands":
-            abort(400, "Unbekannte Aktion.")
-        disabled = set(cfg.get("disabled_commands", []))
-        valid_keys = {item["key"] for item in _command_records(guild.id)}
-        for key in valid_keys:
-            enabled = request.form.get("cmd:" + key) == "on"
-            aliases = {key}
-            if key.startswith("prefix:!"):
-                aliases.add("prefix:." + key[len("prefix:!"):])
-            for alias_key in aliases:
-                if enabled:
-                    disabled.discard(alias_key)
-                else:
-                    disabled.add(alias_key)
-        cfg["disabled_commands"] = sorted(disabled)
-        _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "Befehlsrechte", session.get("user_id"), "Disablede Befehle: " + ", ".join(sorted(disabled))[:350])
-        return redirect(url_for("guild_commands", guild_id=gid))
-    commands = _command_records(guild.id)
-    groups = {}
-    for item in commands:
-        groups.setdefault(item["cog"], []).append(item)
-    command_html = '<span class="pill">IRONWOLF · COMMAND CENTER</span><h1 style="margin-top:12px">⌘ Befehle</h1><p class="muted">Bei neu hinzugefügten Servern sind alle Befehle standardmäßig deaktiviert. Aktiviere hier nur die Prefix- und Slash-Befehle, die auf diesem Server verfügbar sein sollen. Bereits bestehende Server behalten ihre bisherigen Einstellungen.</p><div class="section-nav"><a href="/guild/' + gid + '">← Serverübersicht</a><a href="#prefix">Prefix-Befehle</a><a href="#slash">Slash-Befehle</a></div>'
-    command_html += '<div class="notice">🔎 Suche nach Befehlsnamen oder Modul. Die Liste wird sofort gefiltert; Änderungen anschließend unten speichern.</div>'
-    command_html += '<label for="command-search">Befehle durchsuchen</label><input id="command-search" type="search" placeholder="z. B. !filmserver, /ticket, Moderation …" autocomplete="off" style="width:100%;box-sizing:border-box;margin:0 0 16px;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text)">'
-    command_html += '<p id="command-search-count" class="muted" aria-live="polite"></p>'
-    command_html += '<form method="post">' + _csrf_field() + '<input type="hidden" name="action" value="commands"><div class="command-groups" id="command-groups">'
-    for group_name, items in sorted(groups.items(), key=lambda pair: pair[0].lower()):
-        command_html += '<section class="command-group" data-command-group="' + html.escape(group_name.lower(), quote=True) + '"><h3>' + html.escape(group_name) + '</h3>'
-        for item in items:
-            checked = " checked" if item["enabled"] else ""
-            command_name = item["name"]
-            premium_marker = ""
-            if item["cog"] in {"SecurityTools", "EventTools"}:
-                premium_marker = ' <span class="pill">PREMIUM+</span>'
-            elif item["cog"] in {"TicketTools", "TicketSystem"}:
-                premium_marker = ' <span class="pill">PREMIUM</span>'
-            command_html += f'<div class="row command-entry" data-command-search="{html.escape((command_name + " " + item["kind"] + " " + item["cog"]).casefold(), quote=True)}"><div><strong>{html.escape(command_name)}</strong>{premium_marker}<br><small>{html.escape(item["kind"])}</small></div><div class="check"><input type="checkbox" id="cmd-{html.escape(item["key"])}" name="cmd:{html.escape(item["key"])}"{checked}><label for="cmd-{html.escape(item["key"])}">An</label></div></div>'
-        command_html += '</section>'
-    command_html += '</div><button type="submit">Save changes</button> <a class="button secondary" href="/guild/' + gid + '">Zurück zur Übersicht</a></form>'
-    command_html += """<script>(function(){
-  const input=document.getElementById('command-search');
-  const groups=document.querySelectorAll('#command-groups .command-group');
-  const count=document.getElementById('command-search-count');
-  if(!input)return;
-  function filterCommands(){
-    const query=input.value.trim().toLocaleLowerCase();
-    let visible=0;
-    groups.forEach(function(group){
-      let groupVisible=0;
-      group.querySelectorAll('.command-entry').forEach(function(row){
-        const matches=!query || (row.dataset.commandSearch+' '+(group.dataset.commandGroup||'')).toLocaleLowerCase().includes(query);
-        row.hidden=!matches;
-        if(matches){groupVisible++;visible++;}
-      });
-      group.hidden=groupVisible===0;
-    });
-    count.textContent=query ? visible+' passende Befehle gefunden.' : visible+' Befehle insgesamt.';
-  }
-  input.addEventListener('input',filterCommands);
-  filterCommands();
-})();
-</script>"""
-    return _render(guild.name + " · Befehle", command_html)
+    return redirect(url_for("guild_page", guild_id=str(guild.id)))
 
 
 @app.route("/guild/<guild_id>/actions", methods=["GET", "POST"])
