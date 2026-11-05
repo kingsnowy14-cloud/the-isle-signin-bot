@@ -6065,7 +6065,8 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
     """Send the official main-server invitation once to the user who added IronWolf."""
     sent_guilds = data.setdefault("ironwolf_main_server_invite_dm_sent", {})
     guild_key = str(guild.id)
-    if sent_guilds.get(guild_key):
+    previous_delivery = sent_guilds.get(guild_key)
+    if isinstance(previous_delivery, dict) and previous_delivery.get("version", 1) >= 2:
         return True
 
     inviter = None
@@ -6147,6 +6148,7 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
     sent_guilds[guild_key] = {
         "inviter_id": str(inviter.id),
         "sent_at": datetime.now(timezone.utc).isoformat(),
+        "version": 2,
     }
     save_json(DATA_FILE, data)
     print(f"[MAIN SERVER DM] Sent main-server invitation to inviter {inviter.id} for guild {guild.id}.")
