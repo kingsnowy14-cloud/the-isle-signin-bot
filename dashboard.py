@@ -2816,7 +2816,7 @@ def team_management_dashboard(guild_id):
             if bot_member is None or not bot_member.guild_permissions.manage_roles:
                 raise ValueError("IronWolf needs Manage Roles permission.")
             team_ids = {int(x) for x in cfg.get("team_role_ids", []) if str(x).isdigit()}
-            ladder = [int(x) for x in cfg.get(ladder_key, []) if str(x).isdigit()}
+            ladder = [int(x) for x in cfg.get(ladder_key, []) if str(x).isdigit()]
             high = cfg.get("high_team_role_id")
             if str(high or "").isdigit():
                 team_ids.add(int(high))
