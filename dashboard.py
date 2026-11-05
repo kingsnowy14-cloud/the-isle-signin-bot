@@ -1247,6 +1247,7 @@ def _module_navigation():
         ("__ai_category__", "👥 Community & Mitglieder", ""),
         ("welcome", "👋 Welcome & Goodbye", "/welcome"),
         ("birthdays", "🎂 Birthdays", "/birthdays"),
+        ("team-management", "👥 Team Management", "/team-management"),
         ("teamlist", "👥 Team List", "/teamlist"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
         ("applications", "📝 Applications", "/applications"),
@@ -2509,6 +2510,166 @@ def birthday_dashboard(guild_id):
     body += '<section class="card"><h2>🗓️ Geburtstage nach Monat (' + str(len(birthdays)) + ')</h2><p class="muted">Sobald ein Mitglied seinen Geburtstag einträgt, erscheint sein Name automatisch unter dem passenden Monat.</p><div class="grid">' + ''.join(month_cards) + '</div></section>'
     body += '<section class="card"><h2>🧭 Schnellzugriff</h2><a class="button secondary" href="/guild/' + gid + '/commands">Befehle & Slash-Commands ansehen →</a> <a class="button secondary" href="/guild/' + gid + '">Zur Serverübersicht →</a></section>'
     return _render("Geburtstagskalender", body)
+
+
+
+@app.route("/guild/<guild_id>/team-management", methods=["GET", "POST"])
+def team_management_dashboard(guild_id):
+    """Dashboard-only team role and rank management."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    roles = {str(r.id): r for r in guild.roles if not r.is_default() and not r.managed}
+    channels = {str(c.id): c for c in guild.text_channels}
+    ladder_key = "team_rank_role_ids"
+
+    def role_options(chosen):
+        result = ['<option value="">— Select role —</option>']
+        for role in sorted(roles.values(), key=lambda r: r.position, reverse=True):
+            selected = " selected" if str(role.id) == str(chosen) else ""
+            result.append('<option value="' + str(role.id) + '"' + selected + '>' + html.escape(role.name) + '</option>')
+        return "".join(result)
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Reload the page.")
+        actor_id = str(session.get("user_id", ""))
+        actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_roles):
+            abort(403, "Administrator or Manage Roles permission is required.")
+        action = request.form.get("team_action", "save_settings")
+
+        if action == "save_settings":
+            team_ids = request.form.getlist("team_role_ids")
+            if any(value not in roles for value in team_ids):
+                abort(400, "Invalid team role.")
+            ladder = []
+            for index in range(1, 9):
+                value = request.form.get("rank_" + str(index), "").strip()
+                if value:
+                    if value not in roles or value in ladder:
+                        abort(400, "Invalid or duplicate rank role.")
+                    ladder.append(value)
+            high = request.form.get("high_team_role_id", "").strip()
+            ban = request.form.get("team_ban_role_id", "").strip()
+            channel = request.form.get("team_channel_id", "").strip()
+            if (high and high not in roles) or (ban and ban not in roles) or (channel and channel not in channels):
+                abort(400, "Invalid role or channel selection.")
+            cfg["team_role_ids"] = list(dict.fromkeys(team_ids))
+            cfg[ladder_key] = ladder
+            cfg["high_team_role_id"] = int(high) if high else None
+            cfg["team_ban_role_id"] = int(ban) if ban else None
+            cfg["team_management_channel_id"] = int(channel) if channel else None
+            _save_json(data_path("config.json"), _config)
+            _audit_dashboard_change(guild.id, "Team Management Settings", actor_id, "Team roles and notification channel updated")
+            return redirect(url_for("team_management_dashboard", guild_id=gid, saved="1"))
+
+        member_raw = request.form.get("member_id", "").strip()
+        member_raw = re.sub(r"^<@!?(\d+)>$", r"\1", member_raw)
+        if not member_raw.isdigit():
+            abort(400, "Enter a valid Discord member ID or mention.")
+        channel_id = str(cfg.get("team_management_channel_id") or "")
+        if channel_id not in channels:
+            abort(400, "Save a notification channel first.")
+        if not cfg.get("team_role_ids"):
+            abort(400, "Save at least one team role first.")
+        if action not in {"uprank", "downrank", "team_ban", "team_kick"}:
+            abort(400, "Unknown team action.")
+        if not _bot or not _bot.loop.is_running():
+            abort(503, "IronWolf is offline.")
+
+        async def apply_action():
+            try:
+                member = guild.get_member(int(member_raw)) or await guild.fetch_member(int(member_raw))
+            except discord.NotFound:
+                raise ValueError("Member not found in this server.")
+            bot_member = guild.me
+            if bot_member is None or not bot_member.guild_permissions.manage_roles:
+                raise ValueError("IronWolf needs Manage Roles permission.")
+            team_ids = {int(x) for x in cfg.get("team_role_ids", []) if str(x).isdigit()}
+            ladder = [int(x) for x in cfg.get(ladder_key, []) if str(x).isdigit()]
+            high = cfg.get("high_team_role_id")
+            if str(high or "").isdigit():
+                team_ids.add(int(high))
+            team_roles = [r for r in member.roles if r.id in team_ids or r.id in ladder]
+            if any(r >= bot_member.top_role for r in team_roles):
+                raise ValueError("Move IronWolf's highest role above all configured team roles.")
+            if action in {"uprank", "downrank"}:
+                if len(ladder) < 2:
+                    raise ValueError("Configure at least two rank roles.")
+                current = next((i for i, rid in enumerate(ladder) if any(r.id == rid for r in member.roles)), None)
+                if current is None:
+                    raise ValueError("This member has no configured rank role.")
+                target_index = current - 1 if action == "uprank" else current + 1
+                if target_index < 0 or target_index >= len(ladder):
+                    raise ValueError("This member is already at the end of the rank ladder.")
+                target_role = guild.get_role(ladder[target_index])
+                await member.remove_roles(*[r for r in team_roles if r.id in ladder], reason="Team rank changed via IronWolf dashboard")
+                await member.add_roles(target_role, reason="Team rank changed via IronWolf dashboard")
+                description = member.mention + " moved to **" + target_role.name + "**."
+            elif action == "team_ban":
+                ban_id = cfg.get("team_ban_role_id")
+                ban_role = guild.get_role(int(ban_id)) if str(ban_id or "").isdigit() else None
+                if ban_role is None:
+                    raise ValueError("Configure a Team Ban role first.")
+                if ban_role >= bot_member.top_role:
+                    raise ValueError("Move IronWolf's highest role above the Team Ban role.")
+                if team_roles:
+                    await member.remove_roles(*team_roles, reason="Team ban via IronWolf dashboard")
+                await member.add_roles(ban_role, reason="Team ban via IronWolf dashboard")
+                description = member.mention + " received the Team Ban role. Team roles were removed."
+            else:
+                if team_roles:
+                    await member.remove_roles(*team_roles, reason="TT-Team Kick via IronWolf dashboard")
+                description = member.mention + " was removed from the team. They remain in the Discord server."
+            channel = channels[channel_id]
+            embed = discord.Embed(title="IronWolf Team Management · " + action.replace("_", " ").title(), description=description, color=discord.Color.orange(), timestamp=datetime.now(timezone.utc))
+            embed.add_field(name="Moderator", value="<@" + actor_id + ">", inline=True)
+            embed.add_field(name="Member", value=member.mention, inline=True)
+            await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+
+        try:
+            asyncio.run_coroutine_threadsafe(apply_action(), _bot.loop).result(timeout=30)
+            _audit_dashboard_change(guild.id, "Team Action", actor_id, action + " for member " + member_raw)
+            return redirect(url_for("team_management_dashboard", guild_id=gid, result=action))
+        except ValueError as exc:
+            return _render("Team action failed", '<section class="card"><h1>Team action failed</h1><p>' + html.escape(str(exc)) + '</p></section>', 400)
+        except Exception as exc:
+            print("[DASHBOARD] Team action failed: " + type(exc).__name__, flush=True)
+            return _render("Team action failed", '<section class="card"><h1>Team action failed</h1><p>Check bot permissions, role order, and channel permissions.</p></section>', 500)
+
+    body = '<section class="card"><span class="pill">TEAM MANAGEMENT</span><h1>Team Management</h1><p>Manage team roles and member ranks here. All action announcements go to your selected channel.</p>'
+    if request.args.get("saved"):
+        body += '<div class="notice">Team settings saved.</div>'
+    if request.args.get("result"):
+        body += '<div class="notice">Team action completed and announcement sent.</div>'
+    body += '<form method="post">' + _csrf_field() + '<input type="hidden" name="team_action" value="save_settings">'
+    body += '<h2>Team roles</h2><label>High Team role</label><select name="high_team_role_id">' + role_options(cfg.get("high_team_role_id")) + '</select>'
+    body += '<label>Team Ban role</label><select name="team_ban_role_id">' + role_options(cfg.get("team_ban_role_id")) + '</select>'
+    body += '<label>Team member roles</label><div class="role-picker">'
+    chosen_team = {str(x) for x in cfg.get("team_role_ids", [])}
+    for role_id, role in sorted(roles.items(), key=lambda item: item[1].position, reverse=True):
+        checked = " checked" if role_id in chosen_team else ""
+        body += '<label class="role-option"><input type="checkbox" name="team_role_ids" value="' + role_id + '"' + checked + '><span>' + html.escape(role.name) + '</span></label>'
+    body += '</div><h2>Rank order</h2><p class="muted">Rank 1 is the highest rank. Set ranks in order.</p>'
+    ladder = [str(x) for x in cfg.get(ladder_key, [])]
+    for index in range(1, 9):
+        chosen = ladder[index - 1] if len(ladder) >= index else ""
+        body += '<label>Rank ' + str(index) + '</label><select name="rank_' + str(index) + '">' + role_options(chosen) + '</select>'
+    body += '<label>Action announcement channel</label><select name="team_channel_id"><option value="">— Select channel —</option>'
+    selected_channel = str(cfg.get("team_management_channel_id") or "")
+    for channel in sorted(guild.text_channels, key=lambda item: item.position):
+        selected = " selected" if str(channel.id) == selected_channel else ""
+        body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
+    body += '</select><button type="submit">Save Team Settings</button></form></section>'
+    body += '<section class="card"><h2>Team actions</h2><p>Team Kick removes team roles only; it does not kick the member from Discord.</p><form method="post">' + _csrf_field()
+    body += '<label>Member ID or mention</label><input name="member_id" placeholder="Discord user ID or @member" required>'
+    body += '<label>Action</label><select name="team_action"><option value="uprank">Uprank</option><option value="downrank">Downrank</option><option value="team_ban">Team Ban</option><option value="team_kick">TT-Team Kick</option></select>'
+    body += '<button type="submit" class="danger">Apply action and send announcement</button></form></section>'
+    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes.</p>'
+    return _render("Team Management · IronWolf", body)
 
 
 @app.route("/guild/<guild_id>/teamlist", methods=["GET", "POST"])
