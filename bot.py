@@ -8551,9 +8551,6 @@ async def the_isle_bau_error(ctx, error):
         raise error
 
 
-@bot.event
-async def on_ready():
-
 class RPControlView(discord.ui.View):
     """Persistent dashboard-managed RP start/stop controls."""
     def __init__(self, guild_id):
@@ -8634,6 +8631,9 @@ async def _send_rp_panel(guild_id, channel_id, role_id, title, description):
 
 bot.send_rp_panel = _send_rp_panel
 
+
+@bot.event
+async def on_ready():
 
     migrate_all_guild_configs()
     # Re-register persistent RP buttons after every bot restart.
