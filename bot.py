@@ -7298,7 +7298,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             gained_role_ids = {role.id for role in after.roles} - {role.id for role in before.roles}
             if trigger_role is not None and trigger_role.id in gained_role_ids:
                 bot_member = after.guild.me
-                if bot_member is not None and bot_member.guild_permissions.change_nickname and after < bot_member:
+                if bot_member is not None and bot_member.guild_permissions.manage_nicknames and after.top_role < bot_member.top_role:
                     if after.nick != target_nickname:
                         await after.edit(nick=target_nickname, reason="AutoNickname: configured role was assigned")
     except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
