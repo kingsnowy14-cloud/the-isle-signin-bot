@@ -7291,18 +7291,28 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     # AutoNickname: apply the configured nickname when the trigger role is newly added.
     try:
         auto_cfg = config.get(str(after.guild.id), {})
-        trigger_role_id = auto_cfg.get("auto_nickname_role_id")
-        nickname_prefix = str(auto_cfg.get("auto_nickname_value") or "").strip()
-        if trigger_role_id and nickname_prefix:
-            trigger_role = after.guild.get_role(int(trigger_role_id))
-            gained_role_ids = {role.id for role in after.roles} - {role.id for role in before.roles}
-            if trigger_role is not None and trigger_role.id in gained_role_ids:
-                bot_member = after.guild.me
-                if bot_member is not None and bot_member.guild_permissions.manage_nicknames and after.top_role < bot_member.top_role:
-                    # Keep the original Discord username after the configured prefix.
+        rules = auto_cfg.get("auto_nickname_rules")
+        if not isinstance(rules, list):
+            legacy_role = auto_cfg.get("auto_nickname_role_id")
+            legacy_prefix = str(auto_cfg.get("auto_nickname_value") or "").strip()
+            rules = ([{"role_id": legacy_role, "nickname": legacy_prefix}]
+                     if legacy_role and legacy_prefix else [])
+        gained_role_ids = {role.id for role in after.roles} - {role.id for role in before.roles}
+        bot_member = after.guild.me
+        if bot_member is not None and bot_member.guild_permissions.manage_nicknames and after.top_role < bot_member.top_role:
+            for rule in rules:
+                if not isinstance(rule, dict):
+                    continue
+                try:
+                    trigger_role = after.guild.get_role(int(rule.get("role_id") or 0))
+                except (TypeError, ValueError):
+                    continue
+                nickname_prefix = str(rule.get("nickname") or "").strip()
+                if trigger_role is not None and trigger_role.id in gained_role_ids and nickname_prefix:
                     target_nickname = f"{nickname_prefix} {after.name}"[:32]
                     if after.nick != target_nickname:
                         await after.edit(nick=target_nickname, reason="AutoNickname: configured role was assigned")
+                    break
     except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
         print(f"[AutoNickname] Could not set nickname for member {after.id} in guild {after.guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
