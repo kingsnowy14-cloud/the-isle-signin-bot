@@ -2978,7 +2978,6 @@ def team_management_dashboard(guild_id):
             ("team_roles", "Team Member Roles", "Choose which roles count as team roles."),
             ("high_role", "High Team Role", "Choose the senior team role."),
             ("ban_role", "Team Ban Role", "Choose the role used for Team Bans."),
-            ("rank_roles", "Rank Roles", "Set the rank ladder used by Uprank and Downrank."),
         ]
         body += '<h2>Team Settings</h2><p class="muted">Choose one setting to edit.</p><div class="grid">'
         for key, label, description in setting_labels:
