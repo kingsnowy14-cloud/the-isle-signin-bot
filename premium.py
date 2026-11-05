@@ -180,6 +180,7 @@ PREMIUM_FEATURES = {
     "server_boost": "Server-Boost-System",
     "applications": "Pro application system (unlimited panels and questions)",
     "shift_tracker": "Schicht- und Zeiterfassungssystem",
+    "auto_nickname": "AutoNickname (up to 50 rules)",
     "wolfanalytics": "WolfAnalytics",
 }
 
