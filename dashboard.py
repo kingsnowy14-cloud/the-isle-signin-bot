@@ -2736,12 +2736,24 @@ def birthday_dashboard(guild_id):
 
 @app.route("/guild/<guild_id>/auto-nickname", methods=["GET", "POST"])
 def auto_nickname_dashboard(guild_id):
-    """Configure a role-triggered Discord nickname."""
+    """Configure multiple role-triggered Discord nickname rules."""
     guild, response = _authorized_guild(guild_id)
     if response:
         return response
     cfg = _guild_config(guild.id)
     roles = [r for r in guild.roles if not r.is_default() and not r.managed]
+    from bot import guild_config
+    premium = guild_has_feature(guild_config(guild.id), "auto_nickname")
+    limit = 50 if premium else 5
+
+    rules = cfg.get("auto_nickname_rules")
+    if not isinstance(rules, list):
+        old_role = cfg.get("auto_nickname_role_id")
+        old_value = str(cfg.get("auto_nickname_value") or "").strip()
+        rules = ([{"role_id": int(old_role), "nickname": old_value}]
+                 if old_role and old_value else [])
+    rules = [item for item in rules if isinstance(item, dict)]
+
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF validation failed. Reload the page.")
@@ -2749,32 +2761,53 @@ def auto_nickname_dashboard(guild_id):
         actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild or actor.guild_permissions.manage_roles):
             abort(403, "Administrator, Manage Server, or Manage Roles permission is required.")
-        role_id = request.form.get("role_id", "").strip()
-        nickname = request.form.get("nickname", "").strip()
-        if role_id and not any(str(r.id) == role_id for r in roles):
-            abort(400, "Select a valid role.")
-        if len(nickname) > 32:
-            abort(400, "Nickname must be 32 characters or fewer.")
-        cfg["auto_nickname_role_id"] = int(role_id) if role_id else None
-        cfg["auto_nickname_value"] = nickname
+        role_ids = request.form.getlist("role_id")
+        nicknames = request.form.getlist("nickname")
+        submitted = []
+        seen_roles = set()
+        for role_id, nickname in zip(role_ids, nicknames):
+            role_id = role_id.strip()
+            nickname = nickname.strip()
+            if not role_id and not nickname:
+                continue
+            if not role_id or not nickname:
+                abort(400, "Each AutoNickname rule needs both a role and a nickname prefix.")
+            if role_id not in {str(r.id) for r in roles}:
+                abort(400, "Select a valid role.")
+            if role_id in seen_roles:
+                abort(400, "Each role can only be used once in AutoNickname.")
+            if len(nickname) > 32:
+                abort(400, "Nickname prefix must be 32 characters or fewer.")
+            seen_roles.add(role_id)
+            submitted.append({"role_id": int(role_id), "nickname": nickname})
+        if len(submitted) > limit:
+            abort(403, f"The {'Premium' if premium else 'Free'} AutoNickname limit is {limit} rules.")
+        cfg["auto_nickname_rules"] = submitted
+        # Keep legacy keys in sync for older bot versions during rolling deploys.
+        cfg["auto_nickname_role_id"] = submitted[0]["role_id"] if submitted else None
+        cfg["auto_nickname_value"] = submitted[0]["nickname"] if submitted else ""
         _save_json(data_path("config.json"), _config)
-        _audit_dashboard_change(guild.id, "AutoNickname", actor_id, "AutoNickname settings updated")
+        _audit_dashboard_change(guild.id, "AutoNickname", actor_id, "AutoNickname rules updated")
         return redirect(url_for("auto_nickname_dashboard", guild_id=str(guild.id), saved="1"))
 
-    selected_role = str(cfg.get("auto_nickname_role_id") or "")
-    nickname = str(cfg.get("auto_nickname_value") or "")
-    body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Automatically set a member nickname when they receive the selected role.</p>'
+    body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Configure a nickname prefix for each role. The member’s original Discord username is added after the prefix.</p>'
     if request.args.get("saved"):
-        body += '<div class="notice">AutoNickname settings saved.</div>'
+        body += '<div class="notice">AutoNickname rules saved.</div>'
+    body += '<p><strong>' + str(len(rules)) + ' / ' + str(limit) + ' rules used</strong> · ' + ('Premium' if premium else 'Free') + ' plan</p>'
     body += '<form method="post">' + _csrf_field()
-    body += '<label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
-    for role in sorted(roles, key=lambda item: item.position, reverse=True):
-        chosen = " selected" if str(role.id) == selected_role else ""
-        body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
-    body += '</select><label>Nickname prefix</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Enter the text before the original name">'
-    body += '<small>When a member receives the selected role, IronWolf sets the nickname to this text followed by their original Discord username. The combined nickname is limited to 32 characters. Leave the role empty to disable AutoNickname.</small>'
-    body += '<button type="submit">Save AutoNickname</button></form>'
-    body += '<p class="muted">IronWolf needs Change Nickname permission and its highest role must be above the member whose nickname it changes.</p>'
+    role_list = sorted(roles, key=lambda item: item.position, reverse=True)
+    for index in range(limit):
+        item = rules[index] if index < len(rules) else {}
+        selected_role = str(item.get("role_id") or "")
+        nickname = str(item.get("nickname") or "")
+        body += '<div class="card"><h3>Rule ' + str(index + 1) + '</h3><label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
+        for role in role_list:
+            chosen = " selected" if str(role.id) == selected_role else ""
+            body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
+        body += '</select><label>Nickname prefix</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Text before the original username"></div>'
+    body += '<small>When a member receives a configured role, the nickname becomes “prefix + original username”. Discord nicknames are limited to 32 characters.</small>'
+    body += '<button type="submit">Save AutoNickname Rules</button></form>'
+    body += '<p class="muted">IronWolf needs Manage Nicknames permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
     return _render("AutoNickname · IronWolf", body)
 
