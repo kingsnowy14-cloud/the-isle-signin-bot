@@ -2900,32 +2900,40 @@ def guild_rp_control(guild_id):
     notice = ""
     if request.method == "POST":
         if not _csrf_ok():
-            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+            abort(400, "Security check failed. Please reload the page.")
         channel_id = request.form.get("channel_id", "").strip()
         role_id = request.form.get("role_id", "").strip()
         title = request.form.get("embed_title", "Roleplay Status").strip()[:256]
         description = request.form.get("embed_description", "Use the buttons below to announce when roleplay starts or stops.").strip()[:4000]
-        if not channel_id or not channel_id.isdigit() or int(channel_id) not in {c.id for c in guild.text_channels}:
-            abort(400, "Bitte wähle einen gültigen Textkanal.")
-        if not role_id or not role_id.isdigit() or int(role_id) not in {r.id for r in guild.roles if not r.is_default() and not r.managed}:
-            abort(400, "Bitte wähle eine gültige Berechtigungsrolle.")
+        start_message = request.form.get("start_message", "Roleplay is now starting!").strip()[:1800]
+        stop_message = request.form.get("stop_message", "Roleplay has ended.").strip()[:1800]
+        link_label = request.form.get("link_label", "").strip()[:80]
+        link_url = request.form.get("link_url", "").strip()[:500]
+        if not channel_id.isdigit() or int(channel_id) not in {c.id for c in guild.text_channels}:
+            abort(400, "Please select a valid text channel.")
+        if not role_id.isdigit() or int(role_id) not in {r.id for r in guild.roles if not r.is_default() and not r.managed}:
+            abort(400, "Please select a valid permission role.")
         if not title:
-            abort(400, "Der Embed-Titel darf nicht leer sein.")
+            abort(400, "The embed title cannot be empty.")
+        if link_url and not re.match(r"^https://", link_url, re.IGNORECASE):
+            abort(400, "The link button must use a valid HTTPS URL.")
+        if bool(link_label) != bool(link_url):
+            abort(400, "Enter both a link button label and its HTTPS URL.")
         if not _bot or not _bot.is_ready() or not _bot.loop.is_running():
-            abort(503, "IronWolf ist momentan nicht bereit. Bitte versuche es gleich erneut.")
+            abort(503, "IronWolf is not ready. Please try again shortly.")
         import concurrent.futures
         future = asyncio.run_coroutine_threadsafe(
-            _bot.send_rp_panel(guild.id, int(channel_id), int(role_id), title, description),
+            _bot.send_rp_panel(guild.id, int(channel_id), int(role_id), title, description, start_message, stop_message, link_label, link_url),
             _bot.loop,
         )
         try:
             result = future.result(timeout=25)
         except concurrent.futures.TimeoutError:
-            abort(504, "Discord hat zu lange für das Senden gebraucht. Bitte prüfe den Kanal, bevor du erneut sendest.")
+            abort(504, "Discord took too long to send the panel. Check the channel before trying again.")
         except Exception as exc:
             print(f"[RP PANEL] Could not send panel for guild {gid}: {type(exc).__name__}: {exc}", flush=True)
-            abort(502, "Die RP-Nachricht konnte nicht gesendet werden. Prüfe die Bot-Rechte im ausgewählten Kanal.")
-        notice = '<div class="notice">✅ RP-Start/Stop-Nachricht wurde in <strong>#' + html.escape(result["channel_name"]) + '</strong> gesendet.</div>'
+            abort(502, "The RP panel could not be sent. Check the bot's permissions in the selected channel.")
+        notice = '<div class="notice">✅ RP control panel sent to <strong>#' + html.escape(result["channel_name"]) + '</strong>.</div>'
         rp_cfg = cfg.get("rp_panel", {})
     channel_options = ''.join(
         '<option value="' + str(channel_id) + '"' + (' selected' if str(rp_cfg.get("channel_id", "")) == str(channel_id) else '') + '>#' + html.escape(name) + '</option>'
@@ -2937,15 +2945,19 @@ def guild_rp_control(guild_id):
     )
     body = (
         '<section class="card"><h1>🎭 RP Start / Stop</h1>'
-        '<p>Erstelle eine Nachricht mit zwei Buttons. Mitglieder mit der ausgewählten Rolle können den RP-Status ändern. Jeder Klick veröffentlicht eine Statusmeldung im gewählten Kanal.</p>'
+        '<p>Create an RP control panel with start and stop buttons. Only members with the selected role can change the RP status. Customize both announcements and add one optional URL button.</p>'
         + notice +
         '<form method="post">' + _csrf_field() +
-        '<label>Nachrichten-Kanal</label><select name="channel_id" required>' + channel_options + '</select>'
-        '<label>Rolle, die RP-Buttons bedienen darf</label><select name="role_id" required>' + role_options + '</select>'
-        '<label>Embed-Titel</label><input name="embed_title" maxlength="256" value="' + html.escape(str(rp_cfg.get("title", "Roleplay Status")), quote=True) + '" required>'
-        '<label>Embed-Beschreibung</label><textarea name="embed_description" maxlength="4000" rows="4">' + html.escape(str(rp_cfg.get("description", "Use the buttons below to announce when roleplay starts or stops."))) + '</textarea>'
-        '<button type="submit">📨 RP-Start/Stop-Nachricht senden</button></form>'
-        '<p class="muted">Hinweis: Du kannst die Einstellungen ändern und erneut senden. Alte Nachrichten behalten ihre Buttons, verwenden aber weiterhin die aktuell gespeicherte Rollenberechtigung.</p>'
+        '<label>Announcement channel</label><select name="channel_id" required>' + channel_options + '</select>' +
+        '<label>Role allowed to use RP buttons</label><select name="role_id" required>' + role_options + '</select>' +
+        '<label>Panel embed title</label><input name="embed_title" maxlength="256" value="' + html.escape(str(rp_cfg.get("title", "Roleplay Status")), quote=True) + '" required>' +
+        '<label>Panel embed description</label><textarea name="embed_description" maxlength="4000" rows="3">' + html.escape(str(rp_cfg.get("description", "Use the buttons below to announce when roleplay starts or stops."))) + '</textarea>' +
+        '<label>Message posted when RP starts</label><textarea name="start_message" maxlength="1800" rows="2">' + html.escape(str(rp_cfg.get("start_message", "Roleplay is now starting!"))) + '</textarea>' +
+        '<label>Message posted when RP stops</label><textarea name="stop_message" maxlength="1800" rows="2">' + html.escape(str(rp_cfg.get("stop_message", "Roleplay has ended."))) + '</textarea>' +
+        '<h2>Optional link button</h2><label>Button label</label><input name="link_label" maxlength="80" value="' + html.escape(str(rp_cfg.get("link_label", "")), quote=True) + '" placeholder="e.g. RP Rules">' +
+        '<label>Button URL (HTTPS)</label><input type="url" name="link_url" maxlength="500" value="' + html.escape(str(rp_cfg.get("link_url", "")), quote=True) + '" placeholder="https://example.com/rules">' +
+        '<button type="submit">📨 Send RP control panel</button></form>' +
+        '<p class="muted">You can edit these settings and send a new panel. Existing panels remain active and use the latest permission role.</p>'
         '</section>'
     )
     return _render("RP Start / Stop · IronWolf", body)
