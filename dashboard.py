@@ -2797,7 +2797,9 @@ def auto_nickname_dashboard(guild_id):
     body += '<p><strong>' + str(len(rules)) + ' / ' + str(limit) + ' rules used</strong> · ' + str(remaining_rules) + ' more available · ' + ('Premium' if premium else 'Free') + ' plan</p>'
     body += '<form method="post"><div style="display:flex;flex-direction:column;gap:12px;width:100%;">' + _csrf_field()
     role_list = sorted(roles, key=lambda item: item.position, reverse=True)
-    for index in range(limit):
+    # Show all saved rules plus only the next available empty rule.
+    visible_rule_count = min(limit, len(rules) + 1)
+    for index in range(visible_rule_count):
         item = rules[index] if index < len(rules) else {}
         selected_role = str(item.get("role_id") or "")
         nickname = str(item.get("nickname") or "")
