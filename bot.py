@@ -9425,6 +9425,32 @@ async def refresh_ironwolf_guild_directory():
             return
 
         guilds = sorted(bot.guilds, key=lambda item: (item.name.casefold(), item.id))
+        invite_store = data.setdefault("ironwolf_guild_directory_invites", {})
+        if not isinstance(invite_store, dict):
+            invite_store = {}
+            data["ironwolf_guild_directory_invites"] = invite_store
+        invite_links = {}
+        for server in guilds:
+            key = str(server.id)
+            if invite_store.get(key):
+                invite_links[server.id] = invite_store[key]
+                continue
+            member = server.me
+            channels = ([server.system_channel] if server.system_channel else [])
+            channels += [ch for ch in sorted(server.text_channels, key=lambda ch: ch.position) if ch not in channels]
+            for invite_channel in channels:
+                perms = invite_channel.permissions_for(member)
+                everyone = invite_channel.permissions_for(server.default_role)
+                if not (perms.view_channel and perms.create_instant_invite and everyone.view_channel):
+                    continue
+                try:
+                    invite = await invite_channel.create_invite(max_age=0, max_uses=0, unique=False, reason="Permanent link for private IronWolf directory")
+                    invite_store[key] = invite.url
+                    invite_links[server.id] = invite.url
+                    save_json(DATA_FILE, data)
+                    break
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(f"[GUILD DIRECTORY] Invite creation failed for {server.id}: {type(exc).__name__}: {exc}", flush=True)
         pages = [guilds[index:index + 20] for index in range(0, len(guilds), 20)] or [[]]
         embeds = []
         for page_number, page_guilds in enumerate(pages, start=1):
@@ -9432,7 +9458,7 @@ async def refresh_ironwolf_guild_directory():
                 title="🐺 IronWolf · Aktuelle Serverliste",
                 description=(
                     f"IronWolf ist aktuell auf **{len(guilds)} Discord-Servern** eingeladen.\n"
-                    "Diese Übersicht wird automatisch aktualisiert, wenn IronWolf einem Server beitritt oder ihn verlässt."
+                    "Diese Übersicht wird automatisch aktualisiert. Dauerhafte Einladungen sind nur in diesem privaten Kanal sichtbar."
                 ),
                 color=discord.Color.blurple(),
                 timestamp=datetime.now(timezone.utc),
@@ -9443,6 +9469,8 @@ async def refresh_ironwolf_guild_directory():
                     value = f"Server-ID: `{item.id}`"
                     if member_count is not None:
                         value += f" · Mitglieder: **{member_count:,}**"
+                    link = invite_links.get(item.id)
+                    value += f"\\n[Zum Server beitreten]({link})" if link else "\\n*Kein Link verfügbar – Berechtigung fehlt.*"
                     embed.add_field(
                         name=discord.utils.escape_markdown(item.name)[:256],
                         value=value,
