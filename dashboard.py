@@ -1907,10 +1907,30 @@ def premium_page():
                 continue
             try:
                 grant_manual_premium(target_id, user_id)
+                # Immediately link the newly upgraded account to servers where
+                # that user is an administrator, without replacing another owner.
+                linked_servers = []
+                if _bot is not None and _config is not None:
+                    for target_guild in _bot.guilds:
+                        target_member = target_guild.get_member(int(target_id))
+                        if target_member is None:
+                            continue
+                        if not (target_member.guild_permissions.administrator or target_member.guild_permissions.manage_guild):
+                            continue
+                        guild_cfg = _config.setdefault(str(target_guild.id), {})
+                        current_owner = str(guild_cfg.get("premium_owner_id") or "")
+                        if not current_owner or current_owner == target_id:
+                            guild_cfg["premium_owner_id"] = target_id
+                            linked_servers.append(target_guild.name)
+                    if linked_servers:
+                        _save_json(data_path("config.json"), _config)
                 bulk_results.append(target_id)
             except (ValueError, PermissionError):
                 bulk_errors.append(target_id)
     plan = account_plan(user_id)
+    current_grants = sync_manual_grants()
+    own_grant = current_grants.get(user_id, {})
+    own_expiry = str(own_grant.get("expires_at", ""))[:10] if isinstance(own_grant, dict) else ""
     included_features = set(PLAN_FEATURES.get(plan, frozenset()))
     rows = []
     for feature, label in PREMIUM_FEATURES.items():
@@ -1919,8 +1939,10 @@ def premium_page():
     body = (
         '<section class="card hero"><span class="pill">IRONWOLF PREMIUM</span><h1 style="margin-top:14px">Dein Premium-Konto</h1>'
         '<p>Dein Zugriff wird an dein angemeldetes Discord-Konto gebunden.</p>'
-        '<div class="notice">Aktueller Plan: <strong>' + ("Premium" if plan == "premium" else "Free") + '</strong></div>'
-        '<p>Premium umfasst alle verfügbaren Premium-Funktionen. Die Freischaltung erfolgt derzeit manuell.</p>'
+        '<div class="notice">Aktueller Plan: <strong>' + ("Premium" if plan == "premium" else "Free") + '</strong>'
+        + (' · Gültig bis: <strong>' + html.escape(own_expiry) + '</strong>' if plan == "premium" and own_expiry else '')
+        + '</div>'
+        '<p>Dein Plan und die enthaltenen Funktionen werden bei jedem Seitenaufruf direkt aus deinem aktuellen Premium-Zugang geladen.</p>'
         '</section><div class="grid">' + "".join(rows) + '</div>'
         '<section class="card"><h2>Premium</h2><p><strong>Alle Premium-Funktionen in einem Plan.</strong></p>'
         '<p class="muted">Ein Online-Checkout ist derzeit nicht verbunden. Server-Testphasen und bestehende Freischaltungen bleiben erhalten.</p>'
@@ -2020,6 +2042,7 @@ def premium_users_admin():
         rows.append(
             '<tr><td><code>' + html.escape(str(target_id)) + '</code></td>'
             + '<td>' + html.escape(source_labels.get(source, source)) + '</td>'
+            + '<td>' + ("Premium" if status_label == "Aktiv" and grant.get("plan") in {"premium", "premium_plus"} else "Free") + '</td>'
             + '<td>' + html.escape(expiry_label) + '</td>'
             + '<td>' + html.escape(status_label) + '</td><td>' + action + '</td></tr>'
         )
@@ -2029,7 +2052,7 @@ def premium_users_admin():
     elif request.args.get("result") == "missing":
         notice = '<div class="notice">Für diese ID wurde keine Admin-Freischaltung gefunden.</div>'
     table = (
-        '<div style="overflow-x:auto"><table><thead><tr><th>Discord-ID</th><th>Quelle</th><th>Gültig bis</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'
+        '<div style="overflow-x:auto"><table><thead><tr><th>Discord-ID</th><th>Quelle</th><th>Plan</th><th>Gültig bis</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'
         + ''.join(rows)
         + '</tbody></table></div>'
         if rows else '<p class="muted">Noch keine Premium-Freischaltungen vorhanden.</p>'
