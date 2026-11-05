@@ -6089,6 +6089,26 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
         print(f"[MAIN SERVER DM] Inviter not found for guild {guild.id}; will retry on a later startup.")
         return False
 
+    bot_member = guild.me
+    bot_permissions = bot_member.guild_permissions if bot_member else discord.Permissions.none()
+    permission_checks = [
+        ("View Channels", bot_permissions.view_channel),
+        ("Send Messages", bot_permissions.send_messages),
+        ("Embed Links", bot_permissions.embed_links),
+        ("Read Message History", bot_permissions.read_message_history),
+        ("Manage Channels", bot_permissions.manage_channels),
+        ("Manage Roles", bot_permissions.manage_roles),
+        ("Manage Messages", bot_permissions.manage_messages),
+        ("Kick Members", bot_permissions.kick_members),
+        ("Ban Members", bot_permissions.ban_members),
+        ("Moderate Members", bot_permissions.moderate_members),
+        ("View Audit Log", bot_permissions.view_audit_log),
+    ]
+    permission_lines = "\\n".join(
+        f"{'☑️' if bot_permissions.administrator or enabled else '⬜'} {label}"
+        for label, enabled in permission_checks
+    )
+
     embed = discord.Embed(
         title="🐺 IronWolf — Official Main Server",
         description=(
@@ -6100,13 +6120,12 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
             "💡 Share ideas and suggest new features\n"
             "📢 Follow updates, announcements, and improvements\n"
             "🤝 Get help and connect with other IronWolf users\n\n"
-            "**Permissions for the best experience**\n"
-            "For full functionality, grant IronWolf the **Administrator** permission. "
-            "This is the simplest setup, but it gives broad access. If you prefer limited access, "
-            "grant only the permissions your enabled modules need, including: "
-            "**View Channels, Send Messages, Embed Links, Read Message History, Manage Channels, "
-            "Manage Roles, Manage Messages, Kick Members, Ban Members, Moderate Members, and View Audit Log**. "
-            "Some features will be unavailable without their specific permissions. "
+            "**IronWolf permission checklist — " + discord.utils.escape_markdown(guild.name) + "**\n"
+            + permission_lines + "\\n"
+            "☑️ = permission currently granted · ⬜ = permission missing\n"
+            "The checklist shows IronWolf’s current server permissions. "
+            "For all features with the fewest setup issues, Administrator is the simplest option, "
+            "but it grants broad access. Otherwise, enable only the permissions needed by the modules you use. "
             "Keep the IronWolf role below trusted staff roles and above roles it must manage.\n\n"
             "**Join the official IronWolf community:**\n"
             "https://discord.gg/KDKs5WPgaC\n\n"
