@@ -2773,11 +2773,18 @@ def team_management_dashboard(guild_id):
                 if value and value not in roles:
                     abort(400, "Invalid role.")
                 cfg["high_team_role_id" if setting == "high_role" else "team_ban_role_id"] = int(value) if value else None
-            elif setting == "channel":
+            elif setting in {"channel", "channel_uprank", "channel_downrank", "channel_team_ban", "channel_team_kick"}:
                 value = request.form.get("channel_id", "").strip()
                 if value and value not in channels:
                     abort(400, "Invalid channel.")
-                cfg["team_management_channel_id"] = int(value) if value else None
+                channel_key = {
+                    "channel": "team_management_channel_id",
+                    "channel_uprank": "team_uprank_channel_id",
+                    "channel_downrank": "team_downrank_channel_id",
+                    "channel_team_ban": "team_ban_announcement_channel_id",
+                    "channel_team_kick": "team_kick_announcement_channel_id",
+                }[setting]
+                cfg[channel_key] = int(value) if value else None
             elif setting == "rank_roles":
                 ladder = []
                 for index in range(1, 9):
@@ -2825,9 +2832,15 @@ def team_management_dashboard(guild_id):
             abort(400, "Select a valid member.")
         if not reason or len(reason) > 500:
             abort(400, "Enter a reason (maximum 500 characters).")
-        channel_id = str(cfg.get("team_management_channel_id") or "")
+        announcement_channel_keys = {
+            "uprank": "team_uprank_channel_id",
+            "downrank": "team_downrank_channel_id",
+            "team_ban": "team_ban_announcement_channel_id",
+            "team_kick": "team_kick_announcement_channel_id",
+        }
+        channel_id = str(cfg.get(announcement_channel_keys.get(action, "")) or cfg.get("team_management_channel_id") or "")
         if channel_id not in channels:
-            abort(400, "Save a notification channel first.")
+            abort(400, "Save an announcement channel for this module first.")
         if not cfg.get("team_role_ids"):
             abort(400, "Save at least one team role first.")
         if action not in {"uprank", "downrank", "team_ban", "team_kick"}:
@@ -2958,7 +2971,11 @@ def team_management_dashboard(guild_id):
             ("high_role", "High Team Role", "Choose the senior team role."),
             ("ban_role", "Team Ban Role", "Choose the role used for Team Bans."),
             ("rank_roles", "Rank Roles", "Set the rank ladder used by Uprank and Downrank."),
-            ("channel", "Announcement Channel", "Choose where team action announcements are posted."),
+            ("channel_uprank", "Team Uprank Announcement Channel", "Choose the channel for Uprank announcements."),
+            ("channel_downrank", "Team Downrank Announcement Channel", "Choose the channel for Downrank announcements."),
+            ("channel_team_ban", "Team Ban Announcement Channel", "Choose the channel for Team Ban announcements."),
+            ("channel_team_kick", "Team Kick Announcement Channel", "Choose the channel for Team Kick announcements."),
+            ("channel", "Fallback Announcement Channel", "Used only if a module-specific channel is not configured."),
         ]
         body += '<h2>Team Settings</h2><p class="muted">Choose one setting to edit.</p><div class="grid">'
         for key, label, description in setting_labels:
@@ -2978,9 +2995,17 @@ def team_management_dashboard(guild_id):
             body += '<h2>High Team Role</h2><label>Choose role</label><select name="role_id">' + role_options(cfg.get("high_team_role_id")) + '</select>'
         elif setting == "ban_role":
             body += '<h2>Team Ban Role</h2><label>Choose role</label><select name="role_id">' + role_options(cfg.get("team_ban_role_id")) + '</select>'
-        elif setting == "channel":
-            body += '<h2>Announcement Channel</h2><label>Choose channel</label><select name="channel_id"><option value="">— Select channel —</option>'
-            selected_channel = str(cfg.get("team_management_channel_id") or "")
+        elif setting in {"channel", "channel_uprank", "channel_downrank", "channel_team_ban", "channel_team_kick"}:
+            channel_keys = {
+                "channel": ("team_management_channel_id", "Fallback Announcement Channel"),
+                "channel_uprank": ("team_uprank_channel_id", "Team Uprank Announcement Channel"),
+                "channel_downrank": ("team_downrank_channel_id", "Team Downrank Announcement Channel"),
+                "channel_team_ban": ("team_ban_announcement_channel_id", "Team Ban Announcement Channel"),
+                "channel_team_kick": ("team_kick_announcement_channel_id", "Team Kick Announcement Channel"),
+            }
+            channel_key, channel_title = channel_keys[setting]
+            body += '<h2>' + channel_title + '</h2><label>Choose channel</label><select name="channel_id"><option value="">— Select channel —</option>'
+            selected_channel = str(cfg.get(channel_key) or "")
             for channel in sorted(guild.text_channels, key=lambda item: item.position):
                 selected = " selected" if str(channel.id) == selected_channel else ""
                 body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
