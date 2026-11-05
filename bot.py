@@ -55,6 +55,7 @@ class GuildGateBot(commands.Bot):
 
 bot = GuildGateBot(command_prefix=("!", "."), intents=intents, case_insensitive=True)
 _automation_worker_task = None
+_team_ban_expiry_task = None
 _birthday_worker_task = None
 _historical_main_server_invite_task = None
 _mainserver_announcement_task = None
@@ -735,6 +736,71 @@ def cleanup_expired_trial_premium(guild_id):
         save_json(CONFIG_FILE, config)
         print(f"[PREMIUM] Trial Premium settings cleaned for guild {guild_id}.", flush=True)
     return changed
+
+
+async def team_ban_expiry_worker():
+    """Restore saved team roles when temporary dashboard Team Bans expire."""
+    while not bot.is_closed():
+        now = datetime.now(timezone.utc)
+        changed = False
+        for guild_id, guild_cfg in list(config.items()):
+            if not str(guild_id).isdigit() or not isinstance(guild_cfg, dict):
+                continue
+            schedules = guild_cfg.get("team_ban_schedules", [])
+            if not isinstance(schedules, list) or not schedules:
+                continue
+            remaining = []
+            guild = bot.get_guild(int(guild_id))
+            for row in schedules:
+                if not isinstance(row, dict):
+                    changed = True
+                    continue
+                try:
+                    expires = datetime.fromisoformat(str(row.get("expires_at", "")).replace("Z", "+00:00"))
+                    if expires.tzinfo is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                except (TypeError, ValueError):
+                    remaining.append(row)
+                    continue
+                if expires > now or guild is None:
+                    remaining.append(row)
+                    continue
+                try:
+                    member = guild.get_member(int(row.get("user_id", 0))) or await guild.fetch_member(int(row.get("user_id", 0)))
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError):
+                    changed = True
+                    continue
+                ban_role_id = row.get("ban_role_id")
+                ban_role = guild.get_role(int(ban_role_id)) if str(ban_role_id or "").isdigit() else None
+                restore_roles = [guild.get_role(int(rid)) for rid in row.get("role_ids", []) if str(rid).isdigit()]
+                restore_roles = [role for role in restore_roles if role and not role.is_default() and not role.managed]
+                try:
+                    if ban_role and ban_role in member.roles:
+                        await member.remove_roles(ban_role, reason="Temporary Team Ban expired")
+                    eligible = [role for role in restore_roles if role < guild.me.top_role and role not in member.roles]
+                    if eligible:
+                        await member.add_roles(*eligible, reason="Restore previous team roles after temporary Team Ban")
+                    channel_id = guild_cfg.get("team_management_channel_id")
+                    channel = guild.get_channel(int(channel_id)) if str(channel_id or "").isdigit() else None
+                    if isinstance(channel, discord.TextChannel):
+                        embed = discord.Embed(
+                            title="IronWolf Team Management · Team Ban expired",
+                            description=member.mention + "'s previous team roles have been restored automatically.",
+                            color=discord.Color.green(),
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        embed.add_field(name="Restored roles", value=", ".join(role.name for role in eligible)[:1024] or "No roles could be restored", inline=False)
+                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(f"[TEAM BAN] Could not restore roles in guild {guild_id}: {type(exc).__name__}", flush=True)
+                    remaining.append(row)
+                    continue
+                changed = True
+            if len(remaining) != len(schedules):
+                guild_cfg["team_ban_schedules"] = remaining
+        if changed:
+            save_json(CONFIG_FILE, config)
+        await asyncio.sleep(30)
 
 
 async def premium_automation_worker():
@@ -8670,12 +8736,16 @@ async def on_ready():
             name="historical-main-server-inviter-dms",
         )
     global _automation_worker_task
+    global _team_ban_expiry_task
+
     global _birthday_worker_task
     global _server_statistics_task
     release_changes = record_module_changes()
     await announce_private_release(release_changes)
     if _automation_worker_task is None or _automation_worker_task.done():
         _automation_worker_task = asyncio.create_task(premium_automation_worker(), name="premium-automation-worker")
+    if _team_ban_expiry_task is None or _team_ban_expiry_task.done():
+        _team_ban_expiry_task = asyncio.create_task(team_ban_expiry_worker(), name="team-ban-expiry-worker")
     if _birthday_worker_task is None or _birthday_worker_task.done():
         _birthday_worker_task = asyncio.create_task(birthday_worker(), name="birthday-worker")
     if _server_statistics_task is None or _server_statistics_task.done():
