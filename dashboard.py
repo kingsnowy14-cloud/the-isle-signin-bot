@@ -1386,6 +1386,23 @@ DASHBOARD_TRANSLATIONS = {
     }
 }
 
+# The dashboard is English-only. Reuse the existing German catalogue in reverse
+# so legacy German labels and messages are rendered in English as well.
+DASHBOARD_TRANSLATIONS["en"].update({
+    translated: source
+    for source, translated in DASHBOARD_TRANSLATIONS["de"].items()
+    if translated and translated != source
+})
+DASHBOARD_TRANSLATIONS["en"].update({
+    "🎨 KI & Kreativität": "🎨 AI & Creativity",
+    "🤖 AI Assistant & Wissen": "🤖 AI Assistant & Knowledge",
+    "🖼️ Bildgenerierung": "🖼️ Image Generation",
+    "Gültig bis": "Valid until",
+    "Speichern": "Save",
+    "Einstellungen": "Settings",
+    "Zur Serverübersicht": "Back to server overview",
+})
+
 def _translate_dashboard(value, language):
     translations = DASHBOARD_TRANSLATIONS.get(language, {})
     for source in sorted(translations, key=len, reverse=True):
