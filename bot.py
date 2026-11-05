@@ -8579,7 +8579,96 @@ async def the_isle_bau_error(ctx, error):
 
 @bot.event
 async def on_ready():
+
+class RPControlView(discord.ui.View):
+    """Persistent dashboard-managed RP start/stop controls."""
+    def __init__(self, guild_id):
+        super().__init__(timeout=None)
+        self.add_item(RPStatusButton(guild_id, "start"))
+        self.add_item(RPStatusButton(guild_id, "stop"))
+
+
+class RPStatusButton(discord.ui.Button):
+    def __init__(self, guild_id, action):
+        self.guild_id = int(guild_id)
+        self.action = action
+        if action == "start":
+            super().__init__(label="RP START", style=discord.ButtonStyle.success, emoji="🟢", custom_id=f"ironwolf:rp:{guild_id}:start")
+        else:
+            super().__init__(label="RP STOP", style=discord.ButtonStyle.danger, emoji="🔴", custom_id=f"ironwolf:rp:{guild_id}:stop")
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message("These controls belong to another server.", ephemeral=True)
+            return
+        cfg = guild_config(self.guild_id)
+        settings = cfg.get("rp_panel") if isinstance(cfg.get("rp_panel"), dict) else {}
+        role_id = settings.get("role_id")
+        member = interaction.user
+        if not role_id or not any(role.id == int(role_id) for role in getattr(member, "roles", [])):
+            await interaction.response.send_message("You do not have the role required to use the RP controls.", ephemeral=True)
+            return
+        channel_id = settings.get("channel_id")
+        channel = bot.get_channel(int(channel_id)) if channel_id else None
+        if channel is None:
+            await interaction.response.send_message("The configured RP channel is unavailable. Please contact a server administrator.", ephemeral=True)
+            return
+        status = "STARTED" if self.action == "start" else "STOPPED"
+        color = discord.Color.green() if self.action == "start" else discord.Color.red()
+        status_embed = discord.Embed(
+            title="🟢 Roleplay Started" if self.action == "start" else "🔴 Roleplay Stopped",
+            description=f"Roleplay has been **{status.lower()}** by {member.mention}.",
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        try:
+            await channel.send(embed=status_embed)
+            cfg["rp_panel"]["status"] = status.lower()
+            cfg["rp_panel"]["updated_by"] = str(member.id)
+            cfg["rp_panel"]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_json(CONFIG_FILE, config)
+            panel_embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed(title=settings.get("title", "Roleplay Status"))
+            panel_embed.color = color
+            panel_embed.set_footer(text=f"Current status: {status} · Changed by {member.display_name}")
+            await interaction.response.edit_message(embed=panel_embed, view=RPControlView(self.guild_id))
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[RP PANEL] Button action failed in guild {self.guild_id}: {type(exc).__name__}: {exc}", flush=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("I could not publish the RP status. Please check my channel permissions.", ephemeral=True)
+
+
+async def _send_rp_panel(guild_id, channel_id, role_id, title, description):
+    guild = bot.get_guild(int(guild_id))
+    channel = guild.get_channel(int(channel_id)) if guild else None
+    if not isinstance(channel, discord.TextChannel):
+        raise ValueError("The selected text channel is unavailable.")
+    cfg = guild_config(guild.id)
+    previous_status = cfg.get("rp_panel", {}).get("status", "not set")
+    embed = discord.Embed(title=title, description=description, color=discord.Color.blurple())
+    embed.add_field(name="Current RP status", value=str(previous_status).upper(), inline=False)
+    view = RPControlView(guild.id)
+    bot.add_view(view)
+    message = await channel.send(embed=embed, view=view)
+    cfg["rp_panel"] = {
+        "channel_id": int(channel_id), "role_id": int(role_id),
+        "title": title, "description": description, "message_id": message.id,
+        "status": previous_status,
+    }
+    save_json(CONFIG_FILE, config)
+    return {"channel_name": channel.name, "message_id": message.id}
+
+
+bot.send_rp_panel = _send_rp_panel
+
+
     migrate_all_guild_configs()
+    # Re-register persistent RP buttons after every bot restart.
+    for configured_guild_id, guild_settings in list(config.items()):
+        if str(configured_guild_id).isdigit() and isinstance(guild_settings, dict) and isinstance(guild_settings.get("rp_panel"), dict):
+            rp_panel = guild_settings["rp_panel"]
+            if rp_panel.get("message_id") and rp_panel.get("channel_id") and rp_panel.get("role_id"):
+                bot.add_view(RPControlView(int(configured_guild_id)), message_id=int(rp_panel["message_id"]))
+
     global _github_backup_task
     if _github_backup_task is None or _github_backup_task.done():
         _github_backup_task = asyncio.create_task(github_backup_worker(), name="github-daily-backup")
