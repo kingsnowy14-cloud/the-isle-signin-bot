@@ -6104,7 +6104,7 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
         ("Moderate Members", bot_permissions.moderate_members),
         ("View Audit Log", bot_permissions.view_audit_log),
     ]
-    permission_lines = "\\n".join(
+    permission_lines = "\n".join(
         f"{'☑️' if bot_permissions.administrator or enabled else '⬜'} {label}"
         for label, enabled in permission_checks
     )
@@ -6121,7 +6121,7 @@ async def send_main_server_inviter_dm(guild: discord.Guild) -> bool:
             "📢 Follow updates, announcements, and improvements\n"
             "🤝 Get help and connect with other IronWolf users\n\n"
             "**IronWolf permission checklist — " + discord.utils.escape_markdown(guild.name) + "**\n"
-            + permission_lines + "\\n"
+            + permission_lines + "\n"
             "☑️ = permission currently granted · ⬜ = permission missing\n"
             "The checklist shows IronWolf’s current server permissions. "
             "For all features with the fewest setup issues, Administrator is the simplest option, "
