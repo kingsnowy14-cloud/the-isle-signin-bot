@@ -1251,6 +1251,7 @@ def _module_navigation():
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
         ("applications", "📝 Applications", "/applications"),
         ("tickets", "🎟️ Support Tickets", "/tickets"),
+        ("rp-control", "🎭 RP Start / Stop", "/rp-control"),
         ("quick-support", "🆘 Quick Support", "/quick-support"),
         ("__ai_category__", "🎨 KI & Kreativität", ""),
         ("ai", "🤖 AI Assistant & Wissen", "/ai"),
@@ -2899,6 +2900,68 @@ def guild_temporary_voice_settings(guild_id):
     body += '<p class="muted">Wenn keine Kategorie gewählt wird, übernimmt der neue Raum die Kategorie des Trigger-Kanals. Der Bot benötigt „Kanäle verwalten“, „Kanäle ansehen“, „Verbinden“ und „Mitglieder verschieben“.</p>'
     body += '<button type="submit">💾 Temporary-Voice-Einstellungen speichern</button></form></section>'
     return _render(guild.name + " · Temporary Voice", body)
+
+
+@app.route("/guild/<guild_id>/rp-control", methods=["GET", "POST"])
+def guild_rp_control(guild_id):
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    rp_cfg = cfg.get("rp_panel") if isinstance(cfg.get("rp_panel"), dict) else {}
+    notice = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF-Prüfung fehlgeschlagen. Bitte Seite neu laden.")
+        channel_id = request.form.get("channel_id", "").strip()
+        role_id = request.form.get("role_id", "").strip()
+        title = request.form.get("embed_title", "Roleplay Status").strip()[:256]
+        description = request.form.get("embed_description", "Use the buttons below to announce when roleplay starts or stops.").strip()[:4000]
+        if not channel_id or not channel_id.isdigit() or int(channel_id) not in {c.id for c in guild.text_channels}:
+            abort(400, "Bitte wähle einen gültigen Textkanal.")
+        if not role_id or not role_id.isdigit() or int(role_id) not in {r.id for r in guild.roles if not r.is_default() and not r.managed}:
+            abort(400, "Bitte wähle eine gültige Berechtigungsrolle.")
+        if not title:
+            abort(400, "Der Embed-Titel darf nicht leer sein.")
+        if not _bot or not _bot.is_ready() or not _bot.loop.is_running():
+            abort(503, "IronWolf ist momentan nicht bereit. Bitte versuche es gleich erneut.")
+        import concurrent.futures
+        future = asyncio.run_coroutine_threadsafe(
+            _bot.send_rp_panel(guild.id, int(channel_id), int(role_id), title, description),
+            _bot.loop,
+        )
+        try:
+            result = future.result(timeout=25)
+        except concurrent.futures.TimeoutError:
+            abort(504, "Discord hat zu lange für das Senden gebraucht. Bitte prüfe den Kanal, bevor du erneut sendest.")
+        except Exception as exc:
+            print(f"[RP PANEL] Could not send panel for guild {gid}: {type(exc).__name__}: {exc}", flush=True)
+            abort(502, "Die RP-Nachricht konnte nicht gesendet werden. Prüfe die Bot-Rechte im ausgewählten Kanal.")
+        notice = '<div class="notice">✅ RP-Start/Stop-Nachricht wurde in <strong>#' + html.escape(result["channel_name"]) + '</strong> gesendet.</div>'
+        rp_cfg = cfg.get("rp_panel", {})
+    channel_options = ''.join(
+        '<option value="' + str(channel_id) + '"' + (' selected' if str(rp_cfg.get("channel_id", "")) == str(channel_id) else '') + '>#' + html.escape(name) + '</option>'
+        for channel_id, name in _guild_channels(guild)
+    )
+    role_options = ''.join(
+        '<option value="' + str(role_id) + '"' + (' selected' if str(rp_cfg.get("role_id", "")) == str(role_id) else '') + '>' + html.escape(name) + '</option>'
+        for role_id, name in _guild_roles(guild)
+    )
+    body = (
+        '<section class="card"><h1>🎭 RP Start / Stop</h1>'
+        '<p>Erstelle eine Nachricht mit zwei Buttons. Mitglieder mit der ausgewählten Rolle können den RP-Status ändern. Jeder Klick veröffentlicht eine Statusmeldung im gewählten Kanal.</p>'
+        + notice +
+        '<form method="post">' + _csrf_field() +
+        '<label>Nachrichten-Kanal</label><select name="channel_id" required>' + channel_options + '</select>'
+        '<label>Rolle, die RP-Buttons bedienen darf</label><select name="role_id" required>' + role_options + '</select>'
+        '<label>Embed-Titel</label><input name="embed_title" maxlength="256" value="' + html.escape(str(rp_cfg.get("title", "Roleplay Status")), quote=True) + '" required>'
+        '<label>Embed-Beschreibung</label><textarea name="embed_description" maxlength="4000" rows="4">' + html.escape(str(rp_cfg.get("description", "Use the buttons below to announce when roleplay starts or stops."))) + '</textarea>'
+        '<button type="submit">📨 RP-Start/Stop-Nachricht senden</button></form>'
+        '<p class="muted">Hinweis: Du kannst die Einstellungen ändern und erneut senden. Alte Nachrichten behalten ihre Buttons, verwenden aber weiterhin die aktuell gespeicherte Rollenberechtigung.</p>'
+        '</section>'
+    )
+    return _render("RP Start / Stop · IronWolf", body)
 
 
 @app.route("/guild/<guild_id>", methods=["GET", "POST"])
