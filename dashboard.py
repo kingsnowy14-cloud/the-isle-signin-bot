@@ -2788,8 +2788,11 @@ def team_management_dashboard(guild_id):
 
         member_raw = request.form.get("member_id", "").strip()
         member_raw = re.sub(r"^<@!?(\d+)>$", r"\1", member_raw)
+        reason = request.form.get("reason", "").strip()
         if not member_raw.isdigit():
-            abort(400, "Enter a valid Discord member ID or mention.")
+            abort(400, "Select a valid member.")
+        if not reason or len(reason) > 500:
+            abort(400, "Enter a reason (maximum 500 characters).")
         channel_id = str(cfg.get("team_management_channel_id") or "")
         if channel_id not in channels:
             abort(400, "Save a notification channel first.")
@@ -2797,6 +2800,10 @@ def team_management_dashboard(guild_id):
             abort(400, "Save at least one team role first.")
         if action not in {"uprank", "downrank", "team_ban", "team_kick"}:
             abort(400, "Unknown team action.")
+        duration = request.form.get("ban_duration", "permanent").strip()
+        duration_seconds = {"1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000}.get(duration)
+        if action == "team_ban" and duration not in {"permanent", "1h", "24h", "7d", "30d"}:
+            abort(400, "Select a valid Team Ban duration.")
         if not _bot or not _bot.loop.is_running():
             abort(503, "IronWolf is offline.")
 
@@ -2809,13 +2816,15 @@ def team_management_dashboard(guild_id):
             if bot_member is None or not bot_member.guild_permissions.manage_roles:
                 raise ValueError("IronWolf needs Manage Roles permission.")
             team_ids = {int(x) for x in cfg.get("team_role_ids", []) if str(x).isdigit()}
-            ladder = [int(x) for x in cfg.get(ladder_key, []) if str(x).isdigit()]
+            ladder = [int(x) for x in cfg.get(ladder_key, []) if str(x).isdigit()}
             high = cfg.get("high_team_role_id")
             if str(high or "").isdigit():
                 team_ids.add(int(high))
             team_roles = [r for r in member.roles if r.id in team_ids or r.id in ladder]
             if any(r >= bot_member.top_role for r in team_roles):
                 raise ValueError("Move IronWolf's highest role above all configured team roles.")
+            previous_rank = next((r for r in team_roles if r.id in ladder), None)
+            old_role_names = [r.name for r in team_roles]
             if action in {"uprank", "downrank"}:
                 if len(ladder) < 2:
                     raise ValueError("Configure at least two rank roles.")
@@ -2826,9 +2835,13 @@ def team_management_dashboard(guild_id):
                 if target_index < 0 or target_index >= len(ladder):
                     raise ValueError("This member is already at the end of the rank ladder.")
                 target_role = guild.get_role(ladder[target_index])
-                await member.remove_roles(*[r for r in team_roles if r.id in ladder], reason="Team rank changed via IronWolf dashboard")
-                await member.add_roles(target_role, reason="Team rank changed via IronWolf dashboard")
-                description = member.mention + " moved to **" + target_role.name + "**."
+                if target_role is None or target_role >= bot_member.top_role:
+                    raise ValueError("The target rank role is missing or above IronWolf's highest role.")
+                await member.remove_roles(*[r for r in team_roles if r.id in ladder], reason=reason)
+                await member.add_roles(target_role, reason=reason)
+                old_name = previous_rank.name if previous_rank else "Unknown"
+                description = member.mention + " moved from **" + old_name + "** to **" + target_role.name + "**."
+                action_title = "Uprank" if action == "uprank" else "Downrank"
             elif action == "team_ban":
                 ban_id = cfg.get("team_ban_role_id")
                 ban_role = guild.get_role(int(ban_id)) if str(ban_id or "").isdigit() else None
@@ -2836,23 +2849,52 @@ def team_management_dashboard(guild_id):
                     raise ValueError("Configure a Team Ban role first.")
                 if ban_role >= bot_member.top_role:
                     raise ValueError("Move IronWolf's highest role above the Team Ban role.")
+                if not team_roles:
+                    raise ValueError("This member has no configured team roles to suspend.")
                 if team_roles:
-                    await member.remove_roles(*team_roles, reason="Team ban via IronWolf dashboard")
-                await member.add_roles(ban_role, reason="Team ban via IronWolf dashboard")
-                description = member.mention + " received the Team Ban role. Team roles were removed."
+                    await member.remove_roles(*team_roles, reason=reason)
+                await member.add_roles(ban_role, reason=reason)
+                if duration_seconds:
+                    schedules = cfg.setdefault("team_ban_schedules", [])
+                    schedules[:] = [row for row in schedules if not (isinstance(row, dict) and str(row.get("user_id")) == str(member.id))]
+                    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)).isoformat()
+                    schedules.append({
+                        "user_id": str(member.id),
+                        "role_ids": [r.id for r in team_roles],
+                        "ban_role_id": ban_role.id,
+                        "expires_at": expires_at,
+                        "reason": reason[:500],
+                    })
+                    _save_json(data_path("config.json"), _config)
+                    duration_label = {"1h": "1 hour", "24h": "24 hours", "7d": "7 days", "30d": "30 days"}[duration]
+                    description = member.mention + " received a **temporary Team Ban** for " + duration_label + ". Previous team roles will be restored automatically."
+                else:
+                    description = member.mention + " received a **permanent Team Ban**. Team roles were removed."
+                action_title = "Team Ban"
             else:
                 if team_roles:
-                    await member.remove_roles(*team_roles, reason="TT-Team Kick via IronWolf dashboard")
+                    await member.remove_roles(*team_roles, reason=reason)
                 description = member.mention + " was removed from the team. They remain in the Discord server."
+                action_title = "TT-Team Kick"
+
             channel = channels[channel_id]
-            embed = discord.Embed(title="IronWolf Team Management · " + action.replace("_", " ").title(), description=description, color=discord.Color.orange(), timestamp=datetime.now(timezone.utc))
+            embed = discord.Embed(title="IronWolf Team Management · " + action_title, description=description, color=discord.Color.orange(), timestamp=datetime.now(timezone.utc))
             embed.add_field(name="Moderator", value="<@" + actor_id + ">", inline=True)
             embed.add_field(name="Member", value=member.mention, inline=True)
+            embed.add_field(name="Reason", value=reason[:1024], inline=False)
+            if action in {"uprank", "downrank"}:
+                embed.add_field(name="Role change", value="**From:** " + (previous_rank.name if previous_rank else "Unknown") + "\n**To:** " + target_role.name, inline=False)
+            elif action in {"team_ban", "team_kick"}:
+                embed.add_field(name="Removed team roles", value=", ".join(old_role_names)[:1024] or "None", inline=False)
+                if action == "team_ban":
+                    embed.add_field(name="Duration", value="Permanent" if not duration_seconds else duration_label, inline=True)
+                    if duration_seconds:
+                        embed.add_field(name="Role restoration", value="Automatic when the ban expires", inline=True)
             await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
         try:
             asyncio.run_coroutine_threadsafe(apply_action(), _bot.loop).result(timeout=30)
-            _audit_dashboard_change(guild.id, "Team Action", actor_id, action + " for member " + member_raw)
+            _audit_dashboard_change(guild.id, "Team Action", actor_id, action + " for member " + member_raw + ": " + reason[:300])
             return redirect(url_for("team_management_dashboard", guild_id=gid, result=action))
         except ValueError as exc:
             return _render("Team action failed", '<section class="card"><h1>Team action failed</h1><p>' + html.escape(str(exc)) + '</p></section>', 400)
@@ -2885,10 +2927,15 @@ def team_management_dashboard(guild_id):
         body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
     body += '</select><button type="submit">Save Team Settings</button></form></section>'
     body += '<section class="card"><h2>Team actions</h2><p>Team Kick removes team roles only; it does not kick the member from Discord.</p><form method="post">' + _csrf_field()
-    body += '<label>Member ID or mention</label><input name="member_id" placeholder="Discord user ID or @member" required>'
+    body += '<label>Member</label><select name="member_id" required><option value="">— Select member —</option>'
+    for member in sorted(guild.members, key=lambda m: m.display_name.casefold()):
+        body += '<option value="' + str(member.id) + '">' + html.escape(member.display_name) + ' (' + str(member.id) + ')</option>'
+    body += '</select>'
     body += '<label>Action</label><select name="team_action"><option value="uprank">Uprank</option><option value="downrank">Downrank</option><option value="team_ban">Team Ban</option><option value="team_kick">TT-Team Kick</option></select>'
+    body += '<label>Reason (required for every action)</label><textarea name="reason" maxlength="500" required placeholder="Enter the reason for this action"></textarea>'
+    body += '<label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select>'
     body += '<button type="submit" class="danger">Apply action and send announcement</button></form></section>'
-    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes.</p>'
+    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes. Temporary Team Bans restore the member\'s previous team roles automatically when they expire.</p>'
     return _render("Team Management · IronWolf", body)
 
 
