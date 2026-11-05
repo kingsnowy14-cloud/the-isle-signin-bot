@@ -548,7 +548,7 @@ def guild_config(guild_id):
     else:
         changed = False
     changed = _merge_missing_defaults(cfg, DEFAULT_GUILD_CONFIG) or changed
-    if cfg.get("bot_language") not in SUPPORTED_BOT_LANGUAGES:
+    if cfg.get("bot_language") != "en":
         cfg["bot_language"] = "en"
         changed = True
     # The assistant is intentionally restricted to the single dashboard-selected text channel.
@@ -606,11 +606,6 @@ def server_language(guild_id):
     if guild_id is None:
         return "en"
     cfg = guild_config(guild_id)
-    language = str(cfg.get("bot_language", "auto")).lower()
-    if language == "auto":
-        guild = bot.get_guild(int(guild_id))
-        locale = str(getattr(guild, "preferred_locale", "en-US")).lower()
-        return "en"
     return "en"
 
 def bot_text(guild_id, text):
