@@ -815,11 +815,7 @@ async def premium_automation_worker():
 
 
 def user_language(user_id, discord_locale=None):
-    """Return a saved user preference or detect German/English from Discord locale."""
-    saved = data.setdefault("languages", {}).get(str(user_id))
-    if saved in {"de", "en"}:
-        return saved
-    locale = str(discord_locale or "en").lower()
+    """IronWolf is English-only."""
     return "en"
 
 
@@ -2811,34 +2807,17 @@ async def anmeldepannel(ctx):
     embed = create_embed(
         title="🦖 The Isle — Server Sign-In",
         description=(
-            "Welcome to the server registration panel!\n"
-            "Welcome to the server sign-in panel!\n"
-            "Vítejte v registračním panelu serveru!\n\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "**How to use / Anleitung / Návod**\n"
-            "1. Choose your private language below.\n"
-            "2. Press **Sign In** and fill in Dinosaur, Skin and Location.\n"
-            "3. When you leave, press **Sign Out**.\n\n"
-            "1. Select your private language below.\n"
-            "2. Drücke **Sign In** und fülle Dinosaurier, Skin und Standort aus.\n"
-            "3. Wenn du gehst, drücke **Sign Out**.\n\n"
-            "1. Níže si vyber jazyk soukromého formuláře.\n"
-            "2. Klikni na **Sign In** a vyplň dinosaura, skin a lokaci.\n"
-            "3. Při odchodu klikni na **Sign Out**.\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "Language selection changes only your private form and confirmation. "
-            "Public sign-in and sign-out announcements are always in English."
+            "Welcome to the server sign-in panel!\\n\\n"
+            "━━━━━━━━━━━━━━━━━━━━\\n"
+            "**How to use**\\n"
+            "1. Press **Sign In** and fill in Dinosaur, Skin and Location.\\n"
+            "2. When you leave, press **Sign Out**.\\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         ),
         color=discord.Color.blurple(),
     )
     embed.set_footer(text="Created by KingSnowy")
     await ctx.send(embed=embed, view=RegistrationView())
-    language_embed = create_embed(
-        title="🌐 Language / Sprache / Jazyk",
-        description="Choose the language for your private form and confirmation.",
-        color=discord.Color.teal(),
-    )
-    await ctx.send(embed=language_embed, view=LanguageView())
 
 
 @anmeldepannel.error
