@@ -2838,9 +2838,11 @@ def team_management_dashboard(guild_id):
             "team_ban": "team_ban_announcement_channel_id",
             "team_kick": "team_kick_announcement_channel_id",
         }
-        channel_id = str(cfg.get(announcement_channel_keys.get(action, "")) or "")
+        channel_id = request.form.get("announcement_channel_id", "").strip()
         if channel_id not in channels:
-            abort(400, "Choose and save the announcement channel for this module first.")
+            abort(400, "Select an announcement channel for this module.")
+        cfg[announcement_channel_keys[action]] = int(channel_id)
+        _save_json(data_path("config.json"), _config)
         if not cfg.get("team_role_ids"):
             abort(400, "Save at least one team role first.")
         if action not in {"uprank", "downrank", "team_ban", "team_kick"}:
@@ -2977,11 +2979,6 @@ def team_management_dashboard(guild_id):
             ("high_role", "High Team Role", "Choose the senior team role."),
             ("ban_role", "Team Ban Role", "Choose the role used for Team Bans."),
             ("rank_roles", "Rank Roles", "Set the rank ladder used by Uprank and Downrank."),
-            ("channel_uprank", "Team Uprank Announcement Channel", "Choose the channel for Uprank announcements."),
-            ("channel_downrank", "Team Downrank Announcement Channel", "Choose the channel for Downrank announcements."),
-            ("channel_team_ban", "Team Ban Announcement Channel", "Choose the channel for Team Ban announcements."),
-            ("channel_team_kick", "Team Kick Announcement Channel", "Choose the channel for Team Kick announcements."),
-            ("channel", "Fallback Announcement Channel", "Used only if a module-specific channel is not configured."),
         ]
         body += '<h2>Team Settings</h2><p class="muted">Choose one setting to edit.</p><div class="grid">'
         for key, label, description in setting_labels:
@@ -3034,6 +3031,18 @@ def team_management_dashboard(guild_id):
             body += '<label>Old role (will be removed)</label><select name="old_role_id" required>' + role_options("") + '</select>'
             body += '<label>New role (will be assigned)</label><select name="new_role_id" required>' + role_options("") + '</select>'
             body += '<small>Select the member\'s current role and the role they should receive. The old role is removed automatically.</small>'
+        channel_key = {
+            "uprank": "team_uprank_channel_id",
+            "downrank": "team_downrank_channel_id",
+            "team_ban": "team_ban_announcement_channel_id",
+            "team_kick": "team_kick_announcement_channel_id",
+        }[selected_action]
+        selected_channel = str(cfg.get(channel_key) or "")
+        body += '<label>Announcement channel</label><select name="announcement_channel_id" required><option value="">— Select announcement channel —</option>'
+        for channel in sorted(guild.text_channels, key=lambda item: item.position):
+            chosen = " selected" if str(channel.id) == selected_channel else ""
+            body += '<option value="' + str(channel.id) + '"' + chosen + '>#' + html.escape(channel.name) + '</option>'
+        body += '</select>'
         if selected_action == "team_ban":
             body += '<label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select><small>Temporary bans automatically restore the member\'s previous team roles when they expire.</small>'
         body += '<label>Member</label><select name="member_id" required><option value="">— Select member —</option>'
