@@ -2845,6 +2845,13 @@ def team_management_dashboard(guild_id):
             abort(400, "Save at least one team role first.")
         if action not in {"uprank", "downrank", "team_ban", "team_kick"}:
             abort(400, "Unknown team action.")
+        old_role_raw = request.form.get("old_role_id", "").strip()
+        new_role_raw = request.form.get("new_role_id", "").strip()
+        if action in {"uprank", "downrank"}:
+            if old_role_raw not in roles or new_role_raw not in roles:
+                abort(400, "Select both the old role and the new role.")
+            if old_role_raw == new_role_raw:
+                abort(400, "The old role and new role must be different.")
         duration = request.form.get("ban_duration", "permanent").strip()
         duration_seconds = {"1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000}.get(duration)
         if action == "team_ban" and duration not in {"permanent", "1h", "24h", "7d", "30d"}:
@@ -2871,20 +2878,19 @@ def team_management_dashboard(guild_id):
             previous_rank = next((r for r in team_roles if r.id in ladder), None)
             old_role_names = [r.name for r in team_roles]
             if action in {"uprank", "downrank"}:
-                if len(ladder) < 2:
-                    raise ValueError("Configure at least two rank roles.")
-                current = next((i for i, rid in enumerate(ladder) if any(r.id == rid for r in member.roles)), None)
-                if current is None:
-                    raise ValueError("This member has no configured rank role.")
-                target_index = current - 1 if action == "uprank" else current + 1
-                if target_index < 0 or target_index >= len(ladder):
-                    raise ValueError("This member is already at the end of the rank ladder.")
-                target_role = guild.get_role(ladder[target_index])
-                if target_role is None or target_role >= bot_member.top_role:
-                    raise ValueError("The target rank role is missing or above IronWolf's highest role.")
-                await member.remove_roles(*[r for r in team_roles if r.id in ladder], reason=reason)
+                previous_rank = guild.get_role(int(old_role_raw))
+                target_role = guild.get_role(int(new_role_raw))
+                if previous_rank is None or target_role is None:
+                    raise ValueError("One of the selected roles no longer exists.")
+                if previous_rank not in member.roles:
+                    raise ValueError("The selected old role is not assigned to this member.")
+                if previous_rank >= bot_member.top_role or target_role >= bot_member.top_role:
+                    raise ValueError("Move IronWolf's highest role above both selected roles.")
+                if previous_rank.managed or target_role.managed or previous_rank.is_default() or target_role.is_default():
+                    raise ValueError("Managed and @everyone roles cannot be changed.")
+                await member.remove_roles(previous_rank, reason=reason)
                 await member.add_roles(target_role, reason=reason)
-                old_name = previous_rank.name if previous_rank else "Unknown"
+                old_name = previous_rank.name
                 description = member.mention + " moved from **" + old_name + "** to **" + target_role.name + "**."
                 action_title = "Uprank" if action == "uprank" else "Downrank"
             elif action == "team_ban":
@@ -3024,6 +3030,10 @@ def team_management_dashboard(guild_id):
         label, description = action_labels[selected_action]
         body += '<h2>' + label + '</h2><p class="muted">' + description + '</p><form method="post">' + _csrf_field()
         body += '<input type="hidden" name="team_action" value="' + selected_action + '">'
+        if selected_action in {"uprank", "downrank"}:
+            body += '<label>Old role (will be removed)</label><select name="old_role_id" required>' + role_options("") + '</select>'
+            body += '<label>New role (will be assigned)</label><select name="new_role_id" required>' + role_options("") + '</select>'
+            body += '<small>Select the member\'s current role and the role they should receive. The old role is removed automatically.</small>'
         if selected_action == "team_ban":
             body += '<label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select><small>Temporary bans automatically restore the member\'s previous team roles when they expire.</small>'
         body += '<label>Member</label><select name="member_id" required><option value="">— Select member —</option>'
