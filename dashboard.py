@@ -2838,9 +2838,9 @@ def team_management_dashboard(guild_id):
             "team_ban": "team_ban_announcement_channel_id",
             "team_kick": "team_kick_announcement_channel_id",
         }
-        channel_id = str(cfg.get(announcement_channel_keys.get(action, "")) or cfg.get("team_management_channel_id") or "")
+        channel_id = str(cfg.get(announcement_channel_keys.get(action, "")) or "")
         if channel_id not in channels:
-            abort(400, "Save an announcement channel for this module first.")
+            abort(400, "Choose and save the announcement channel for this module first.")
         if not cfg.get("team_role_ids"):
             abort(400, "Save at least one team role first.")
         if action not in {"uprank", "downrank", "team_ban", "team_kick"}:
