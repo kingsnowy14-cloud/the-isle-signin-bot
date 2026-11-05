@@ -2926,16 +2926,19 @@ def team_management_dashboard(guild_id):
         selected = " selected" if str(channel.id) == selected_channel else ""
         body += '<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>'
     body += '</select><button type="submit">Save Team Settings</button></form></section>'
-    body += '<section class="card"><h2>Team actions</h2><p>Team Kick removes team roles only; it does not kick the member from Discord.</p><form method="post">' + _csrf_field()
+    body += '<section class="card"><h2>Team actions</h2><p>Select an action first. The matching options and explanation will appear below.</p><form method="post">' + _csrf_field()
+    body += '<label for="team_action">Select team action</label><select id="team_action" name="team_action" required>'
+    body += '<option value="uprank">Team Uprank</option><option value="downrank">Team Downrank</option><option value="team_ban">Team Ban / Suspension</option><option value="team_kick">Team Kick</option></select>'
+    body += '<div id="team_action_help" class="notice" style="margin:12px 0">Promote the selected member to the next higher rank. The announcement shows the old and new role.</div>'
+    body += '<div id="team_ban_options" style="display:none"><label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select><small>Temporary bans automatically restore the member\'s previous team roles when they expire.</small></div>'
     body += '<label>Member</label><select name="member_id" required><option value="">— Select member —</option>'
     for member in sorted(guild.members, key=lambda m: m.display_name.casefold()):
         body += '<option value="' + str(member.id) + '">' + html.escape(member.display_name) + ' (' + str(member.id) + ')</option>'
     body += '</select>'
-    body += '<label>Action</label><select name="team_action"><option value="uprank">Uprank</option><option value="downrank">Downrank</option><option value="team_ban">Team Ban</option><option value="team_kick">TT-Team Kick</option></select>'
-    body += '<label>Reason (required for every action)</label><textarea name="reason" maxlength="500" required placeholder="Enter the reason for this action"></textarea>'
-    body += '<label>Team Ban duration</label><select name="ban_duration"><option value="permanent">Permanent</option><option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select>'
-    body += '<button type="submit" class="danger">Apply action and send announcement</button></form></section>'
-    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes. Temporary Team Bans restore the member\'s previous team roles automatically when they expire.</p>'
+    body += '<label>Reason (required)</label><textarea name="reason" maxlength="500" required placeholder="Enter the reason for this action"></textarea>'
+    body += '<button type="submit" class="danger">Apply selected action and send announcement</button></form></section>'
+    body += '<script>(function(){const action=document.getElementById("team_action");const help=document.getElementById("team_action_help");const ban=document.getElementById("team_ban_options");const descriptions={uprank:"Promote the member to the next higher rank. The announcement includes the previous role and the new role.",downrank:"Move the member to the next lower rank. The announcement includes the previous role and the new role.",team_ban:"Remove the member\'s team roles and apply the Team Ban role. Choose a duration; temporary bans restore the previous team roles automatically.",team_kick:"Remove the member\'s team roles only. The member stays in the Discord server."};function update(){help.textContent=descriptions[action.value]||"";ban.style.display=action.value==="team_ban"?"block":"none";}action.addEventListener("change",update);update();})();</script>'
+    body += '<p class="muted">IronWolf needs Manage Roles and permission to send messages in the selected channel. Its highest role must be above the roles it changes. Team Kick never removes the member from the Discord server.</p>'
     return _render("Team Management · IronWolf", body)
 
 
