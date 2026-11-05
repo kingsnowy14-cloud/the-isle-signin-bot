@@ -1393,30 +1393,8 @@ def _translate_dashboard(value, language):
     return value
 
 def _dashboard_language():
-    """Resolve the saved language, falling back to the browser's preferred locale."""
-    saved = session.get("dashboard_language")
-    if saved in {"de", "en"}:
-        return saved
-    preferred = request.accept_languages.best_match(["de", "en"])
-    language = preferred or "en"
-    session["dashboard_language"] = language
-    return language
-
-
-@app.route("/language/<language>")
-def set_dashboard_language_path(language):
-    """Persist the visitor's manually selected dashboard language."""
-    language = str(language or "").lower()
-    if language not in {"de", "en"}:
-        abort(400, "Unsupported language.")
-    session["dashboard_language"] = language
-    destination = request.args.get("next") or request.referrer or url_for("index")
-    parsed = urlparse(destination)
-    if parsed.netloc and parsed.netloc != request.host:
-        destination = url_for("index")
-    elif not destination.startswith("/"):
-        destination = url_for("index")
-    return redirect(destination)
+    """IronWolf dashboard is English-only."""
+    return "en"
 
 
 def _render(title, body, status=200):
@@ -1424,18 +1402,10 @@ def _render(title, body, status=200):
     body = _translate_dashboard(_module_navigation() + body + _module_command_footer(), language)
     title = _translate_dashboard(title, language)
     current_path = html.escape(request.path + (("?" + request.query_string.decode("utf-8", "ignore")) if request.query_string else ""), quote=True)
-    language_control = (
-        '<div class="language-switcher" role="group" aria-label="Dashboard language">'
-        '<span>🌐 Language / Sprache:</span> '
-        '<a href="/language/de?next=' + current_path + '" lang="de" hreflang="de"' + (' aria-current="true"' if language == "de" else '') + '>🇩🇪 Deutsch</a> · '
-        '<a href="/language/en?next=' + current_path + '" lang="en" hreflang="en"' + (' aria-current="true"' if language == "en" else '') + '>🇬🇧 English</a></div>'
-    )
-    body = language_control + body
     rendered_page = _page(title, body)
-    rendered_page = _translate_dashboard(rendered_page, language)
-    rendered_page = re.sub(r'<html lang="[^"]*">', f'<html lang="{language}">', rendered_page, count=1)
+    rendered_page = re.sub(r'<html lang="[^"]*">', '<html lang="en">', rendered_page, count=1)
     response = make_response(rendered_page, status)
-    response.headers["Content-Language"] = language
+    response.headers["Content-Language"] = "en"
     response.headers["Vary"] = "Accept-Language, Cookie"
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -3148,7 +3118,6 @@ def guild_page(guild_id):
         if section == "general":
             bot_enabled_checked = " checked" if cfg.get("bot_enabled", True) else ""
             settings_html += '<div class="check"><input type="checkbox" id="bot_enabled" name="bot_enabled"' + bot_enabled_checked + '><label for="bot_enabled">🐺 Enable IronWolf on this server</label></div><p class="muted">When disabled, the bot will not respond on this server. New servers start disabled; existing servers keep their current behavior.</p>'
-            settings_html += '<label>🌐 Bot language<select name="bot_language"><option value="auto"' + (' selected' if cfg.get("bot_language", "auto") == "auto" else '') + '>Automatic (Discord server language)</option><option value="de"' + (' selected' if cfg.get("bot_language") == "de" else '') + '>Deutsch</option><option value="en"' + (' selected' if cfg.get("bot_language") == "en" else '') + '>English</option></select></label>'
             settings_html += '<h3>👋 Welcome module · Channels</h3><p class="muted">Choose where IronWolf welcomes new members and where goodbye messages are posted.</p>'
             settings_html += '<label for="welcome_channel">Public welcome channel</label><select id="welcome_channel" name="welcome_channel">' + options(channels, cfg.get("welcome_channel")) + '</select>'
             settings_html += '<label for="goodbye_channel">Goodbye channel</label><select id="goodbye_channel" name="goodbye_channel">' + options(channels, cfg.get("goodbye_channel")) + '</select>'
