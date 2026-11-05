@@ -5960,7 +5960,7 @@ async def build_bot_welcome_embeds(guild: discord.Guild):
     welcome.add_field(name="🌐 Website", value="[Open the IronWolf website](https://king-snowy-at.base44.app/)", inline=True)
     welcome.add_field(name="🖥️ Dashboard", value="[Open the server dashboard](https://ironwolf-bot.up.railway.app/)", inline=True)
     welcome.add_field(name="💬 Support", value="[Join the support Discord](https://discord.gg/T3AYmFmbrS)", inline=True)
-    welcome.add_field(name="➕ Invite IronWolf", value="[Add the bot to another server](https://discord.com/oauth2/authorize?client_id=1558547445187743804&scope=bot%20applications.commands&permissions=0)", inline=False)
+    welcome.add_field(name="➕ Invite IronWolf", value="[Add the bot to another server](https://discord.com/oauth2/authorize?client_id=1558547445187743804&scope=bot%20applications.commands&permissions=8)", inline=False)
     welcome.set_footer(text="IronWolf · Created by KingSnowy")
 
     lines = []
