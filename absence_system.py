@@ -172,12 +172,12 @@ class AbsenceManagement(commands.Cog):
         if staff_role >= me.top_role:
             raise ValueError("IronWolf's highest role must be above the lowest staff role.")
         role = await guild.create_role(
-            name="Abgemeldet",
+            name="Absent",
             reason="IronWolf Absence Management: create default absence role",
             mentionable=False,
             hoist=True,
         )
-        await role.edit(position=max(1, staff_role.position - 1), reason="Place absence role below the lowest staff role")
+        await role.edit(name="Absent", hoist=True, position=max(1, staff_role.position - 1), reason="Place Absent role below the lowest staff role")
         settings["absence_role_id"] = role.id
         self.bot.save_json(self.bot.CONFIG_FILE, self.bot.config)
         return role
