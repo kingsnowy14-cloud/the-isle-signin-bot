@@ -1249,6 +1249,7 @@ def _module_navigation():
         ("birthdays", "🎂 Birthdays", "/birthdays"),
         ("team-management", "👥 Team Management", "/team-management"),
         ("auto-nickname", "🏷️ AutoNickname", "/auto-nickname"),
+        ("auto-role", "🎭 AutoRole", "/auto-role"),
         ("teamlist", "👥 Team List", "/teamlist"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
         ("applications", "📝 Applications", "/applications"),
@@ -2813,6 +2814,87 @@ def auto_nickname_dashboard(guild_id):
     body += '<p class="muted">IronWolf needs Manage Nicknames permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
     return _render("AutoNickname · IronWolf", body)
+
+
+@app.route("/guild/<guild_id>/auto-role", methods=["GET", "POST"])
+def auto_role_dashboard(guild_id):
+    """Configure automatic roles for human members and bot accounts on join."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    from bot import guild_config
+    premium = guild_has_feature(guild_config(guild.id), "auto_role")
+    limit = 10 if premium else 1
+    roles = sorted(
+        [role for role in guild.roles if not role.is_default() and not role.managed],
+        key=lambda role: role.position,
+        reverse=True,
+    )
+    valid_ids = {str(role.id) for role in roles}
+
+    member_ids = cfg.get("auto_role_member_ids", [])
+    bot_ids = cfg.get("auto_role_bot_ids", [])
+    if not isinstance(member_ids, list):
+        member_ids = [member_ids] if member_ids else []
+    if not isinstance(bot_ids, list):
+        bot_ids = [bot_ids] if bot_ids else []
+    member_ids = [str(value) for value in member_ids if str(value) in valid_ids]
+    bot_ids = [str(value) for value in bot_ids if str(value) in valid_ids]
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Reload the page.")
+        actor_id = str(session.get("user_id", ""))
+        actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild or actor.guild_permissions.manage_roles):
+            abort(403, "Administrator, Manage Server, or Manage Roles permission is required.")
+
+        submitted = {}
+        for form_key, config_key, label in (
+            ("member_role_ids", "auto_role_member_ids", "Member"),
+            ("bot_role_ids", "auto_role_bot_ids", "Bot"),
+        ):
+            values = request.form.getlist(form_key)
+            cleaned = []
+            for value in values:
+                value = value.strip()
+                if not value:
+                    continue
+                if value not in valid_ids:
+                    abort(400, f"Select a valid role for {label}.")
+                if value not in cleaned:
+                    cleaned.append(value)
+            if len(cleaned) > limit:
+                abort(403, f"The {'Premium' if premium else 'Free'} AutoRole limit is {limit} role(s) for {label.lower()} accounts.")
+            submitted[config_key] = [int(value) for value in cleaned]
+
+        cfg.update(submitted)
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "AutoRole", actor_id, "Automatic join roles updated")
+        return redirect(url_for("auto_role_dashboard", guild_id=str(guild.id), saved="1"))
+
+    def role_select(name, selected, label, description):
+        markup = '<label>' + label + '</label><small>' + description + '</small><select name="' + name + '" multiple size="8">'
+        markup += ''.join(
+            '<option value="' + str(role.id) + '"' + (' selected' if str(role.id) in selected else '') + '>' +
+            html.escape(role.name) + '</option>'
+            for role in roles
+        )
+        return markup + '</select>'
+
+    body = '<section class="card"><span class="pill">AUTOMATION</span><h1>AutoRole</h1>'
+    body += '<p>Choose which roles IronWolf should assign immediately when a member or bot joins your server.</p>'
+    if request.args.get("saved"):
+        body += '<div class="notice">AutoRole settings saved.</div>'
+    body += '<p><strong>Member roles: ' + str(len(member_ids)) + ' / ' + str(limit) + '</strong> · <strong>Bot roles: ' + str(len(bot_ids)) + ' / ' + str(limit) + '</strong> · ' + ('Premium' if premium else 'Free') + ' plan</p>'
+    body += '<form method="post">' + _csrf_field()
+    body += role_select("member_role_ids", member_ids, "Roles for new members", "Assigned to human members when they join. Hold Ctrl (Windows) or Command (Mac) to select multiple roles.")
+    body += role_select("bot_role_ids", bot_ids, "Roles for newly invited bots", "Assigned only when a bot account joins. Hold Ctrl (Windows) or Command (Mac) to select multiple roles.")
+    body += '<button type="submit">Save AutoRole Settings</button></form>'
+    body += '<p class="muted">Free: 1 role for members and 1 role for bots. Premium: up to 10 roles in each group. IronWolf needs Manage Roles, and its highest role must be above every selected role.</p>'
+    body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
+    return _render("AutoRole · IronWolf", body)
 
 
 @app.route("/guild/<guild_id>/team-management", methods=["GET", "POST"])
