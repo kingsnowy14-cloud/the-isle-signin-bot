@@ -8820,7 +8820,7 @@ async def ironwolf_presence_rotation():
         lambda: f"Members: {sum((guild.member_count or len(guild.members)) for guild in bot.guilds):,}",
         lambda: "/help",
         lambda: f"Support: {_IRONWOLF_SUPPORT_URL}",
-        lambda: f"Website: {_IRONWOLF_WEBSITE_URL}",
+        lambda: f"Dashboard: https://ironwolf-bot.up.railway.app/",
     )
     index = 0
     while not bot.is_closed():
