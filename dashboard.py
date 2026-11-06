@@ -1176,12 +1176,14 @@ def _selection_menu_script():
       options.forEach(function (label) { label.querySelector('input').checked = false; });
       update();
     });
-    selectAll.addEventListener('click', function () {
-      options.forEach(function (label) {
-        if (!label.hidden) label.querySelector('input').checked = true;
+    if (selectAll) {
+      selectAll.addEventListener('click', function () {
+        options.forEach(function (label) {
+          if (!label.hidden) label.querySelector('input').checked = true;
+        });
+        update();
       });
-      update();
-    });
+    }
     update();
   });
 })();
