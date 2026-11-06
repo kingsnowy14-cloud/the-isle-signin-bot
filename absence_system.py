@@ -72,6 +72,30 @@ class AbsencePanelView(discord.ui.View):
             await interaction.response.send_message("This panel belongs to another server.", ephemeral=True)
             return
         await interaction.response.send_modal(AbsenceRequestModal(self.cog, self.guild_id))
+    @discord.ui.button(label="I'm back / Sign in", style=discord.ButtonStyle.success, custom_id="ironwolf:absence:sign-in", emoji="✅")
+    async def sign_in(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.guild is None or interaction.guild.id != self.guild_id:
+            await interaction.response.send_message("This panel belongs to another server.", ephemeral=True)
+            return
+        rows = STATE.setdefault("guilds", {}).setdefault(str(self.guild_id), [])
+        record = next((item for item in reversed(rows) if str(item.get("user_id")) == str(interaction.user.id) and item.get("status") == "active"), None)
+        if record is None:
+            await interaction.response.send_message("You do not have an active absence.", ephemeral=True)
+            return
+        role_id = record.get("role_id")
+        role = interaction.guild.get_role(int(role_id)) if str(role_id or "").isdigit() else None
+        try:
+            if role and role in interaction.user.roles:
+                await interaction.user.remove_roles(role, reason="Member signed back in using Absence Management")
+            record["status"] = "completed"
+            record["completed_at"] = datetime.now(timezone.utc).isoformat()
+            record["completed_early"] = True
+            _save_state()
+            await self.cog._log(interaction.guild, self.cog.settings(interaction.guild.id), "Member signed back in",
+                f"Member: {interaction.user.mention} ({interaction.user.id})\nThe member marked themselves as active again and the absence role was removed.", discord.Color.green())
+            await interaction.response.send_message("You are marked as active again. Your absence role has been removed.", ephemeral=True)
+        except (discord.Forbidden, discord.HTTPException):
+            await interaction.response.send_message("I could not remove your absence role. Please contact staff.", ephemeral=True)
 
 
 class AbsenceExtendSelect(discord.ui.Select):
