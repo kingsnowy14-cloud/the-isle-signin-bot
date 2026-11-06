@@ -181,6 +181,7 @@ PREMIUM_FEATURES = {
     "applications": "Pro application system (unlimited panels and questions)",
     "shift_tracker": "Schicht- und Zeiterfassungssystem",
     "auto_nickname": "AutoNickname (up to 50 rules)",
+    "auto_role": "AutoRole (up to 10 member roles and 10 bot roles)",
     "wolfanalytics": "WolfAnalytics",
 }
 
