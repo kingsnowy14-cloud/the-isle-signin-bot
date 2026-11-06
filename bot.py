@@ -8880,6 +8880,15 @@ async def on_ready():
         except Exception as exc:
             print(f"Could not register IronWolf feature cogs: {type(exc).__name__}: {exc}")
 
+    # Load persistent absence panels and the automatic expiry/reminder worker.
+    if not getattr(bot, "_absence_system_loaded", False):
+        try:
+            await bot.load_extension("absence_system")
+            bot._absence_system_loaded = True
+            print("[ABSENCE] Absence Management extension loaded.", flush=True)
+        except Exception as exc:
+            print(f"[ABSENCE] Could not load Absence Management: {type(exc).__name__}: {exc}", flush=True)
+
     # Load the persistent shift tracking module before slash-command sync.
     if not getattr(bot, "_shift_tracker_loaded", False):
         try:
