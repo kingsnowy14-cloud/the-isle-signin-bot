@@ -2867,8 +2867,8 @@ def absence_management_dashboard(guild_id):
         valid_roles = {str(role.id): role for role in roles}
         if role_id and role_id not in valid_roles:
             abort(400, "Select a valid absence role or leave it empty for automatic creation.")
-        if staff_role_id not in valid_roles:
-            abort(400, "Select the lowest staff role. It is used to position the automatically created role.")
+        if not role_id and staff_role_id not in valid_roles:
+            abort(400, "Select the lowest staff role when using automatic role creation.")
         title = request.form.get("panel_title", "").strip()[:256]
         description = request.form.get("panel_description", "").strip()[:4000]
         if not title or not description:
