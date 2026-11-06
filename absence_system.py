@@ -337,5 +337,17 @@ class AbsenceManagement(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(AbsenceManagement(bot))
+    cog = AbsenceManagement(bot)
+    await bot.add_cog(cog)
+    for guild in bot.guilds:
+        settings = cog.settings(guild.id)
+        panel_channel_id = settings.get("panel_channel_id")
+        message_id = settings.get("panel_message_id")
+        if str(panel_channel_id or "").isdigit():
+            try:
+                bot.add_view(AbsencePanelView(cog, guild.id), message_id=int(message_id) if message_id else None)
+                bot.add_view(AbsenceExtensionView(cog, guild.id))
+            except Exception as exc:
+                print(f"[ABSENCE] Could not restore views for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+    cog.worker_task = asyncio.create_task(cog.expiry_worker(), name="absence-expiry-worker")
     print("[ABSENCE] Absence Management loaded.", flush=True)
