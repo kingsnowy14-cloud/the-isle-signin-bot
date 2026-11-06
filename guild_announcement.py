@@ -75,7 +75,51 @@ def _announcement_channel(guild, bot_member):
     return None
 
 
+async def cleanup_mainserver_announcements(bot):
+    """Delete previously posted one-time main-server announcements and never send new ones."""
+    async with _LOCK:
+        ledger = _read_ledger()
+        sent = ledger.get("sent_guild_ids", {})
+        if not isinstance(sent, dict):
+            sent = {}
+        removed = 0
+        pending = {}
+
+        for guild_key, record in list(sent.items()):
+            try:
+                guild_id = int(guild_key)
+                channel_id = int(record["channel_id"])
+                message_id = int(record["message_id"])
+                guild = bot.get_guild(guild_id)
+                if guild is None:
+                    pending[guild_key] = record
+                    continue
+                channel = guild.get_channel(channel_id)
+                if channel is None:
+                    try:
+                        channel = await guild.fetch_channel(channel_id)
+                    except discord.NotFound:
+                        removed += 1
+                        continue
+                message = await channel.fetch_message(message_id)
+                await message.delete()
+                removed += 1
+                print(f"[MAINSERVER ANNOUNCEMENT] Deleted old one-time notice in guild {guild_id}.", flush=True)
+            except discord.NotFound:
+                removed += 1
+            except (discord.Forbidden, discord.HTTPException, KeyError, TypeError, ValueError) as exc:
+                pending[guild_key] = record
+                print(f"[MAINSERVER ANNOUNCEMENT] Could not delete old notice for guild {guild_key}: {type(exc).__name__}: {exc}", flush=True)
+
+        ledger["sent_guild_ids"] = pending
+        ledger["disabled"] = True
+        _write_ledger(ledger)
+        print(f"[MAINSERVER ANNOUNCEMENT] Disabled future notices; deleted or already absent: {removed}, pending permission/access: {len(pending)}.", flush=True)
+
+
 async def send_mainserver_announcement(bot):
+    """Disabled legacy entry point; main-server notices are no longer sent."""
+    return
     """Send once per guild; excluded guilds and inaccessible channels are skipped."""
     async with _LOCK:
         ledger = _read_ledger()
