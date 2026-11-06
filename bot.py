@@ -6298,27 +6298,45 @@ async def on_guild_join(guild: discord.Guild):
         config[gid]["bot_enabled"] = True
         save_json(CONFIG_FILE, config)
     print(f"[CONFIG] Guild {gid} initialized/enabled for normal bot operation.", flush=True)
-    # Create and equip Ironbot's own role when joining a server.
+    # Create a dedicated, permissionless role for this bot only.
     try:
         bot_member = guild.me
         if bot_member is None:
             bot_member = await guild.fetch_member(bot.user.id)
-        ironbot_role = discord.utils.get(guild.roles, name="IronWolf")
-        if ironbot_role is None:
-            ironbot_role = await guild.create_role(
+
+        cfg = guild_config(guild.id)
+        saved_role_id = cfg.get("ironwolf_private_role_id")
+        ironwolf_role = guild.get_role(int(saved_role_id)) if str(saved_role_id or "").isdigit() else None
+
+        # Never adopt a same-named role: it may already belong to server members.
+        if ironwolf_role is None:
+            ironwolf_role = await guild.create_role(
                 name="IronWolf",
                 colour=discord.Colour.blurple(),
                 permissions=discord.Permissions.none(),
-                reason="IronWolf erstellt seine eigene Bot-Rolle beim Serverbeitritt",
+                hoist=False,
+                mentionable=False,
+                reason="Create IronWolf's dedicated private bot role",
             )
-        if ironbot_role not in bot_member.roles:
+            cfg["ironwolf_private_role_id"] = ironwolf_role.id
+            save_json(CONFIG_FILE, config)
+
+        # Remove this dedicated role from any other cached member before assigning it to the bot.
+        for member in list(ironwolf_role.members):
+            if member.id != bot_member.id:
+                await member.remove_roles(
+                    ironwolf_role,
+                    reason="Keep the dedicated IronWolf role exclusive to the bot",
+                )
+
+        if ironwolf_role not in bot_member.roles:
             await bot_member.add_roles(
-                ironbot_role,
-                reason="IronWolf stattet sich mit seiner eigenen Rolle aus",
+                ironwolf_role,
+                reason="Assign IronWolf's dedicated private bot role",
             )
-        print(f"[ROLE] IronWolf role created/found and assigned in guild {guild.id}.")
-    except (discord.Forbidden, discord.HTTPException, AttributeError) as exc:
-        print(f"[ROLE] Could not create/assign Ironbot role in guild {guild.id}: {type(exc).__name__}: {exc}")
+        print(f"[ROLE] Dedicated IronWolf role {ironwolf_role.id} assigned exclusively to the bot in guild {guild.id}.", flush=True)
+    except (discord.Forbidden, discord.HTTPException, AttributeError, ValueError) as exc:
+        print(f"[ROLE] Could not create/assign exclusive IronWolf role in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
 
 @bot.event
