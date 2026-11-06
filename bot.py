@@ -414,6 +414,10 @@ def save_json(path, data):
 
 
 config = load_json(CONFIG_FILE, {})
+# Expose the shared config store and persistence helper to extensions that manage guild settings.
+bot.config = config
+bot.CONFIG_FILE = CONFIG_FILE
+bot.save_json = save_json
 data = load_json(DATA_FILE, {"languages": {}, "registrations": {}})
 # Stats are stored per server and per user in data.json.
 data.setdefault("stats", {})
