@@ -2874,25 +2874,48 @@ def auto_role_dashboard(guild_id):
         _audit_dashboard_change(guild.id, "AutoRole", actor_id, "Automatic join roles updated")
         return redirect(url_for("auto_role_dashboard", guild_id=str(guild.id), saved="1"))
 
-    def role_select(name, selected, label, description):
-        markup = '<label>' + label + '</label><small>' + description + '</small><select name="' + name + '" multiple size="8">'
-        markup += ''.join(
-            '<option value="' + str(role.id) + '"' + (' selected' if str(role.id) in selected else '') + '>' +
-            html.escape(role.name) + '</option>'
-            for role in roles
+    def role_picker(name, selected, title, description, picker_id):
+        markup = (
+            '<section class="card" style="margin-top:16px">'
+            '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">'
+            '<h2 style="margin:0">' + title + '</h2>'
+            '<span class="pill" data-role-summary>' + str(len(selected)) + ' / ' + str(limit) + ' selected</span>'
+            '</div><p class="muted">' + description + '</p>'
+            '<div data-role-picker="' + picker_id + '">'
+            '<input type="search" data-role-search placeholder="Search roles..." aria-label="Search ' + title + '" autocomplete="off">'
+            '<div class="role-picker-tools">'
+            '<small data-role-count>' + str(len(roles)) + ' roles available</small>'
+            '<button type="button" class="secondary" data-role-clear>Clear selection</button>'
+            '</div><div class="role-picker">'
         )
-        return markup + '</select>'
+        for role in roles:
+            role_id = str(role.id)
+            checked = " checked" if role_id in selected else ""
+            search_text = html.escape((role.name + " " + role_id).casefold(), quote=True)
+            markup += (
+                '<label class="role-option" data-search="' + search_text + '">'
+                '<input type="checkbox" name="' + name + '" value="' + role_id + '"' + checked + '>'
+                '<span>' + html.escape(role.name) + '</span></label>'
+            )
+        markup += '</div></div></section>'
+        return markup
 
     body = '<section class="card"><span class="pill">AUTOMATION</span><h1>AutoRole</h1>'
-    body += '<p>Choose which roles IronWolf should assign immediately when a member or bot joins your server.</p>'
+    body += '<p>Choose the roles IronWolf should assign automatically when a member or bot joins your server.</p>'
     if request.args.get("saved"):
         body += '<div class="notice">AutoRole settings saved.</div>'
-    body += '<p><strong>Member roles: ' + str(len(member_ids)) + ' / ' + str(limit) + '</strong> · <strong>Bot roles: ' + str(len(bot_ids)) + ' / ' + str(limit) + '</strong> · ' + ('Premium' if premium else 'Free') + ' plan</p>'
+    body += (
+        '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">'
+        '<div class="card"><strong>Member roles</strong><h2>' + str(len(member_ids)) + ' / ' + str(limit) + '</h2><small>Selected</small></div>'
+        '<div class="card"><strong>Bot roles</strong><h2>' + str(len(bot_ids)) + ' / ' + str(limit) + '</h2><small>Selected</small></div>'
+        '<div class="card"><strong>' + ('Premium' if premium else 'Free') + ' plan</strong><h2>' + str(limit) + '</h2><small>Maximum per group</small></div>'
+        '</div>'
+    )
     body += '<form method="post">' + _csrf_field()
-    body += role_select("member_role_ids", member_ids, "Roles for new members", "Assigned to human members when they join. Hold Ctrl (Windows) or Command (Mac) to select multiple roles.")
-    body += role_select("bot_role_ids", bot_ids, "Roles for newly invited bots", "Assigned only when a bot account joins. Hold Ctrl (Windows) or Command (Mac) to select multiple roles.")
-    body += '<button type="submit">Save AutoRole Settings</button></form>'
-    body += '<p class="muted">Free: 1 role for members and 1 role for bots. Premium: up to 10 roles in each group. IronWolf needs Manage Roles, and its highest role must be above every selected role.</p>'
+    body += role_picker("member_role_ids", member_ids, "👤 Roles for human members", "These roles are assigned to regular members when they join.", "member")
+    body += role_picker("bot_role_ids", bot_ids, "🤖 Roles for bot accounts", "These roles are assigned only to bot accounts when they join.", "bots")
+    body += '<button type="submit" style="margin-top:18px">Save AutoRole Settings</button></form>'
+    body += '<p class="muted">Free: 1 role per group. Premium: up to 10 roles per group. IronWolf needs Manage Roles, and its highest role must be above every selected role.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
     return _render("AutoRole · IronWolf", body)
 
