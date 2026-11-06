@@ -6401,6 +6401,27 @@ async def on_member_join(member: discord.Member):
     cfg = guild_config(member.guild.id)
     # Run welcome handling first so other optional modules cannot suppress it.
     await send_welcome_for_member(member, cfg)
+    # Assign configured AutoRole roles immediately on join (separate lists for humans and bots).
+    auto_role_key = "auto_role_bot_ids" if member.bot else "auto_role_member_ids"
+    configured_auto_roles = cfg.get(auto_role_key, [])
+    if not isinstance(configured_auto_roles, list):
+        configured_auto_roles = [configured_auto_roles] if configured_auto_roles else []
+    auto_roles = [
+        member.guild.get_role(int(role_id))
+        for role_id in configured_auto_roles
+        if str(role_id).isdigit()
+    ]
+    auto_roles = [
+        role for role in auto_roles
+        if role is not None and not role.is_default() and not role.managed
+        and role < member.guild.me.top_role
+    ] if member.guild.me else []
+    if auto_roles:
+        try:
+            await member.add_roles(*auto_roles, reason="IronWolf AutoRole: automatic role on join")
+            print(f"[AUTOROLE] Assigned {len(auto_roles)} role(s) to {member} ({member.id}) in guild {member.guild.id}.", flush=True)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[AUTOROLE] Could not assign join roles in guild {member.guild.id} to {member.id}: {type(exc).__name__}: {exc}", flush=True)
     if cfg.get("anti_raid_enabled", False) and not member.bot:
         now_mono = time.monotonic()
         joins = _raid_join_times[member.guild.id]
