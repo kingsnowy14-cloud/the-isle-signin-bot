@@ -8835,8 +8835,10 @@ async def ironwolf_presence_rotation():
             print(f"[PRESENCE] Updated activity: {activities[index]()}", flush=True)
         except discord.HTTPException as exc:
             print(f"[PRESENCE] Could not update activity: {type(exc).__name__}: {exc}", flush=True)
+        # Keep statistics/help visible for 30 seconds; links stay visible for 55 seconds.
+        delay = 55 if index in (3, 4) else 30
         index = (index + 1) % len(activities)
-        await asyncio.sleep(60)
+        await asyncio.sleep(delay)
 
 
 @bot.event
