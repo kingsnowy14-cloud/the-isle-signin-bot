@@ -1250,6 +1250,7 @@ def _module_navigation():
         ("welcome", "👋 Welcome & Goodbye", "/welcome"),
         ("birthdays", "🎂 Birthdays", "/birthdays"),
         ("team-management", "👥 Team Management", "/team-management"),
+        ("absence-management", "📅 Absence Management", "/absence-management"),
         ("teamlist", "📋 Team List", "/teamlist"),
         ("feedback", "💬 Anonymous Feedback", "/feedback"),
         ("applications", "📝 Applications", "/applications"),
@@ -2816,6 +2817,106 @@ def auto_nickname_dashboard(guild_id):
     body += '<p class="muted">IronWolf needs Manage Nicknames permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
     return _render("AutoNickname · IronWolf", body)
+
+
+
+@app.route("/guild/<guild_id>/absence-management", methods=["GET", "POST"])
+def absence_management_dashboard(guild_id):
+    """Configure the public absence panel, logging, and role behavior."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    cfg = _guild_config(guild.id)
+    settings = cfg.setdefault("absence_system", {})
+    channels = sorted(guild.text_channels, key=lambda channel: channel.position)
+    roles = sorted(
+        [role for role in guild.roles if not role.is_default() and not role.managed],
+        key=lambda role: role.position,
+        reverse=True,
+    )
+
+    def channel_options(chosen):
+        output = ['<option value="">— Select channel —</option>']
+        for channel in channels:
+            selected = " selected" if str(channel.id) == str(chosen or "") else ""
+            output.append('<option value="' + str(channel.id) + '"' + selected + '>#' + html.escape(channel.name) + '</option>')
+        return "".join(output)
+
+    def role_options(chosen, allow_none=True):
+        output = ['<option value="">— Auto-create Abgemeldet role —</option>' if allow_none else '<option value="">— Select lowest staff role —</option>']
+        for role in roles:
+            selected = " selected" if str(role.id) == str(chosen or "") else ""
+            output.append('<option value="' + str(role.id) + '"' + selected + '>' + html.escape(role.name) + '</option>')
+        return "".join(output)
+
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Reload the page.")
+        actor_id = str(session.get("user_id", ""))
+        actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_roles):
+            abort(403, "Administrator or Manage Roles permission is required.")
+        panel_channel = request.form.get("panel_channel_id", "").strip()
+        log_channel = request.form.get("log_channel_id", "").strip()
+        role_id = request.form.get("absence_role_id", "").strip()
+        staff_role_id = request.form.get("lowest_staff_role_id", "").strip()
+        if panel_channel not in {str(channel.id) for channel in channels}:
+            abort(400, "Select a valid panel channel.")
+        if log_channel not in {str(channel.id) for channel in channels}:
+            abort(400, "Select a valid log channel.")
+        valid_roles = {str(role.id): role for role in roles}
+        if role_id and role_id not in valid_roles:
+            abort(400, "Select a valid absence role or leave it empty for automatic creation.")
+        if staff_role_id not in valid_roles:
+            abort(400, "Select the lowest staff role. It is used to position the automatically created role.")
+        title = request.form.get("panel_title", "").strip()[:256]
+        description = request.form.get("panel_description", "").strip()[:4000]
+        if not title or not description:
+            abort(400, "Enter both an embed title and description.")
+        settings.update({
+            "panel_channel_id": int(panel_channel),
+            "log_channel_id": int(log_channel),
+            "absence_role_id": int(role_id) if role_id else None,
+            "lowest_staff_role_id": int(staff_role_id),
+            "panel_title": title,
+            "panel_description": description,
+        })
+        _save_json(data_path("config.json"), _config)
+        _audit_dashboard_change(guild.id, "Absence Management", actor_id, "Absence panel settings updated")
+        if request.form.get("publish_panel") == "1":
+            if not _bot or not _bot.loop.is_running():
+                abort(503, "IronWolf is offline.")
+            async def publish():
+                cog = _bot.get_cog("AbsenceManagement")
+                if cog is None:
+                    await _bot.load_extension("absence_system")
+                    cog = _bot.get_cog("AbsenceManagement")
+                return await cog.publish_panel(guild)
+            try:
+                asyncio.run_coroutine_threadsafe(publish(), _bot.loop).result(timeout=20)
+            except Exception as exc:
+                abort(400, "Could not publish the absence panel: " + str(exc)[:300])
+            return redirect(url_for("absence_management_dashboard", guild_id=str(guild.id), published="1"))
+        return redirect(url_for("absence_management_dashboard", guild_id=str(guild.id), saved="1"))
+
+    body = '<section class="card"><h1>📅 Absence Management</h1>'
+    if request.args.get("saved"):
+        body += '<p class="success">Settings saved.</p>'
+    if request.args.get("published"):
+        body += '<p class="success">Absence panel published.</p>'
+    body += '<p class="muted">Configure the public sign-out panel, the audit log, and the role assigned during an absence.</p>'
+    body += '<form method="post">' + _csrf_field()
+    body += '<label>Panel channel</label><select name="panel_channel_id" required>' + channel_options(settings.get("panel_channel_id")) + '</select>'
+    body += '<label>Log channel</label><select name="log_channel_id" required>' + channel_options(settings.get("log_channel_id")) + '</select>'
+    body += '<label>Absence role (optional)</label><select name="absence_role_id">' + role_options(settings.get("absence_role_id")) + '</select>'
+    body += '<label>Lowest staff role</label><select name="lowest_staff_role_id" required>' + role_options(settings.get("lowest_staff_role_id"), False) + '</select>'
+    body += '<p class="muted">If no absence role is selected, IronWolf creates “Abgemeldet” and places it directly below the selected lowest staff role. IronWolf needs Manage Roles and its highest role must be above both roles.</p>'
+    body += '<label>Embed title</label><input name="panel_title" maxlength="256" required value="' + html.escape(str(settings.get("panel_title") or "Absence Registration"), quote=True) + '">'
+    body += '<label>Embed description</label><textarea name="panel_description" maxlength="4000" rows="4" required>' + html.escape(str(settings.get("panel_description") or "Use the button below to report your absence.")) + '</textarea>'
+    body += '<button type="submit" style="margin-top:14px">Save settings</button> <button type="submit" name="publish_panel" value="1" style="margin-top:14px">Save & publish panel</button></form>'
+    body += '<p class="muted">Members enter a reason, a start date, and a duration of 1–20 days. Their Discord ID is recorded automatically. One day before the end, IronWolf sends a DM with an extension button. On expiry, the absence role is removed and the return is logged.</p>'
+    body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
+    return _render("Absence Management · IronWolf", body)
 
 
 @app.route("/guild/<guild_id>/auto-role", methods=["GET", "POST"])
