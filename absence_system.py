@@ -290,6 +290,11 @@ class AbsenceManagement(commands.Cog):
                         expires = expires.replace(tzinfo=timezone.utc)
                     user_id = int(row.get("user_id", 0))
                     member = guild.get_member(user_id)
+                    if member is None:
+                        try:
+                            member = await guild.fetch_member(user_id)
+                        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                            member = None
                     if not row.get("reminder_sent") and timedelta(0) < expires - now <= timedelta(days=1):
                         if member:
                             try:
