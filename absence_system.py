@@ -185,6 +185,18 @@ class AbsenceManagement(commands.Cog):
         role_id = settings.get("absence_role_id")
         role = guild.get_role(int(role_id)) if str(role_id or "").isdigit() else None
         if role is not None:
+            if role.name == "Abgemeldet":
+                staff_id = settings.get("lowest_staff_role_id")
+                staff_role = guild.get_role(int(staff_id)) if str(staff_id or "").isdigit() else None
+                if staff_role is not None:
+                    await role.edit(
+                        name="Absent",
+                        hoist=True,
+                        position=max(1, staff_role.position - 1),
+                        reason="Rename and position the default absence role",
+                    )
+                else:
+                    await role.edit(name="Absent", hoist=True, reason="Rename the default absence role")
             return role
         me = guild.me
         if me is None or not me.guild_permissions.manage_roles:
