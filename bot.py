@@ -8826,7 +8826,7 @@ async def ironwolf_presence_rotation():
     while not bot.is_closed():
         try:
             await bot.change_presence(
-                status=discord.Status.online,
+                status=discord.Status.dnd,
                 activity=discord.Activity(
                     type=discord.ActivityType.watching,
                     name=activities[index](),
