@@ -8807,6 +8807,38 @@ async def _send_rp_panel(guild_id, channel_id, role_id, title, description, star
 bot.send_rp_panel = _send_rp_panel
 
 
+# Rotate IronWolf's public Discord presence every minute.
+_PRESENCE_ROTATION_TASK = None
+_IRONWOLF_SUPPORT_URL = "https://discord.gg/T3AYmFmbrS"
+_IRONWOLF_WEBSITE_URL = "https://king-snowy-at.base44.app/"
+
+
+async def ironwolf_presence_rotation():
+    """Cycle through public bot statistics and useful links once per minute."""
+    activities = (
+        lambda: f"Servers: {len(bot.guilds):,}",
+        lambda: f"Members: {sum((guild.member_count or len(guild.members)) for guild in bot.guilds):,}",
+        lambda: "/help",
+        lambda: f"Support: {_IRONWOLF_SUPPORT_URL}",
+        lambda: f"Website: {_IRONWOLF_WEBSITE_URL}",
+    )
+    index = 0
+    while not bot.is_closed():
+        try:
+            await bot.change_presence(
+                status=discord.Status.online,
+                activity=discord.Activity(
+                    type=discord.ActivityType.watching,
+                    name=activities[index](),
+                ),
+            )
+            print(f"[PRESENCE] Updated activity: {activities[index]()}", flush=True)
+        except discord.HTTPException as exc:
+            print(f"[PRESENCE] Could not update activity: {type(exc).__name__}: {exc}", flush=True)
+        index = (index + 1) % len(activities)
+        await asyncio.sleep(60)
+
+
 @bot.event
 async def on_ready():
 
@@ -9063,11 +9095,13 @@ async def on_ready():
     except Exception as exc:
         print(f"Could not sync slash commands: {type(exc).__name__}: {exc}", flush=True)
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    # Show the current server count in IronWolf's Discord activity.
-    try:
-        await bot.change_presence(activity=discord.Game(name=f"auf {len(bot.guilds)} Servern"))
-    except discord.HTTPException as exc:
-        print(f"Could not update server-count presence: {type(exc).__name__}: {exc}")
+    # Start the five-step presence rotation once; reconnects must not create duplicates.
+    global _PRESENCE_ROTATION_TASK
+    if _PRESENCE_ROTATION_TASK is None or _PRESENCE_ROTATION_TASK.done():
+        _PRESENCE_ROTATION_TASK = asyncio.create_task(
+            ironwolf_presence_rotation(),
+            name="ironwolf-presence-rotation",
+        )
     global _social_alert_task_started
     if not _social_alert_task_started:
         _social_alert_task_started = True
