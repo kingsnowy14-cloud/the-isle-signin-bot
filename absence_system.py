@@ -32,57 +32,28 @@ def _parse_date(value):
 
 
 class AbsenceRequestModal(discord.ui.Modal):
-    def __init__(self, cog, guild_id, extension_record_id=None):
-        super().__init__(title="Extend absence" if extension_record_id else "Absence request")
+    def __init__(self, cog, guild_id):
+        super().__init__(title="Absence request")
         self.cog = cog
         self.guild_id = int(guild_id)
-        self.extension_record_id = extension_record_id
-        self.reason = discord.ui.TextInput(
-            label="Reason",
-            placeholder="Enter the reason for your absence",
-            max_length=500,
-            required=True,
-        )
-        self.start_date = discord.ui.TextInput(
-            label="Start date (YYYY-MM-DD)",
-            placeholder="2026-11-07",
-            max_length=10,
-            required=True,
-        )
-        self.days = discord.ui.TextInput(
-            label="Duration in days (1-20)",
-            placeholder="7",
-            max_length=2,
-            required=True,
-        )
+        self.reason = discord.ui.TextInput(label="Reason", placeholder="Enter the reason for your absence", max_length=500, required=True)
+        self.start_date = discord.ui.TextInput(label="Start date (YYYY-MM-DD)", placeholder="2026-11-07", max_length=10, required=True)
+        self.end_date = discord.ui.TextInput(label="End date (YYYY-MM-DD)", placeholder="2026-11-14", max_length=10, required=True)
         self.add_item(self.reason)
         self.add_item(self.start_date)
-        self.add_item(self.days)
+        self.add_item(self.end_date)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
             start = _parse_date(str(self.start_date.value))
-            days = int(str(self.days.value).strip())
-            if days < 1 or days > 20:
-                raise ValueError
-            end = start + timedelta(days=days)
-            if end <= datetime.now(timezone.utc):
-                await interaction.response.send_message("The end date must be in the future.", ephemeral=True)
+            end = _parse_date(str(self.end_date.value))
+            if end <= start or end <= datetime.now(timezone.utc):
+                await interaction.response.send_message("The end date must be after the start date and in the future.", ephemeral=True)
                 return
         except (ValueError, TypeError):
-            await interaction.response.send_message(
-                "Enter a valid start date (YYYY-MM-DD) and a duration from 1 to 20 days.",
-                ephemeral=True,
-            )
+            await interaction.response.send_message("Enter valid start and end dates in YYYY-MM-DD format.", ephemeral=True)
             return
-        await self.cog.submit_absence(
-            interaction,
-            str(self.reason.value).strip(),
-            start,
-            end,
-            self.extension_record_id,
-        )
-
+        await self.cog.submit_absence(interaction, str(self.reason.value).strip(), start, end)
 
 class AbsencePanelView(discord.ui.View):
     def __init__(self, cog, guild_id):
@@ -103,38 +74,62 @@ class AbsencePanelView(discord.ui.View):
         await interaction.response.send_modal(AbsenceRequestModal(self.cog, self.guild_id))
 
 
-class AbsenceExtendButton(discord.ui.Button):
-    def __init__(self, cog, guild_id):
-        super().__init__(
-            label="Extend my absence",
-            style=discord.ButtonStyle.primary,
-            custom_id=f"ironwolf:absence:extend:{int(guild_id)}",
-            emoji="🗓️",
-        )
+class AbsenceExtendSelect(discord.ui.Select):
+    def __init__(self, cog, guild_id, record_id):
+        options = [discord.SelectOption(label=f"{days} day(s)", value=str(days)) for days in range(1, 21)]
+        super().__init__(placeholder="Choose 1–20 additional days", min_values=1, max_values=1, options=options,
+                         custom_id=f"ironwolf:absence:extend-days:{int(guild_id)}:{record_id}")
         self.cog = cog
         self.guild_id = int(guild_id)
+        self.record_id = str(record_id)
 
     async def callback(self, interaction: discord.Interaction):
-        guild_rows = STATE.setdefault("guilds", {}).setdefault(str(self.guild_id), [])
-        row = next(
-            (item for item in reversed(guild_rows)
-             if str(item.get("user_id")) == str(interaction.user.id)
-             and item.get("status") == "active"),
-            None,
-        )
-        if row is None:
+        rows = STATE.setdefault("guilds", {}).setdefault(str(self.guild_id), [])
+        record = next((item for item in rows if str(item.get("record_id")) == self.record_id
+                       and str(item.get("user_id")) == str(interaction.user.id) and item.get("status") == "active"), None)
+        if record is None:
             await interaction.response.send_message("No active absence was found for you.", ephemeral=True)
             return
-        await interaction.response.send_modal(
-            AbsenceRequestModal(self.cog, self.guild_id, str(row.get("record_id")))
-        )
+        try:
+            previous_end = datetime.fromisoformat(record["end_at"])
+            if previous_end.tzinfo is None:
+                previous_end = previous_end.replace(tzinfo=timezone.utc)
+            days = int(self.values[0])
+            new_end = previous_end + timedelta(days=days)
+            record["end_at"] = new_end.isoformat()
+            record["duration_days"] = int(record.get("duration_days", 0)) + days
+            record["reminder_sent"] = False
+            record["extended_at"] = datetime.now(timezone.utc).isoformat()
+            _save_state()
+            guild = self.cog.bot.get_guild(self.guild_id)
+            if guild:
+                await self.cog._log(guild, self.cog.settings(guild.id), "Absence extended",
+                    f"Member: {interaction.user.mention} ({interaction.user.id})\nAdditional time: {days} day(s)\nNew end date: <t:{int(new_end.timestamp())}:F>")
+            await interaction.response.edit_message(content=f"Your absence was extended by {days} day(s), until <t:{int(new_end.timestamp())}:F>.", view=None)
+        except (KeyError, TypeError, ValueError):
+            await interaction.response.send_message("I could not update your absence. Please contact staff.", ephemeral=True)
 
+class AbsenceExtendView(discord.ui.View):
+    def __init__(self, cog, guild_id, record_id):
+        super().__init__(timeout=300)
+        self.add_item(AbsenceExtendSelect(cog, guild_id, record_id))
+
+class AbsenceExtendButton(discord.ui.Button):
+    def __init__(self, cog, guild_id, record_id):
+        super().__init__(label="Extend my absence", style=discord.ButtonStyle.primary,
+                         custom_id=f"ironwolf:absence:extend:{int(guild_id)}:{record_id}", emoji="🗓️")
+        self.cog = cog
+        self.guild_id = int(guild_id)
+        self.record_id = str(record_id)
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message("Choose how many additional days you need (1–20):",
+            view=AbsenceExtendView(self.cog, self.guild_id, self.record_id), ephemeral=True)
 
 class AbsenceExtensionView(discord.ui.View):
-    def __init__(self, cog, guild_id):
+    def __init__(self, cog, guild_id, record_id):
         super().__init__(timeout=None)
-        self.add_item(AbsenceExtendButton(cog, guild_id))
-
+        self.add_item(AbsenceExtendButton(cog, guild_id, record_id))
 
 class AbsenceManagement(commands.Cog):
     def __init__(self, bot):
@@ -301,7 +296,7 @@ class AbsenceManagement(commands.Cog):
                                 await member.send(
                                     f"Your absence on **{guild.name}** ends tomorrow. "
                                     "If you need more time, use the button below to choose another 1–20 days.",
-                                    view=AbsenceExtensionView(self, guild.id),
+                                    view=AbsenceExtensionView(self, guild.id, str(row.get("record_id"))),
                                 )
                             except (discord.Forbidden, discord.HTTPException):
                                 pass
@@ -339,7 +334,9 @@ class AbsenceManagement(commands.Cog):
             if str(panel_channel_id or "").isdigit():
                 try:
                     self.bot.add_view(AbsencePanelView(self, guild.id), message_id=int(message_id) if message_id else None)
-                    self.bot.add_view(AbsenceExtensionView(self, guild.id))
+                    for active_row in STATE.setdefault("guilds", {}).get(str(guild.id), []):
+                        if active_row.get("status") == "active":
+                            self.bot.add_view(AbsenceExtensionView(self, guild.id, str(active_row.get("record_id"))))
                 except Exception as exc:
                     print(f"[ABSENCE] Could not restore persistent views for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
         if self.worker_task is None or self.worker_task.done():
@@ -356,7 +353,9 @@ async def setup(bot):
         if str(panel_channel_id or "").isdigit():
             try:
                 bot.add_view(AbsencePanelView(cog, guild.id), message_id=int(message_id) if message_id else None)
-                bot.add_view(AbsenceExtensionView(cog, guild.id))
+                for active_row in STATE.setdefault("guilds", {}).get(str(guild.id), []):
+                    if active_row.get("status") == "active":
+                        bot.add_view(AbsenceExtensionView(cog, guild.id, str(active_row.get("record_id"))))
             except Exception as exc:
                 print(f"[ABSENCE] Could not restore views for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
     cog.worker_task = asyncio.create_task(cog.expiry_worker(), name="absence-expiry-worker")
