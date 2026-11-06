@@ -103,19 +103,18 @@ class AbsencePanelView(discord.ui.View):
         await interaction.response.send_modal(AbsenceRequestModal(self.cog, self.guild_id))
 
 
-class AbsenceExtensionView(discord.ui.View):
+class AbsenceExtendButton(discord.ui.Button):
     def __init__(self, cog, guild_id):
-        super().__init__(timeout=None)
+        super().__init__(
+            label="Extend my absence",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"ironwolf:absence:extend:{int(guild_id)}",
+            emoji="🗓️",
+        )
         self.cog = cog
         self.guild_id = int(guild_id)
 
-    @discord.ui.button(
-        label="Extend my absence",
-        style=discord.ButtonStyle.primary,
-        custom_id="ironwolf:absence:extend",
-        emoji="🗓️",
-    )
-    async def extend_absence(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def callback(self, interaction: discord.Interaction):
         guild_rows = STATE.setdefault("guilds", {}).setdefault(str(self.guild_id), [])
         row = next(
             (item for item in reversed(guild_rows)
@@ -129,6 +128,12 @@ class AbsenceExtensionView(discord.ui.View):
         await interaction.response.send_modal(
             AbsenceRequestModal(self.cog, self.guild_id, str(row.get("record_id")))
         )
+
+
+class AbsenceExtensionView(discord.ui.View):
+    def __init__(self, cog, guild_id):
+        super().__init__(timeout=None)
+        self.add_item(AbsenceExtendButton(cog, guild_id))
 
 
 class AbsenceManagement(commands.Cog):
