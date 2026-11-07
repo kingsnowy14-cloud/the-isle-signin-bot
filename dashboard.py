@@ -3075,6 +3075,50 @@ def auto_nickname_dashboard(guild_id):
         actor = guild.get_member(int(actor_id)) if actor_id.isdigit() else None
         if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild or actor.guild_permissions.manage_roles):
             abort(403, "Administrator, Manage Server, or Manage Roles permission is required.")
+        action = request.form.get("action", "save").strip().lower()
+        if action == "delete_rule":
+            try:
+                rule_index = int(request.form.get("rule_index", ""))
+            except (TypeError, ValueError):
+                abort(400, "Invalid AutoNickname rule.")
+            if rule_index < 0 or rule_index >= len(rules):
+                abort(400, "AutoNickname rule not found.")
+            deleted_rule = rules.pop(rule_index)
+            cfg["auto_nickname_rules"] = rules
+            cfg["auto_nickname_role_id"] = rules[0]["role_id"] if rules else None
+            cfg["auto_nickname_value"] = rules[0]["nickname"] if rules else ""
+            _save_json(data_path("config.json"), _config)
+
+            async def _sync_deleted_nickname_rule():
+                import bot as bot_module
+                live_guild = _bot.get_guild(guild.id) if _bot else None
+                if live_guild is None:
+                    raise RuntimeError("The bot is not connected to this Discord server.")
+                role_id = int(deleted_rule["role_id"])
+                members = [member async for member in live_guild.fetch_members(limit=None)]
+                restored = 0
+                for member in members:
+                    if any(role.id == role_id for role in member.roles):
+                        if await bot_module.apply_auto_nickname(
+                            member,
+                            "AutoNickname: configured rule deleted; recalculate nickname",
+                        ):
+                            restored += 1
+                return restored
+
+            try:
+                if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
+                    raise RuntimeError("The bot is not online.")
+                asyncio.run_coroutine_threadsafe(_sync_deleted_nickname_rule(), _bot.loop).result(timeout=90)
+            except Exception as exc:
+                print(f"[DASHBOARD] AutoNickname delete sync failed for guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                _audit_dashboard_change(guild.id, "AutoNickname", actor_id, "Rule deleted; nickname sync pending")
+                return redirect(url_for("auto_nickname_dashboard", guild_id=str(guild.id), deleted="1", sync_error="1"))
+            _audit_dashboard_change(guild.id, "AutoNickname", actor_id, f"Rule for role {deleted_rule.get('role_id')} deleted and affected nicknames recalculated")
+            return redirect(url_for("auto_nickname_dashboard", guild_id=str(guild.id), deleted="1"))
+
+        if action != "save":
+            abort(400, "Unknown AutoNickname action.")
         role_ids = request.form.getlist("role_id")
         nicknames = request.form.getlist("nickname")
         submitted = []
@@ -3107,6 +3151,10 @@ def auto_nickname_dashboard(guild_id):
     body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Configure a nickname prefix for each role. The member’s original Discord username is added after the prefix.</p>'
     if request.args.get("saved"):
         body += '<div class="notice">AutoNickname rules saved.</div>'
+    if request.args.get("deleted"):
+        body += '<div class="notice">AutoNickname rule deleted. Nicknames for members with that role were recalculated and restored where appropriate.</div>'
+    if request.args.get("sync_error"):
+        body += '<div class="notice">Rule deleted, but nickname synchronization could not finish. Check that the bot is online and has Manage Nicknames permission.</div>'
     remaining_rules = max(0, limit - len(rules))
     body += '<p><strong>' + str(len(rules)) + ' / ' + str(limit) + ' rules used</strong> · ' + str(remaining_rules) + ' more available · ' + ('Premium' if premium else 'Free') + ' plan</p>'
     body += '<form method="post"><div style="display:flex;flex-direction:column;gap:12px;width:100%;">' + _csrf_field()
@@ -3117,12 +3165,16 @@ def auto_nickname_dashboard(guild_id):
         item = rules[index] if index < len(rules) else {}
         selected_role = str(item.get("role_id") or "")
         nickname = str(item.get("nickname") or "")
-        body += '<div class="card" style="display:block;width:100%;box-sizing:border-box;"><h3>Rule ' + str(index + 1) + '</h3><label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
+        body += '<div class="card" style="display:block;width:100%;box-sizing:border-box;position:relative;"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><h3>Rule ' + str(index + 1) + '</h3>'
+        if index < len(rules):
+            body += '<button type="submit" name="action" value="delete_rule" formaction="" formmethod="post" onclick="this.form.rule_index.value=\'' + str(index) + '\'" style="width:auto;padding:6px 11px;background:#b42318;color:white;border:0;border-radius:8px" aria-label="Delete this AutoNickname rule" title="Delete rule">✕</button>'
+        body += '</div><label>Trigger role</label><select name="role_id"><option value="">— Select role —</option>'
         for role in role_list:
             chosen = " selected" if str(role.id) == selected_role else ""
             body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
         body += '</select><label>Nickname prefix</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Text before the original username"></div>'
-    body += '<small>When a member receives a configured role, the nickname becomes “prefix + original username”. Discord nicknames are limited to 32 characters.</small>'
+    body += '<input type="hidden" name="rule_index" value="">'
+    body += '<small>When a member receives a configured role, the nickname becomes “prefix + original username”. Discord nicknames are limited to 32 characters. Use ✕ to remove a saved rule and recalculate nicknames for members with that role.</small>'
     body += '</div><button type="submit">Save AutoNickname Rules</button></form>'
     body += '<p class="muted">IronWolf needs Manage Nicknames permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
