@@ -6192,6 +6192,8 @@ def guild_games(guild_id):
             for label, value in (("Counting channel", counting_channel), ("Game channel", game_channel)):
                 if value and value not in text_channels:
                     abort(400, label + ": select a valid text channel.")
+            if counting_channel and game_channel and counting_channel == game_channel:
+                abort(400, "Counting and IronWolf Games need separate channels. Please choose two different channels.")
             cfg["ironwolf_games_enabled"] = request.form.get("ironwolf_games_enabled") == "on"
             cfg["counting_enabled"] = request.form.get("counting_enabled") == "on"
             cfg["counting_channel_id"] = int(counting_channel) if counting_channel else None
@@ -6270,9 +6272,9 @@ def guild_games(guild_id):
         '<input type="hidden" name="action" value="save">' +
         '<label class="setting-toggle"><input type="checkbox" name="ironwolf_games_enabled"' + checked("ironwolf_games_enabled") + '> Enable IronWolf Games</label>' +
         '<h2>🔢 Counting</h2><label class="setting-toggle"><input type="checkbox" name="counting_enabled"' + checked("counting_enabled") + '> Enable Counting</label>' +
-        '<label for="counting_channel_id">Counting channel</label><select id="counting_channel_id" name="counting_channel_id">' + channel_options + '</select>' +
+        '<label for="counting_channel_id">Counting channel (separate channel)</label><select id="counting_channel_id" name="counting_channel_id">' + channel_options + '</select>' +
         '<p class="muted">Members count in order from 1. The same member cannot post two numbers in a row. A wrong number resets the current round.</p>' +
-        '<h2>🎯 Game channel</h2><label for="game_channel_id">Where should game rounds be posted?</label><select id="game_channel_id" name="game_channel_id">' + game_channel_options + '</select>' +
+        '<h2>🎯 Separate games channel</h2><label for="game_channel_id">Where should Flag Guess, Math Game and Trivia be posted?</label><select id="game_channel_id" name="game_channel_id">' + game_channel_options + '</select>' +
         '<h2>🕹️ Enable games</h2>' +
         '<label class="setting-toggle"><input type="checkbox" name="game_flag_enabled"' + checked("game_flag_enabled") + '> 🚩 Flag Guess</label>' +
         '<label class="setting-toggle"><input type="checkbox" name="game_math_enabled"' + checked("game_math_enabled") + '> ➗ Math Game</label>' +
