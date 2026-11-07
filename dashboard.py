@@ -2253,14 +2253,57 @@ def website_verify_callback():
             if role not in member.roles:
                 await member.add_roles(role, reason="Website Verify completed")
             await _bot.refresh_verification_panel(guild, cfg)
+
+            dashboard_url = _env("DASHBOARD_PUBLIC_URL").strip().rstrip("/") or request_host_origin()
+            client_id = _env("DISCORD_CLIENT_ID").strip()
+            bot_invite_url = (
+                "https://discord.com/oauth2/authorize?" + urlencode({
+                    "client_id": client_id,
+                    "scope": "bot applications.commands",
+                    "permissions": "0",
+                })
+            ) if client_id else ""
+            server_invite_url = str(getattr(guild, "vanity_url", "") or "")
+            if not server_invite_url:
+                invite_channel = guild.system_channel
+                if invite_channel is None or not invite_channel.permissions_for(guild.me).create_instant_invite:
+                    invite_channel = next((
+                        channel for channel in guild.text_channels
+                        if channel.permissions_for(guild.me).create_instant_invite
+                    ), None)
+                if invite_channel is not None:
+                    try:
+                        invite = await invite_channel.create_invite(
+                            max_age=0, max_uses=0, unique=False,
+                            reason="Website Verify success message: server invite",
+                        )
+                        server_invite_url = invite.url
+                    except (discord.Forbidden, discord.HTTPException):
+                        print(f"[WEBSITE VERIFY] Could not create server invite for guild {guild.id}.", flush=True)
+
+            links = [
+                "🌐 Dashboard: " + dashboard_url,
+                "💬 Discord-Server: " + (server_invite_url or "Kein Server-Einladungslink verfügbar (Server-Admin muss einen Invite-Link hinterlegen)."),
+                "🤖 IronWolf Bot einladen: " + (bot_invite_url or "Bot-Einladungslink nicht verfügbar."),
+            ]
             try:
-                await member.send("✅ You have been successfully verified on **" + guild.name + "** using IronWolf Website Verify.")
+                await member.send(
+                    "✅ Du wurdest erfolgreich auf **" + guild.name + "** verifiziert!\n\n"
+                    + "\n".join(links)
+                )
             except (discord.Forbidden, discord.HTTPException):
                 print(f"[WEBSITE VERIFY] Could not DM user {discord_user_id}; role was assigned.", flush=True)
+            return dashboard_url, server_invite_url, bot_invite_url
+
         future = asyncio.run_coroutine_threadsafe(grant_role_and_dm(), _bot.loop)
-        future.result(timeout=25)
+        dashboard_url, server_invite_url, bot_invite_url = future.result(timeout=25)
         _website_verify_finish(token, "completed")
-        return _render("Verified", '<section class="card"><h1>✅ You are verified!</h1><p>Your Discord account has been verified successfully. You can return to Discord now.</p></section>')
+        link_rows = (
+            '<p>🌐 <a href="' + html.escape(dashboard_url, quote=True) + '">IronWolf Dashboard</a></p>'
+            + ('<p>💬 <a href="' + html.escape(server_invite_url, quote=True) + '">Discord-Server beitreten</a></p>' if server_invite_url else '')
+            + ('<p>🤖 <a href="' + html.escape(bot_invite_url, quote=True) + '">IronWolf Bot einladen</a></p>' if bot_invite_url else '')
+        )
+        return _render("Verified", '<section class="card"><h1>✅ You are verified!</h1><p>Your Discord account has been verified successfully.</p>' + link_rows + '<p>You can return to Discord now.</p></section>')
     except Exception as exc:
         _website_verify_finish(token, "failed")
         print(f"[WEBSITE VERIFY] Completion failed: {type(exc).__name__}: {exc}", flush=True)
