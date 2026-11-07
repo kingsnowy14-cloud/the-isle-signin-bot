@@ -2225,6 +2225,147 @@ class VerifyView(discord.ui.View):
 # ----------------------------- SLASH COMMANDS -----------------------------
 
 
+
+# ----------------------------- COMMUNITY GAMES -----------------------------
+
+_GAME_FLAGS = [
+    ("🇯🇵", "Japan", ["China", "South Korea"]),
+    ("🇧🇷", "Brazil", ["Portugal", "Argentina"]),
+    ("🇨🇦", "Canada", ["United States", "Australia"]),
+    ("🇳🇴", "Norway", ["Sweden", "Finland"]),
+    ("🇦🇺", "Australia", ["New Zealand", "United Kingdom"]),
+    ("🇪🇬", "Egypt", ["Morocco", "Tunisia"]),
+    ("🇬🇷", "Greece", ["Italy", "Spain"]),
+    ("🇲🇽", "Mexico", ["Spain", "Colombia"]),
+    ("🇰🇷", "South Korea", ["Japan", "North Korea"]),
+    ("🇿🇦", "South Africa", ["Kenya", "Nigeria"]),
+]
+_GAME_TRIVIA = [
+    ("Which planet is known as the Red Planet?", "Mars", ["Venus", "Jupiter"]),
+    ("What is the largest ocean on Earth?", "Pacific Ocean", ["Atlantic Ocean", "Indian Ocean"]),
+    ("How many sides does a hexagon have?", "6", ["5", "8"]),
+    ("Which animal is the largest mammal?", "Blue whale", ["African elephant", "Giraffe"]),
+    ("What is the capital of Canada?", "Ottawa", ["Toronto", "Vancouver"]),
+    ("Which gas do plants absorb from the atmosphere?", "Carbon dioxide", ["Oxygen", "Nitrogen"]),
+    ("How many players does a soccer team have on the field?", "11", ["10", "12"]),
+    ("Which is the smallest prime number?", "2", ["1", "3"]),
+    ("What is the chemical symbol for gold?", "Au", ["Ag", "Go"]),
+    ("On which continent is the Sahara Desert?", "Africa", ["Asia", "South America"]),
+]
+
+class IronWolfGameView(discord.ui.View):
+    def __init__(self, answer, options, game_name):
+        super().__init__(timeout=60)
+        self.answer = str(answer)
+        self.game_name = game_name
+        shuffled = list(options)
+        random.shuffle(shuffled)
+        for option in shuffled:
+            button = discord.ui.Button(label=str(option)[:80], style=discord.ButtonStyle.primary)
+            button.callback = self._make_callback(str(option))
+            self.add_item(button)
+
+    def _make_callback(self, selected):
+        async def callback(interaction: discord.Interaction):
+            if selected == self.answer:
+                await interaction.response.send_message(f"✅ Correct! {self.answer}", ephemeral=True)
+                stats = data.setdefault("game_stats", {}).setdefault(str(interaction.guild_id), {})
+                stats[str(interaction.user.id)] = int(stats.get(str(interaction.user.id), 0)) + 1
+                save_json(DATA_FILE, data)
+            else:
+                await interaction.response.send_message("❌ Not quite! Try the next round.", ephemeral=True)
+            for child in self.children:
+                child.disabled = True
+            try:
+                await interaction.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+        return callback
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+
+
+async def _send_ironwolf_choice_game(interaction, title, prompt, answer, wrong, game_name):
+    options = [str(answer)] + [str(item) for item in wrong[:2]]
+    embed = discord.Embed(title=title, description=prompt, color=discord.Color.blurple())
+    embed.set_footer(text="IronWolf Games · Choose one of the three answers · 60 seconds")
+    await interaction.response.send_message(
+        embed=embed,
+        view=IronWolfGameView(answer, options, game_name),
+    )
+
+
+@bot.tree.command(name="counting-channel", description="Set the channel for the community counting game")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(channel="Text channel where members count in order")
+async def counting_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    cfg = guild_config(interaction.guild_id)
+    cfg["counting_channel_id"] = channel.id
+    data.setdefault("counting_state", {})[str(interaction.guild_id)] = {"count": 0, "last_user_id": None, "best": 0}
+    save_json(CONFIG_FILE, config)
+    save_json(DATA_FILE, data)
+    await interaction.response.send_message(
+        f"✅ Counting channel set to {channel.mention}. Start with **1**!",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="flag-guess", description="Guess the country shown by its flag")
+@app_commands.guild_only()
+async def flag_guess(interaction: discord.Interaction):
+    flag, answer, wrong = random.choice(_GAME_FLAGS)
+    await _send_ironwolf_choice_game(interaction, "🚩 Flag Guess", f"Which country does this flag belong to?\n\n# {flag}", answer, wrong, "flag")
+
+
+@bot.tree.command(name="math-game", description="Solve a math problem with three possible answers")
+@app_commands.guild_only()
+async def math_game(interaction: discord.Interaction):
+    a, b = random.randint(2, 30), random.randint(2, 20)
+    op = random.choice(["+", "-", "×"])
+    answer = a + b if op == "+" else a - b if op == "-" else a * b
+    wrong = set()
+    while len(wrong) < 2:
+        candidate = answer + random.choice([-12, -9, -5, -3, 3, 5, 9, 12])
+        if candidate != answer:
+            wrong.add(candidate)
+    await _send_ironwolf_choice_game(interaction, "➗ Math Game", f"What is **{a} {op} {b}**?", str(answer), [str(x) for x in wrong], "math")
+
+
+@bot.tree.command(name="trivia", description="Answer a general knowledge question")
+@app_commands.guild_only()
+async def trivia_game(interaction: discord.Interaction):
+    question, answer, wrong = random.choice(_GAME_TRIVIA)
+    await _send_ironwolf_choice_game(interaction, "🧠 Trivia", question, answer, wrong, "trivia")
+
+
+@bot.tree.command(name="quiz", description="Play a quick general knowledge quiz")
+@app_commands.guild_only()
+async def quiz_game(interaction: discord.Interaction):
+    question, answer, wrong = random.choice(_GAME_TRIVIA)
+    await _send_ironwolf_choice_game(interaction, "❓ Quick Quiz", question, answer, wrong, "quiz")
+
+
+@bot.tree.command(name="game-stats", description="Show your IronWolf Games score")
+@app_commands.guild_only()
+async def game_stats(interaction: discord.Interaction):
+    stats = data.setdefault("game_stats", {}).get(str(interaction.guild_id), {})
+    score = int(stats.get(str(interaction.user.id), 0))
+    ranking = sorted(
+        ((int(points), int(user_id)) for user_id, points in stats.items()),
+        reverse=True,
+    )[:5]
+    lines = [f"<@{user_id}> — **{points}**" for points, user_id in ranking]
+    embed = discord.Embed(
+        title="🏆 IronWolf Games · Leaderboard",
+        description=f"Your correct answers: **{score}**\n\n" + ("\n".join(lines) if lines else "No scores yet."),
+        color=discord.Color.gold(),
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.tree.command(name="wolfanalytics", description="Send a WolfAnalytics activity chart to the configured channel")
 @app_commands.checks.has_permissions(manage_guild=True)
 @app_commands.choices(period=[
@@ -5674,6 +5815,34 @@ async def on_message(message: discord.Message):
             wolfanalytics_record(message.guild.id, "message")
         guild = message.guild
         cfg = guild_config(guild.id)
+
+        # Counting: one number at a time, no consecutive turns by the same member.
+        counting_id = cfg.get("counting_channel_id")
+        if str(counting_id or "").isdigit() and int(counting_id) == message.channel.id:
+            state = data.setdefault("counting_state", {}).setdefault(
+                str(guild.id), {"count": 0, "last_user_id": None, "best": 0}
+            )
+            content = (message.content or "").strip()
+            if content.isdigit():
+                expected = int(state.get("count", 0)) + 1
+                if int(content) == expected and str(state.get("last_user_id")) != str(message.author.id):
+                    state["count"] = expected
+                    state["last_user_id"] = str(message.author.id)
+                    state["best"] = max(int(state.get("best", 0)), expected)
+                    save_json(DATA_FILE, data)
+                    if expected % 10 == 0:
+                        await message.add_reaction("✅")
+                else:
+                    previous_best = int(state.get("best", 0))
+                    state.update({"count": 0, "last_user_id": None})
+                    save_json(DATA_FILE, data)
+                    await message.channel.send(
+                        f"❌ {message.author.mention} Counting reset! Start again at **1**. Best: **{previous_best}**",
+                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+                    )
+            else:
+                await message.add_reaction("❌")
+            return
         _quick_id = cfg.get("quick_support_channel_id")
         _ai_id = cfg.get("ai_channel_id")
         _is_ticket = str(message.channel.id) in data.setdefault("tickets", {})
