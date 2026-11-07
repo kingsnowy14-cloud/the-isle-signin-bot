@@ -6384,7 +6384,7 @@ def guild_verification(guild_id):
         '<label>Verifizierungskanal</label><select name="channel_id" required>' + options(channels, cfg.get("verify_channel"), "— Textkanal auswählen —") + '</select>'
         + '<label>Rolle nach Verifizierung vergeben</label><select name="verified_role_id" required>' + options(roles, cfg.get("verified_role"), "— Rolle auswählen —") + '</select>'
         + '<label>Rolle nach Verifizierung entfernen (optional)</label><select name="unverified_role_id">' + options(roles, cfg.get("unverified_role")) + '</select>'
-        + '<label>Verifizierungsmethode</label><select name="mode"><option value="click"' + (' selected' if mode == "click" else '') + '>Button klicken</option><option value="code"' + (' selected' if mode == "code" else '') + '>Bild-Captcha</option></select>'
+        + '<label>Verifizierungsmethode</label><select name="mode"><option value="click"' + (' selected' if mode == "click" else '') + '>Button klicken</option><option value="code"' + (' selected' if mode == "code" else '') + '>Bild-Captcha</option><option value="website"' + (' selected' if mode == "website" else '') + '>Website Verify (Discord OAuth2)</option></select>'
         + '<label>Embed-Titel</label><input name="title" maxlength="256" value="' + html.escape(str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")), quote=True) + '">'
         + '<label>Description</label><textarea name="description" maxlength="4000">' + html.escape(str(cfg.get("verify_embed_description", "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."))) + '</textarea>'
         + '<label>Button-Text</label><input name="button_label" maxlength="80" value="' + html.escape(str(cfg.get("verify_button_label", "Verifizieren")), quote=True) + '">'
