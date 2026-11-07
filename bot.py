@@ -440,7 +440,7 @@ async def assign_limited_verification_role(member, role, reason="Member complete
         claim_record = claims_by_role.get(claim_key)
         if not isinstance(claim_record, dict) or claim_record.get("initialized") is not True:
             # Existing holders occupy places too; saved claims remain after they leave.
-            existing_ids = [str(existing.id) for existing in role.members]
+            existing_ids = [str(existing.id) for existing in role.members if not existing.bot]
             claim_record = {
                 "initialized": True,
                 "user_ids": list(dict.fromkeys(existing_ids)),
