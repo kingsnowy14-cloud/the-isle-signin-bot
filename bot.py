@@ -5485,7 +5485,7 @@ class QuickSupportThreadView(discord.ui.View):
             await interaction.followup.send("The Quick Support channel is not a standard text channel.", ephemeral=True)
             return
 
-        safe_name = re.sub(r"[^a-z0-9-]", "-", requester.display_name.lower()).strip("-")[:35] or "mitglied"
+        safe_name = re.sub(r"[^a-z0-9-]", "-", requester.display_name.lower()).strip("-")[:35] or "member"
         try:
             thread = await channel.create_thread(
                 name=f"support-{safe_name}",
