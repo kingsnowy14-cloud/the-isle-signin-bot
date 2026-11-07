@@ -30,6 +30,7 @@ from wolfanalytics import record as wolfanalytics_record, get_stats as wolfanaly
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 from github_backup import github_backup_worker
 from wolfguard import setup_wolfguard
+from fivem import setup_fivem
 
 
 # Install:
@@ -10226,6 +10227,7 @@ async def ironwolf_guild_directory_on_remove(guild):
 
 
 setup_wolfguard(bot, guild_config, config, data, save_json, CONFIG_FILE, DATA_FILE)
+setup_fivem(bot, guild_config, data, save_json, DATA_FILE)
 
 
 if __name__ == "__main__":
