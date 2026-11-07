@@ -8480,9 +8480,11 @@ async def server_statistics_worker():
                     continue
 
                 members = list(guild.members)
+                bot_count = sum(1 for member in members if member.bot)
                 counts = {
-                    "members": int(guild.member_count or len(members)),
-                    "bots": sum(1 for member in members if member.bot),
+                    # Count human users only; bot accounts are displayed separately.
+                    "members": sum(1 for member in members if not member.bot),
+                    "bots": bot_count,
                     "boosters": int(guild.premium_subscription_count or 0),
                     "roles": len(guild.roles),
                     "text_channels": len(guild.text_channels),
