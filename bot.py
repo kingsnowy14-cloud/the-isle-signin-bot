@@ -5032,7 +5032,7 @@ class ClaimVoiceSupportView(discord.ui.View):
         if category is not None and not isinstance(category, discord.CategoryChannel):
             category = requester.voice.channel.category
         prefix = str(cfg.get("voice_support_prefix") or "Support")[:40]
-        safe_name = re.sub(r"[^a-zA-Z0-9-]", "-", requester.display_name.lower()).strip("-")[:60] or "mitglied"
+        safe_name = re.sub(r"[^a-zA-Z0-9-]", "-", requester.display_name.lower()).strip("-")[:60] or "member"
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
             requester: discord.PermissionOverwrite(view_channel=True, connect=True, speak=True),
@@ -5430,7 +5430,7 @@ class QuickSupportThreadView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Support-Thread erstellen",
+        label="Create Support Thread",
         style=discord.ButtonStyle.primary,
         emoji="🧵",
         custom_id="quick_support:create_private_thread",
@@ -5439,12 +5439,12 @@ class QuickSupportThreadView(discord.ui.View):
         print(f"[QUICK SUPPORT] Thread button clicked: guild={interaction.guild_id} user={interaction.user.id} message={getattr(interaction.message, 'id', None)}.", flush=True)
         guild = interaction.guild
         if guild is None or interaction.message is None:
-            await interaction.response.send_message("Dieser Button funktioniert nur auf dem Server.", ephemeral=True)
+            await interaction.response.send_message("This button can only be used in a server.", ephemeral=True)
             return
 
         request = data.setdefault("quick_support_requests", {}).get(str(interaction.message.id))
         if not isinstance(request, dict) or str(request.get("guild_id")) != str(guild.id):
-            await interaction.response.send_message("Dieser Quick-Support-Aufruf ist nicht mehr verfügbar.", ephemeral=True)
+            await interaction.response.send_message("This Quick Support request is no longer available.", ephemeral=True)
             return
 
         cfg = guild_config(guild.id)
@@ -5458,14 +5458,14 @@ class QuickSupportThreadView(discord.ui.View):
             or bool(configured_staff_role_ids & member_role_ids)
         )
         if not is_staff:
-            await interaction.response.send_message("Nur das Support-Team kann diesen Thread erstellen.", ephemeral=True)
+            await interaction.response.send_message("Only the support team can create this thread.", ephemeral=True)
             return
 
         existing_thread_id = request.get("thread_id")
         if str(existing_thread_id or "").isdigit():
             existing_thread = guild.get_thread(int(existing_thread_id))
             if existing_thread is not None:
-                await interaction.response.send_message(f"Für diesen Hilferuf gibt es bereits {existing_thread.mention}.", ephemeral=True)
+                await interaction.response.send_message(f"A support thread already exists for this request: {existing_thread.mention}.", ephemeral=True)
                 return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -5477,12 +5477,12 @@ class QuickSupportThreadView(discord.ui.View):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 requester = None
         if requester is None:
-            await interaction.followup.send("Die Person, die den Hilferuf ausgelöst hat, ist nicht mehr auf dem Server.", ephemeral=True)
+            await interaction.followup.send("The member who submitted this support request is no longer in the server.", ephemeral=True)
             return
 
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
-            await interaction.followup.send("Der Quick-Support-Kanal ist kein normaler Textkanal.", ephemeral=True)
+            await interaction.followup.send("The Quick Support channel is not a standard text channel.", ephemeral=True)
             return
 
         safe_name = re.sub(r"[^a-z0-9-]", "-", requester.display_name.lower()).strip("-")[:35] or "mitglied"
@@ -5497,20 +5497,20 @@ class QuickSupportThreadView(discord.ui.View):
             await thread.add_user(requester)
             await thread.add_user(interaction.user)
             await thread.send(
-                f"🆘 **Quick Support**\nAnfrage von {requester.mention}\nSupport: {interaction.user.mention}\n"
-                "Hier könnt ihr privat miteinander schreiben. Nur eingeladene Mitglieder und das Serverteam können den Thread sehen.",
+                f"🆘 **Quick Support**\nRequest from: {requester.mention}\nSupport: {interaction.user.mention}\n"
+                "You can chat privately here. Only invited members and the server team can view this thread.",
                 allowed_mentions=discord.AllowedMentions.none(),
             )
             request["thread_id"] = str(thread.id)
             request["handled_by"] = str(interaction.user.id)
             request["created_at"] = datetime.now(timezone.utc).isoformat()
             save_json(DATA_FILE, data)
-            await interaction.followup.send(f"Privater Support-Thread erstellt: {thread.mention}", ephemeral=True)
+            await interaction.followup.send(f"Private support thread created: {thread.mention}", ephemeral=True)
             print(f"[QUICK SUPPORT] Private thread {thread.id} created for requester {requester.id} by staff {interaction.user.id}.", flush=True)
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"[QUICK SUPPORT] Could not create private thread in channel {channel.id}: {type(exc).__name__}: {exc}", flush=True)
             await interaction.followup.send(
-                "Der private Thread konnte nicht erstellt werden. Bitte prüfe die Bot-Berechtigungen: Kanäle verwalten, Threads erstellen, Nachrichten senden und Mitglieder zu Threads hinzufügen.",
+                "The private thread could not be created. Please check the bot permissions: Manage Channels, Create Threads, Send Messages, and Add Members to Threads.",
                 ephemeral=True,
             )
 
@@ -5607,7 +5607,7 @@ async def on_message(message: discord.Message):
                 if now - _ticket_quick_support_last_ping.get(ping_key, 0) >= 300:
                     try:
                         alert_message = await message.channel.send(
-                            f"🆘 {quick_role.mention} — {message.author.mention} benötigt Unterstützung.",
+                            f"🆘 {quick_role.mention} — {message.author.mention} needs help.",
                             view=QuickSupportThreadView(),
                             allowed_mentions=discord.AllowedMentions(roles=[quick_role], users=False, everyone=False),
                         )
