@@ -1293,9 +1293,22 @@ def _module_navigation():
         ("audit-log", "📜 Audit Log", "/audit-log"),
         ("health", "🩺 System Health", "/health"),
         ("backup", "🗄️ Backup & Restore", "/backup"),
-        ("premium", "✨ Premium", "/premium"),
         ("module-manager", "🧩 Module Manager", "?section=modules"),
         ("module-template", "🛠️ Module Templates", "?section=template"),
+        ("__ai_category__", "👑 PREMIUM-MODULE", ""),
+        ("premium", "✨ Premium-Übersicht", "/premium"),
+        ("premium-ticket", "🎟️ Ticket-System Pro", "/tickets"),
+        ("premium-branding", "🎨 Custom Branding", "/branding"),
+        ("premium-custom-bot", "🤖 Custom Bot Profile", "/custom-bot"),
+        ("premium-security", "🛡️ Security Pro", "/commands"),
+        ("premium-automation", "📣 Automation Pro", "/automation"),
+        ("premium-invite", "📨 Invite Tracker", "?section=general#settings-panel"),
+        ("premium-boost", "🚀 Server-Boost-System", "/server-boost"),
+        ("premium-applications", "📝 Pro Applications", "/applications"),
+        ("premium-shifts", "⏱️ Shift Tracker", "/shifts"),
+        ("premium-nickname", "🏷️ AutoNickname", "/auto-nickname"),
+        ("premium-role", "🎭 AutoRole", "/auto-role"),
+        ("premium-analytics", "📊 WolfAnalytics", "/wolfanalytics"),
     )
     links = []
     try:
@@ -4356,22 +4369,32 @@ def guild_page(guild_id):
     categories = [
         ("👥 Community & Engagement", [("👋", "Welcome & Goodbye", "Public welcomes, goodbye messages and DMs", "/welcome"), ("🎭", "Reaction Roles", "Self-service roles through reactions", "/reaction-roles"), ("💬", "Anonymous Feedback", "Collect suggestions and feedback", "/feedback"), ("🎂", "Birthdays", "Birthday announcements and saved dates", "/birthdays"), ("👥", "Team List", "Publish your server team", "/teamlist")]),
         ("🛡️ Security & Moderation", [("🧪", "Security Lab", "Run /security-test to simulate attacks safely without changing server content", "/security-lab"), ("🔐", "Verification", "Verification panels, channels and roles", "/verification"), ("🎮", "Gaming Verification", "Connect supported gaming accounts", "/verified-accounts"), ("🍯", "Honeypot", "Hidden trap channel and moderation response", "/honeypot"), ("🛡️", "Ping Protection", "Protect selected members from unwanted mentions", "/ping-protection"), ("⚙️", "Protection Settings", "Anti-raid and anti-nuke controls", "?section=security#settings-panel"), ("🎮", "Action Center", "Moderation and server actions", "/actions")]),
-        ("🎟️ Ticket System", [("🎟️", "Ticket Panels", "Create and manage ticket panels", "/tickets"), ("🤖", "AI Ticket Support", "AI replies, knowledge and learning", "/ai")]),
+        ("🎟️ Ticket System", [("🎟️", "Ticket Panels", "Create and manage ticket panels", "/tickets")]),
         ("🧩 Modules", [("🆘", "Quick Support", "Automatic support-team pings in tickets", "/quick-support")]),
-        ("📨 Support & Communication", [("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
-        ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
-        ("📊 Insights & Administration", [("📊", "WolfAnalytics", "Server joins, leaves and message activity", "/wolfanalytics"), ("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "System-Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
+        ("📨 Support & Communication", [("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages")]),
+        ("⚙️ Server Tools & Customization", [("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
+        ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "System-Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
     ]
     def module_cards(items, popular_style=False):
         css_class = "iw-popular-card" if popular_style else "iw-module-card"
         cards = []
         for icon, title, description, suffix in items:
-            locked = (suffix == "/ai" and not guild_has_feature(cfg, "ticket")) or (suffix == "/wolfanalytics" and not guild_has_feature(cfg, "wolfanalytics"))
-            premium_note = '<em>🔒 Premium Funktion</em>' if locked else ''
+            premium_feature_by_suffix = {
+                "/ai": "ticket", "/tickets": "ticket", "/branding": "branding",
+                "/custom-bot": "custom_bot", "/commands": "security",
+                "/automation": "automation", "?section=general#settings-panel": "invite_tracker",
+                "/server-boost": "server_boost", "/applications": "applications",
+                "/shifts": "shift_tracker", "/auto-nickname": "auto_nickname",
+                "/auto-role": "auto_role", "/wolfanalytics": "wolfanalytics",
+            }
+            premium_feature = premium_feature_by_suffix.get(suffix)
+            locked = bool(premium_feature and not guild_has_feature(cfg, premium_feature))
+            premium_note = '<em>🔒 Premium erforderlich</em>' if locked else ('<em>👑 Premium enthalten</em>' if premium_feature else '')
+            destination = "/guild/" + gid + ("/premium" if locked else suffix)
             cards.append(
                 '<a class="' + css_class + (' premium-locked' if locked else '') +
-                '" style="' + ('opacity:.48;filter:grayscale(1)' if locked else '') +
-                '" href="/guild/' + gid + suffix + '"><span class="iw-icon">' + icon +
+                '" style="' + ('opacity:.55;filter:grayscale(1)' if locked else '') +
+                '" href="' + destination + '"><span class="iw-icon">' + icon +
                 '</span><span><strong>' + html.escape(title) + '</strong><small>' +
                 html.escape(description) + '</small>' + premium_note +
                 '</span><span class="iw-arrow">↗</span></a>'
@@ -4382,6 +4405,27 @@ def guild_page(guild_id):
     metrics = (("Modules", len(module_records)), ("Active modules", sum(1 for item in module_records if item["enabled"])), ("Active commands", sum(1 for item in command_records if item["enabled"])), ("Disabled commands", sum(1 for item in command_records if not item["enabled"])))
     body = '<section class="iw-hero"><span class="iw-kicker">IRONWOLF · CONTROL PANEL</span><h1>🐺 ' + html.escape(guild.name) + '</h1><p>Your server, organized. Manage community, security and automation from one place.</p><small>SERVER ID · ' + gid + '</small></section>'
     body += '<div class="iw-metrics">' + "".join('<div><small>' + label + '</small><strong>' + str(value) + '</strong></div>' for label, value in metrics) + '</div>'
+    recent_changes = cfg.get("dashboard_audit_log", [])
+    if not isinstance(recent_changes, list):
+        recent_changes = []
+    change_rows = []
+    for entry in reversed(recent_changes[-5:]):
+        if not isinstance(entry, dict):
+            continue
+        try:
+            changed_at = datetime.fromisoformat(str(entry.get("timestamp", "")).replace("Z", "+00:00"))
+            changed_label = changed_at.astimezone().strftime("%d.%m.%Y · %H:%M")
+        except (TypeError, ValueError):
+            changed_label = "Zeitpunkt unbekannt"
+        change_rows.append(
+            '<div class="row"><div><strong>' + html.escape(str(entry.get("action", "Änderung"))[:100]) +
+            '</strong><br><small>' + html.escape(str(entry.get("details", ""))[:300]) +
+            '</small></div><small class="muted">' + html.escape(changed_label) + '</small></div>'
+        )
+    if change_rows:
+        body += '<section class="card"><h2>🧾 Was wurde zuletzt gemacht?</h2><p class="muted">Die letzten Änderungen an den Einstellungen dieses Discord-Servers.</p>' + ''.join(change_rows) + '<p><a href="/guild/' + gid + '/audit-log">Alle Änderungen ansehen →</a></p></section>'
+    else:
+        body += '<section class="card"><h2>🧾 Was wurde zuletzt gemacht?</h2><p class="muted">Hier erscheinen Änderungen, sobald Einstellungen über das Dashboard gespeichert werden.</p><a href="/guild/' + gid + '/audit-log">Änderungsprotokoll öffnen →</a></section>'
     body += '<section class="iw-section"><div class="iw-heading"><div><span class="iw-kicker">SUPPORT CENTER</span><h2>🆘 Quick Support & AI</h2><p>Open either support module directly from the server dashboard.</p></div></div>' + module_cards([("🆘", "Quick Support", "Configure automatic support pings in tickets", "/quick-support"), ("🤖", "AI Assistant", "Manage AI ticket replies and server knowledge", "/ai")], True) + '</section>'
     # Render the selected section immediately after the server summary. Previously
     # settings_html was built above but never appended to the response body, so
@@ -4396,6 +4440,21 @@ def guild_page(guild_id):
     body += '<div class="iw-heading"><div><span class="iw-kicker">EXPLORE IRONWOLF</span><h2>All Modules</h2><p>Browse every feature, grouped by purpose.</p></div></div>'
     for title, items in categories:
         body += '<section class="iw-category"><h2>' + title + '</h2><p class="iw-category-subtitle">' + str(len(items)) + ' tools in this category</p>' + module_cards(items) + '</section>'
+    premium_items = [
+        ("🎟️", "Ticket-System Pro", "Erweiterte Ticket-Panels, Dropdowns und Prioritätsrollen", "/tickets"),
+        ("🎨", "Custom Branding", "Eigene Farben und Logos für Ticket-Embeds", "/branding"),
+        ("🤖", "Custom Bot Profile", "Server-spezifisches Bot-Profil und Branding", "/custom-bot"),
+        ("🛡️", "Security Pro", "Erweiterte Sicherheitsbefehle und Schutzwerkzeuge", "/commands"),
+        ("📣", "Automation Pro", "Geplante Nachrichten und wiederkehrende Abläufe", "/automation"),
+        ("📨", "Invite Tracker", "Einladungen erfassen und auswerten", "?section=general#settings-panel"),
+        ("🚀", "Server-Boost-System", "Boost-Belohnungen und Ankündigungen", "/server-boost"),
+        ("📝", "Pro Applications", "Erweiterte Bewerbungsformulare und Panels", "/applications"),
+        ("⏱️", "Shift Tracker", "Schicht- und Zeiterfassung", "/shifts"),
+        ("🏷️", "AutoNickname", "Automatische Nickname-Regeln", "/auto-nickname"),
+        ("🎭", "AutoRole", "Erweiterte automatische Rollenvergabe", "/auto-role"),
+        ("📊", "WolfAnalytics", "Serveraktivität und detaillierte Analysen", "/wolfanalytics"),
+    ]
+    body += '<section class="iw-category" id="premium-modules"><h2>👑 Premium · Exklusive Module</h2><p class="iw-category-subtitle">Diese Module sind nur mit aktivem Premium-Zugang verfügbar. Gesperrte Module führen direkt zur Premium-Verwaltung.</p>' + module_cards(premium_items) + '</section>'
     body += '<section class="iw-category"><h2>⚙️ General configuration</h2><p class="iw-category-subtitle">Core server settings, channels, roles and voice options.</p>' + settings_cards + '</section>'
     return _render(guild.name + " · Control Center", body)
 
