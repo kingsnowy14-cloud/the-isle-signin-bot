@@ -5801,16 +5801,11 @@ async def on_message(message: discord.Message):
                     state["last_user_id"] = str(message.author.id)
                     state["best"] = max(int(state.get("best", 0)), expected)
                     save_json(DATA_FILE, data)
-                    if expected % 10 == 0:
-                        await message.add_reaction("✅")
+                    await message.add_reaction("✅")
                 else:
-                    previous_best = int(state.get("best", 0))
                     state.update({"count": 0, "last_user_id": None})
                     save_json(DATA_FILE, data)
-                    await message.channel.send(
-                        f"❌ {message.author.mention} Counting reset! Start again at **1**. Best: **{previous_best}**",
-                        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
-                    )
+                    await message.add_reaction("❌")
             else:
                 await message.add_reaction("❌")
             return
