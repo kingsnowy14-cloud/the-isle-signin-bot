@@ -6564,7 +6564,7 @@ def guild_verification(guild_id):
             if not re.fullmatch(r"[0-9a-fA-F]{6}", raw_embed_color):
                 raw_embed_color = "5865F2"
             embed = discord.Embed(title=title, description=description, color=discord.Color(int(raw_embed_color, 16)))
-            embed.set_footer(text=f"IronWolf · Verifiziert: {len(verified_role.members)}")
+            embed.set_footer(text=f"IronWolf · Verify User: {len(verified_role.members)}")
             if old_verify_message_id and str(old_verify_channel_id) == str(channel.id):
                 try:
                     old_message = await channel.fetch_message(int(old_verify_message_id))
