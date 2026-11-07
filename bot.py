@@ -2211,6 +2211,9 @@ class VerifyView(discord.ui.View):
                 ephemeral=True,
             )
             return
+        if cfg.get("verify_mode", "click") == "website":
+            await interaction.response.send_message("Please use the Website Verify button and complete Discord sign-in.", ephemeral=True)
+            return
         if cfg.get("verify_mode", "click") == "code":
             await send_captcha_challenge(interaction)
             return
