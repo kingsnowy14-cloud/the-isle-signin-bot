@@ -2141,7 +2141,7 @@ async def wolfanalytics_command(interaction: discord.Interaction, period: app_co
     module_links = [
         ("👋 Welcome & Goodbye", "/welcome"), ("🎭 Reaction Roles", "/reaction-roles"),
         ("💬 Anonymous Feedback", "/feedback"), ("🎂 Birthdays", "/birthdays"),
-        ("📈 Leveling & XP", "?section=general#settings-panel"), ("👥 Team List", "/teamlist"),
+        ("👥 Team List", "/teamlist"),
         ("🧪 Security Lab", "/security-lab"), ("🔐 Verification", "/verification"),
         ("🎮 Gaming Verification", "/verified-accounts"), ("🍯 Honeypot", "/honeypot"),
         ("🛡️ Ping Protection", "/ping-protection"), ("⚙️ Protection Settings", "?section=security#settings-panel"),
