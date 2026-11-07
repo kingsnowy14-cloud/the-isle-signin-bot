@@ -7419,7 +7419,8 @@ async def apply_auto_nickname(member, reason="AutoNickname: matching role is pre
     if not prefix:
         await restore_auto_nickname(member)
         return False
-    desired = f"{prefix} {member.name}"[:32]
+    base_name = str(getattr(member, "global_name", None) or member.name).strip()
+    desired = f"{prefix} {base_name}"[:32]
     if member.nick == desired:
         return True
     originals = data.setdefault("auto_nickname_originals", {})
@@ -7571,7 +7572,7 @@ async def start_auto_role_nickname_monitor():
                                 nickname_rules = ([{"role_id": legacy_role, "nickname": legacy_prefix}]
                                                   if legacy_role and legacy_prefix else [])
                             generated_nicks = {
-                                f"{str(rule.get('nickname') or '').strip()} {member.name}"[:32]
+                                f"{str(rule.get('nickname') or '').strip()} {str(getattr(member, 'global_name', None) or member.name).strip()}"[:32]
                                 for rule in nickname_rules
                                 if isinstance(rule, dict) and str(rule.get("nickname") or "").strip()
                             }
