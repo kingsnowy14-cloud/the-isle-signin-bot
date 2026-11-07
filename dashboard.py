@@ -42,6 +42,8 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=365),
+    SESSION_REFRESH_EACH_REQUEST=False,
     MAX_CONTENT_LENGTH=8 * 1024 * 1024,
 )
 
@@ -1729,12 +1731,58 @@ def _require_login():
     return None
 
 
+def _refresh_discord_access_token(force=False):
+    """Refresh Discord OAuth credentials silently so dashboard users stay signed in."""
+    if not session.get("refresh_token"):
+        return bool(session.get("access_token"))
+
+    expires_at = float(session.get("access_token_expires_at", 0) or 0)
+    if not force and expires_at > time.time() + 90 and session.get("access_token"):
+        return True
+
+    try:
+        response = requests.post(
+            DISCORD_API + "/oauth2/token",
+            data={
+                "client_id": _env("DISCORD_CLIENT_ID"),
+                "client_secret": _env("DISCORD_CLIENT_SECRET"),
+                "grant_type": "refresh_token",
+                "refresh_token": session["refresh_token"],
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        session["access_token"] = payload["access_token"]
+        # Discord may rotate refresh tokens. Always keep the newest one.
+        if payload.get("refresh_token"):
+            session["refresh_token"] = payload["refresh_token"]
+        session["access_token_expires_at"] = time.time() + int(payload.get("expires_in", 604800))
+        session.permanent = True
+        return True
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        print(f"[DASHBOARD AUTH] Discord token refresh failed: {type(exc).__name__}", flush=True)
+        session.clear()
+        return False
+
+
 def _api_get(path):
+    if not _refresh_discord_access_token():
+        return None
     response = requests.get(
         DISCORD_API + path,
         headers={"Authorization": "Bearer " + session["access_token"]},
         timeout=10,
     )
+    if response.status_code == 401:
+        if not _refresh_discord_access_token(force=True):
+            return None
+        response = requests.get(
+            DISCORD_API + path,
+            headers={"Authorization": "Bearer " + session["access_token"]},
+            timeout=10,
+        )
     if response.status_code == 401:
         session.clear()
         return None
@@ -2248,13 +2296,18 @@ def callback():
             timeout=10,
         )
         response.raise_for_status()
-        token = response.json()["access_token"]
+        token_data = response.json()
+        token = token_data["access_token"]
         profile = requests.get(DISCORD_API + "/users/@me", headers={"Authorization": "Bearer " + token}, timeout=10)
         profile.raise_for_status()
     except (requests.RequestException, ValueError, KeyError):
         return _render("Anmeldung fehlgeschlagen", '<div class="card"><h1>Discord konnte nicht erreicht werden</h1><p>Bitte versuche es später erneut.</p></div>', 502)
     session.clear()
+    session.permanent = True
     session["access_token"] = token
+    if token_data.get("refresh_token"):
+        session["refresh_token"] = token_data["refresh_token"]
+    session["access_token_expires_at"] = time.time() + int(token_data.get("expires_in", 604800))
     session["user_id"] = str(profile.json().get("id", ""))
     session["csrf_token"] = secrets.token_urlsafe(32)
     return redirect(url_for("index"))
