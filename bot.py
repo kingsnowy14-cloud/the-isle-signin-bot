@@ -8543,12 +8543,6 @@ async def ironwolf_global_stats_worker():
             embed.add_field(name="🌐 Servers", value=f"**{len(guilds):,}**", inline=True)
             embed.add_field(name="🤖 Bot Accounts", value=f"**{len(bot_ids):,}**", inline=True)
             embed.add_field(name="📊 Total Member Slots", value=f"**{total_member_slots:,}**", inline=True)
-            embed.add_field(name="🚀 Server Boosts", value=f"**{total_boosts:,}**", inline=True)
-            embed.add_field(name="🎙️ Users in Voice", value=f"**{active_voice_users:,}**", inline=True)
-            embed.add_field(name="💬 Text Channels", value=f"**{total_text_channels:,}**", inline=True)
-            embed.add_field(name="🔊 Voice Channels", value=f"**{total_voice_channels:,}**", inline=True)
-            embed.add_field(name="⌨️ Tracked Messages", value=f"**{tracked_messages:,}**", inline=True)
-            embed.add_field(name="⏱️ Tracked Voice Time", value=f"**{tracked_voice_seconds // 3600:,} hours**", inline=True)
             embed.add_field(
                 name="🔗 Dashboard",
                 value=f"[Open IronWolf Dashboard]({_IRONWOLF_DASHBOARD_URL})",
