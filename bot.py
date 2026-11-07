@@ -7266,9 +7266,7 @@ def _auto_nickname_rule_for_member(member, preferred_role_ids=None):
 
 
 async def apply_auto_nickname(member, reason="AutoNickname: matching role is present", preferred_role_ids=None):
-    """Apply the configured nickname whenever a member currently has any configured trigger role."""
-    if member.bot:
-        return False
+    """Apply the configured nickname to human or bot accounts with a configured trigger role."""
     me = member.guild.me
     if me is None or not me.guild_permissions.manage_nicknames or member.top_role >= me.top_role:
         return False
