@@ -2263,8 +2263,9 @@ def website_verify_callback():
             unverified = guild.get_role(int(unverified_id)) if unverified_id else None
             if unverified and unverified in member.roles:
                 await member.remove_roles(unverified, reason="Website Verify completed")
-            if role not in member.roles:
-                await member.add_roles(role, reason="Website Verify completed")
+            role_granted = await _bot.assign_limited_verification_role(
+                member, role, reason="Website Verify completed"
+            )
             await _bot.refresh_verification_panel(guild, cfg)
 
             dashboard_url = _env("DASHBOARD_PUBLIC_URL").strip().rstrip("/") or request_host_origin()
@@ -2307,11 +2308,15 @@ def website_verify_callback():
                     label="Bot einladen", style=discord.ButtonStyle.link, url=bot_invite_url, emoji="🤖"
                 ))
             try:
-                await member.send(
+                status_message = (
                     "✅ Du wurdest erfolgreich auf **" + guild.name + "** verifiziert!\n"
-                    "Nutze die Buttons unten für das Dashboard, den Discord-Server und den Bot-Einladungslink.",
-                    view=link_view,
+                    "Nutze die Buttons unten für das Dashboard, den Discord-Server und den Bot-Einladungslink."
                 )
+                if not role_granted:
+                    status_message += (
+                        "\n\nℹ️ Die begrenzte Verifizierungsrolle ist bereits an die ersten 30 Mitglieder vergeben."
+                    )
+                await member.send(status_message, view=link_view)
             except (discord.Forbidden, discord.HTTPException):
                 print(f"[WEBSITE VERIFY] Could not DM user {discord_user_id}; role was assigned.", flush=True)
             return dashboard_url, server_invite_url, bot_invite_url
