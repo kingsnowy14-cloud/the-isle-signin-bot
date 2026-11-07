@@ -3561,7 +3561,7 @@ async def _refresh_poll(payload: discord.RawReactionActionEvent):
             description="\n\n".join(bars) + f"\n\n**Stimmen insgesamt:** {total}",
             color=discord.Color.blurple(),
         )
-        await message.edit(embed=embed)
+        await message.edit(embed=embed, view=IronWolfGlobalStatsView())
     except (discord.Forbidden, discord.NotFound, discord.HTTPException, IndexError):
         pass
 
@@ -8589,6 +8589,19 @@ _IRONWOLF_DISCORD_SERVER_INVITE_URL = "https://discord.gg/KDKs5WPgaC"
 _IRONWOLF_GLOBAL_STATS_MESSAGE_FILE = data_path("ironwolf_global_stats_message.json")
 
 
+class IronWolfGlobalStatsView(discord.ui.View):
+    """URL buttons displayed underneath the global statistics embed."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(discord.ui.Button(
+            label="Invite IronWolf",
+            emoji="🤖",
+            style=discord.ButtonStyle.link,
+            url=_IRONWOLF_INVITE_URL,
+        ))
+
+
 async def ironwolf_global_stats_worker():
     """Keep one global IronWolf statistics embed updated in the configured public channel."""
     await bot.wait_until_ready()
@@ -8640,11 +8653,6 @@ async def ironwolf_global_stats_worker():
                 inline=False,
             )
             embed.add_field(
-                name="🤖 Invite IronWolf",
-                value=f"[Add IronWolf to your server]({_IRONWOLF_INVITE_URL})",
-                inline=False,
-            )
-            embed.add_field(
                 name="💬 Discord Server · Permanent Invite",
                 value=f"[Join the IronWolf Discord Server]({_IRONWOLF_DISCORD_SERVER_INVITE_URL})",
                 inline=False,
@@ -8665,7 +8673,7 @@ async def ironwolf_global_stats_worker():
                 except discord.NotFound:
                     message = None
             if message is None:
-                message = await channel.send(embed=embed)
+                message = await channel.send(embed=embed, view=IronWolfGlobalStatsView())
                 _IRONWOLF_GLOBAL_STATS_MESSAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
                 _IRONWOLF_GLOBAL_STATS_MESSAGE_FILE.write_text(
                     json.dumps({"channel_id": _IRONWOLF_GLOBAL_STATS_CHANNEL_ID, "message_id": message.id}),
