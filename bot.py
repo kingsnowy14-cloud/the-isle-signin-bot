@@ -5598,10 +5598,24 @@ async def on_message(message: discord.Message):
             quick_role = guild.get_role(int(quick_role_id))
             staff_role_id = cfg.get("support_role")
             staff_role = guild.get_role(int(staff_role_id)) if str(staff_role_id or "").isdigit() else None
-            # Every message in the explicitly configured Quick Support channel is a
-            # request, including admin test messages. Staff can still use the button;
-            # the per-user cooldown prevents repeated alerts.
-            if quick_role and not quick_role.is_default() and not quick_role.managed:
+            # Messages from members with the configured staff role are not support
+            # requests and must never trigger a staff ping.
+            staff_member_role_ids = {
+                int(value) for value in (staff_role_id,)
+                if str(value or "").isdigit()
+            }
+            author_role_ids = {role.id for role in getattr(message.author, "roles", [])}
+            author_is_staff = bool(staff_member_role_ids & author_role_ids)
+
+            # Every message from a non-staff member in the explicitly configured
+            # Quick Support channel is a request; staff can still use the button.
+            if author_is_staff:
+                print(
+                    f"[QUICK SUPPORT] Ping skipped in channel {message.channel.id}: "
+                    f"author {message.author.id} has the configured staff role.",
+                    flush=True,
+                )
+            elif quick_role and not quick_role.is_default() and not quick_role.managed:
                 ping_key = (message.channel.id, message.author.id)
                 now = time.monotonic()
                 if now - _ticket_quick_support_last_ping.get(ping_key, 0) >= 300:
