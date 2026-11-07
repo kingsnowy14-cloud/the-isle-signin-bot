@@ -4336,6 +4336,8 @@ async def verify_setup(
         ),
         color=discord.Color.green(),
     )
+    verified_count = len(verifiziert.members)
+    embed.set_footer(text=f"IronWolf · Verifiziert: {verified_count}")
     verification_message = await kanal.send(embed=embed, view=VerifyView(button_text, emoji, mode_value))
     cfg["verify_message_id"] = verification_message.id
     save_json(CONFIG_FILE, config)
