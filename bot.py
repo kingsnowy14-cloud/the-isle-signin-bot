@@ -7472,18 +7472,10 @@ async def ironwolf_profile(
         )
         return
 
-    # Use the same allowlist as the nickname guard. Only listed guilds may
-    # change the bot's global avatar/banner through this command.
-    raw_ids = os.getenv("IRONWOLF_NICKNAME_ALLOWED_GUILD_IDS", "")
-    allowed_guild_ids = {
-        int(item.strip())
-        for item in raw_ids.split(",")
-        if item.strip().isdigit()
-    }
-    if interaction.guild.id not in allowed_guild_ids:
+    # Custom bot branding is a Premium feature for this server.
+    if not guild_has_feature(guild_config(interaction.guild.id), "custom_bot"):
         await interaction.response.send_message(
-            "⛔ Dieser Server ist nicht für Profilbild- oder Banneränderungen freigegeben. "
-            "Bitte wende dich an den Bot-Betreiber.",
+            "⛔ Custom Bot Profile ist ein Premium-Feature. Ohne Premium bleibt IronWolf beim Standardnamen und Standardprofil.",
             ephemeral=True,
         )
         return
@@ -7650,16 +7642,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     if bot.user is None or after.id != bot.user.id or before.nick == after.nick:
         return
 
-    # Comma-separated Discord server IDs in Railway:
-    # IRONWOLF_NICKNAME_ALLOWED_GUILD_IDS=123456789012345678,234567890123456789
-    raw_ids = os.getenv("IRONWOLF_NICKNAME_ALLOWED_GUILD_IDS", "")
-    allowed_guild_ids = set()
-    for item in raw_ids.split(","):
-        item = item.strip()
-        if item.isdigit():
-            allowed_guild_ids.add(int(item))
-
-    if after.guild.id in allowed_guild_ids:
+    # Premium servers may use a custom nickname. Every other server must
+    # keep the standard bot name (no server nickname).
+    if guild_has_feature(guild_config(after.guild.id), "custom_bot"):
         return
 
     me = after.guild.me
@@ -7672,15 +7657,52 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
     try:
         await after.edit(
-            nick=before.nick,
-            reason="IronWolf nickname guard: server ID is not allowlisted",
+            nick=None,
+            reason="IronWolf nickname guard: custom nickname requires Premium",
         )
-        print(f"[nickname-guard] Restored IronWolf nickname in guild {after.guild.id}.")
+        print(f"[nickname-guard] Restored standard IronWolf name in guild {after.guild.id}.")
     except (discord.Forbidden, discord.HTTPException) as exc:
         print(
             f"[nickname-guard] Failed to restore nickname in guild "
             f"{after.guild.id}: {type(exc).__name__}: {exc}"
         )
+
+
+@bot.listen("on_ready")
+async def enforce_premium_nicknames_on_all_servers():
+    """Remove legacy custom nicknames from every non-Premium server."""
+    changed = 0
+    skipped = 0
+    failed = 0
+    for guild in bot.guilds:
+        if guild_has_feature(guild_config(guild.id), "custom_bot"):
+            continue
+        member = guild.me
+        if member is None or member.nick is None:
+            continue
+        if not member.guild_permissions.change_nickname:
+            skipped += 1
+            print(f"[nickname-guard] Missing Change Nickname permission in guild {guild.id}.", flush=True)
+            continue
+        try:
+            await member.edit(
+                nick=None,
+                reason="IronWolf Premium policy: restore standard name on non-Premium server",
+            )
+            changed += 1
+            await asyncio.sleep(0.35)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            failed += 1
+            print(
+                f"[nickname-guard] Startup reset failed in guild {guild.id}: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+    print(
+        f"[nickname-guard] Premium nickname sweep complete: reset={changed}, "
+        f"skipped={skipped}, failed={failed}.",
+        flush=True,
+    )
 
 
 # ---------------------- IRONWOLF FEATURES (INLINE) ----------------------
