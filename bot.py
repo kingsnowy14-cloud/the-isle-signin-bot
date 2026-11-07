@@ -1315,9 +1315,30 @@ async def _open_ticket_flow(interaction: discord.Interaction, panel_key: str, bu
 
 
 
+def _ticket_auto_emoji(label: str) -> str:
+    """Choose a useful Unicode emoji when a ticket option has no custom choice."""
+    text = str(label or "").casefold()
+    rules = (
+        (("billing", "payment", "invoice", "rechnung", "zahlung", "shop", "kauf"), "💳"),
+        (("bug", "fehler", "problem", "technical", "technik", "crash"), "🛠️"),
+        (("report", "meldung", "melden", "beschwerde", "complaint"), "🚨"),
+        (("appeal", "ban", "entbann", "sperre", "bann"), "⚖️"),
+        (("application", "bewerbung", "whitelist", "antrag"), "📝"),
+        (("partner", "partnership", "kooperation"), "🤝"),
+        (("account", "konto", "login", "passwort"), "👤"),
+        (("staff", "team", "moderation", "moderator"), "🛡️"),
+        (("question", "frage", "help", "hilfe", "support"), "❓"),
+    )
+    for keywords, emoji in rules:
+        if any(keyword in text for keyword in keywords):
+            return emoji
+    return "🎫"
+
+
 class TicketPanelSelect(discord.ui.Select):
-    def __init__(self, panel_key: str, labels, descriptions=None):
+    def __init__(self, panel_key: str, labels, descriptions=None, emojis=None):
         descriptions = descriptions if isinstance(descriptions, list) else []
+        emojis = emojis if isinstance(emojis, list) else []
         options = [
             discord.SelectOption(
                 label=str(label)[:100],
@@ -1325,6 +1346,7 @@ class TicketPanelSelect(discord.ui.Select):
                 description=(str(descriptions[index]).strip()[:100] or None)
                 if index < len(descriptions)
                 else None,
+                emoji=(str(emojis[index]).strip()[:100] if index < len(emojis) and str(emojis[index]).strip() else _ticket_auto_emoji(label)),
             )
             for index, label in enumerate(labels[:10])
         ]
@@ -1351,17 +1373,19 @@ class TicketPanelSelect(discord.ui.Select):
 
 
 class TicketPanelView(discord.ui.View):
-    def __init__(self, panel_key: str, labels, display_mode: str = "buttons", descriptions=None):
+    def __init__(self, panel_key: str, labels, display_mode: str = "buttons", descriptions=None, emojis=None):
         super().__init__(timeout=None)
         self.panel_key = panel_key
         safe_labels = [str(label).strip()[:80] for label in labels if str(label).strip()][:10]
+        emojis = emojis if isinstance(emojis, list) else []
         if display_mode == "select":
             if safe_labels:
-                self.add_item(TicketPanelSelect(panel_key, safe_labels, descriptions))
+                self.add_item(TicketPanelSelect(panel_key, safe_labels, descriptions, emojis))
             return
         for index, label in enumerate(safe_labels):
             button = discord.ui.Button(
                 label=label,
+                emoji=(str(emojis[index]).strip()[:100] if index < len(emojis) and str(emojis[index]).strip() else _ticket_auto_emoji(label)),
                 style=discord.ButtonStyle.primary,
                 custom_id=f"ticket:create:{panel_key}:{index}",
                 row=index // 4,
