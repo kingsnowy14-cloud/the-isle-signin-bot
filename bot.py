@@ -2321,11 +2321,11 @@ async def send_ironwolf_game(guild_id, game_name):
         raise RuntimeError("IronWolf Games are disabled for this server.")
     if not cfg.get("game_" + str(game_name) + "_enabled", False):
         raise RuntimeError("This game is disabled in the dashboard.")
-    channel_id = cfg.get("game_channel_id")
+    channel_id = cfg.get("game_" + str(game_name) + "_channel_id") or cfg.get("game_channel_id")
     guild = bot.get_guild(int(guild_id))
     channel = guild.get_channel(int(channel_id)) if guild and str(channel_id or "").isdigit() else None
     if not isinstance(channel, discord.TextChannel):
-        raise RuntimeError("Select a valid Game Channel in the dashboard first.")
+        raise RuntimeError("Select a valid channel for this game in the dashboard first.")
     title, prompt, answer, wrong = _ironwolf_game_payload(game_name)
     embed = discord.Embed(title=title, description=prompt, color=discord.Color.blurple())
     embed.set_footer(text="IronWolf Games · Choose one of the three answers · 60 seconds")
