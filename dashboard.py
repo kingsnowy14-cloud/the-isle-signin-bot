@@ -3148,7 +3148,7 @@ def auto_nickname_dashboard(guild_id):
         _audit_dashboard_change(guild.id, "AutoNickname", actor_id, "AutoNickname rules updated")
         return redirect(url_for("auto_nickname_dashboard", guild_id=str(guild.id), saved="1"))
 
-    body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Configure a nickname prefix for each role. The member’s original Discord username is added after the prefix.</p>'
+    body = '<section class="card"><span class="pill">AUTO NICKNAME</span><h1>AutoNickname</h1><p>Configure a nickname prefix for each role. The member’s Discord display name is added after the prefix.</p>'
     if request.args.get("saved"):
         body += '<div class="notice">AutoNickname rules saved.</div>'
     if request.args.get("deleted"):
@@ -3174,7 +3174,7 @@ def auto_nickname_dashboard(guild_id):
             body += '<option value="' + str(role.id) + '"' + chosen + '>' + html.escape(role.name) + '</option>'
         body += '</select><label>Nickname prefix</label><input type="text" name="nickname" maxlength="32" value="' + html.escape(nickname, quote=True) + '" placeholder="Text before the original username"></div>'
     body += '<input type="hidden" name="rule_index" value="">'
-    body += '<small>When a member receives a configured role, the nickname becomes “prefix + original username”. Discord nicknames are limited to 32 characters. Use ✕ to remove a saved rule and recalculate nicknames for members with that role.</small>'
+    body += '<small>When a member receives a configured role, the nickname becomes “prefix + Discord display name”. Discord nicknames are limited to 32 characters. Use ✕ to remove a saved rule and recalculate nicknames for members with that role.</small>'
     body += '</div><button type="submit">Save AutoNickname Rules</button></form>'
     body += '<p class="muted">IronWolf needs Manage Nicknames permission and its highest role must be above the member whose nickname it changes.</p>'
     body += '<p><a href="/guild/' + str(guild.id) + '">← Back to server overview</a></p></section>'
