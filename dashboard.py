@@ -2281,15 +2281,23 @@ def website_verify_callback():
                     except (discord.Forbidden, discord.HTTPException):
                         print(f"[WEBSITE VERIFY] Could not create server invite for guild {guild.id}.", flush=True)
 
-            links = [
-                "🌐 Dashboard: " + dashboard_url,
-                "💬 Discord-Server: " + (server_invite_url or "Kein Server-Einladungslink verfügbar (Server-Admin muss einen Invite-Link hinterlegen)."),
-                "🤖 IronWolf Bot einladen: " + (bot_invite_url or "Bot-Einladungslink nicht verfügbar."),
-            ]
+            link_view = discord.ui.View(timeout=None)
+            link_view.add_item(discord.ui.Button(
+                label="Dashboard", style=discord.ButtonStyle.link, url=dashboard_url, emoji="🌐"
+            ))
+            if server_invite_url:
+                link_view.add_item(discord.ui.Button(
+                    label="Discord-Server", style=discord.ButtonStyle.link, url=server_invite_url, emoji="💬"
+                ))
+            if bot_invite_url:
+                link_view.add_item(discord.ui.Button(
+                    label="Bot einladen", style=discord.ButtonStyle.link, url=bot_invite_url, emoji="🤖"
+                ))
             try:
                 await member.send(
-                    "✅ Du wurdest erfolgreich auf **" + guild.name + "** verifiziert!\n\n"
-                    + "\n".join(links)
+                    "✅ Du wurdest erfolgreich auf **" + guild.name + "** verifiziert!\n"
+                    "Nutze die Buttons unten für das Dashboard, den Discord-Server und den Bot-Einladungslink.",
+                    view=link_view,
                 )
             except (discord.Forbidden, discord.HTTPException):
                 print(f"[WEBSITE VERIFY] Could not DM user {discord_user_id}; role was assigned.", flush=True)
