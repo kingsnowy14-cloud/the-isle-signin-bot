@@ -8490,6 +8490,83 @@ async def module_status_command(interaction: discord.Interaction):
 
 
 _server_statistics_task = None
+_ironwolf_global_stats_task = None
+_IRONWOLF_GLOBAL_STATS_CHANNEL_ID = 1568564524649291797
+_IRONWOLF_DASHBOARD_URL = "https://ironwolf-bot.up.railway.app/"
+_IRONWOLF_INVITE_URL = "https://discord.com/oauth2/authorize?client_id=1558547445187743804"
+_IRONWOLF_GLOBAL_STATS_MESSAGE_FILE = data_path("ironwolf_global_stats_message.json")
+
+
+async def ironwolf_global_stats_worker():
+    """Keep one global IronWolf statistics embed updated in the configured public channel."""
+    await bot.wait_until_ready()
+    print("[IRONWOLF-GLOBAL-STATS] Worker started.", flush=True)
+    while not bot.is_closed():
+        try:
+            channel = bot.get_channel(_IRONWOLF_GLOBAL_STATS_CHANNEL_ID)
+            if channel is None:
+                channel = await bot.fetch_channel(_IRONWOLF_GLOBAL_STATS_CHANNEL_ID)
+            if not hasattr(channel, "send") or not hasattr(channel, "fetch_message"):
+                raise TypeError("Configured global stats channel is not a text channel.")
+
+            guilds = list(bot.guilds)
+            # Count distinct human Discord accounts across all guilds; bot accounts are excluded.
+            human_user_ids = {
+                member.id
+                for guild in guilds
+                for member in guild.members
+                if not member.bot
+            }
+            embed = discord.Embed(
+                title="🐺 IronWolf · Global Statistics",
+                description="Live overview of the entire IronWolf bot network.",
+                color=discord.Color.blurple(),
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(name="👥 Human Users", value=f"**{len(human_user_ids):,}**", inline=True)
+            embed.add_field(name="🌐 Servers", value=f"**{len(guilds):,}**", inline=True)
+            embed.add_field(
+                name="🔗 Dashboard",
+                value=f"[Open IronWolf Dashboard]({_IRONWOLF_DASHBOARD_URL})",
+                inline=False,
+            )
+            embed.add_field(
+                name="🤖 Invite IronWolf",
+                value=f"[Add IronWolf to your server]({_IRONWOLF_INVITE_URL})",
+                inline=False,
+            )
+            embed.set_footer(text="IronWolf · Global stats update every 5 minutes")
+
+            message_id = None
+            try:
+                saved = json.loads(_IRONWOLF_GLOBAL_STATS_MESSAGE_FILE.read_text(encoding="utf-8"))
+                message_id = int(saved.get("message_id")) if isinstance(saved, dict) and saved.get("message_id") else None
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                message_id = None
+
+            message = None
+            if message_id:
+                try:
+                    message = await channel.fetch_message(message_id)
+                except discord.NotFound:
+                    message = None
+            if message is None:
+                message = await channel.send(embed=embed)
+                _IRONWOLF_GLOBAL_STATS_MESSAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                _IRONWOLF_GLOBAL_STATS_MESSAGE_FILE.write_text(
+                    json.dumps({"channel_id": _IRONWOLF_GLOBAL_STATS_CHANNEL_ID, "message_id": message.id}),
+                    encoding="utf-8",
+                )
+            else:
+                await message.edit(embed=embed)
+            print(
+                f"[IRONWOLF-GLOBAL-STATS] Updated channel {_IRONWOLF_GLOBAL_STATS_CHANNEL_ID}: "
+                f"{len(human_user_ids)} human users across {len(guilds)} servers.",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"[IRONWOLF-GLOBAL-STATS] Update failed: {type(exc).__name__}: {exc}", flush=True)
+        await asyncio.sleep(300)
 
 
 async def server_statistics_worker():
@@ -8909,6 +8986,7 @@ async def on_ready():
 
     global _birthday_worker_task
     global _server_statistics_task
+    global _ironwolf_global_stats_task
     release_changes = record_module_changes()
     await announce_private_release(release_changes)
     if _automation_worker_task is None or _automation_worker_task.done():
@@ -8919,6 +8997,10 @@ async def on_ready():
         _birthday_worker_task = asyncio.create_task(birthday_worker(), name="birthday-worker")
     if _server_statistics_task is None or _server_statistics_task.done():
         _server_statistics_task = asyncio.create_task(server_statistics_worker(), name="server-statistics-worker")
+    if _ironwolf_global_stats_task is None or _ironwolf_global_stats_task.done():
+        _ironwolf_global_stats_task = asyncio.create_task(
+            ironwolf_global_stats_worker(), name="ironwolf-global-stats-worker"
+        )
     # Start tracking members already in voice after a bot start/reconnect.
     # Only seed sessions that are not already tracked to avoid resetting time
     # when Discord reconnects the bot.
