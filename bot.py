@@ -2253,11 +2253,13 @@ _GAME_TRIVIA = [
     ("On which continent is the Sahara Desert?", "Africa", ["Asia", "South America"]),
 ]
 
+
 class IronWolfGameView(discord.ui.View):
     def __init__(self, answer, options, game_name):
         super().__init__(timeout=60)
         self.answer = str(answer)
         self.game_name = game_name
+        self.answered = False
         shuffled = list(options)
         random.shuffle(shuffled)
         for option in shuffled:
@@ -2267,13 +2269,17 @@ class IronWolfGameView(discord.ui.View):
 
     def _make_callback(self, selected):
         async def callback(interaction: discord.Interaction):
+            if self.answered:
+                await interaction.response.send_message("This round has already been answered.", ephemeral=True)
+                return
+            self.answered = True
             if selected == self.answer:
-                await interaction.response.send_message(f"✅ Correct! {self.answer}", ephemeral=True)
+                await interaction.response.send_message(f"✅ Correct! {self.answer} · +1 point", ephemeral=True)
                 stats = data.setdefault("game_stats", {}).setdefault(str(interaction.guild_id), {})
                 stats[str(interaction.user.id)] = int(stats.get(str(interaction.user.id), 0)) + 1
                 save_json(DATA_FILE, data)
             else:
-                await interaction.response.send_message("❌ Not quite! Try the next round.", ephemeral=True)
+                await interaction.response.send_message(f"❌ Not quite! The correct answer was **{self.answer}**.", ephemeral=True)
             for child in self.children:
                 child.disabled = True
             try:
@@ -2287,83 +2293,48 @@ class IronWolfGameView(discord.ui.View):
             child.disabled = True
 
 
-async def _send_ironwolf_choice_game(interaction, title, prompt, answer, wrong, game_name):
-    options = [str(answer)] + [str(item) for item in wrong[:2]]
+def _ironwolf_game_payload(game_name):
+    game_name = str(game_name).lower()
+    if game_name == "flag":
+        flag, answer, wrong = random.choice(_GAME_FLAGS)
+        return "🚩 Flag Guess", f"Which country does this flag belong to?\n\n# {flag}", answer, wrong
+    if game_name == "math":
+        a, b = random.randint(2, 30), random.randint(2, 20)
+        op = random.choice(["+", "-", "×"])
+        answer = a + b if op == "+" else a - b if op == "-" else a * b
+        wrong = set()
+        while len(wrong) < 2:
+            candidate = answer + random.choice([-12, -9, -5, -3, 3, 5, 9, 12])
+            if candidate != answer:
+                wrong.add(candidate)
+        return "➗ Math Game", f"What is **{a} {op} {b}**?", str(answer), [str(x) for x in wrong]
+    if game_name in {"trivia", "quiz"}:
+        question, answer, wrong = random.choice(_GAME_TRIVIA)
+        return ("🧠 Trivia" if game_name == "trivia" else "❓ Quick Quiz"), question, answer, wrong
+    raise ValueError("Unknown IronWolf game.")
+
+
+async def send_ironwolf_game(guild_id, game_name):
+    """Post a dashboard-triggered game in the configured game channel."""
+    cfg = guild_config(guild_id)
+    if not cfg.get("ironwolf_games_enabled", False):
+        raise RuntimeError("IronWolf Games are disabled for this server.")
+    if not cfg.get("game_" + str(game_name) + "_enabled", False):
+        raise RuntimeError("This game is disabled in the dashboard.")
+    channel_id = cfg.get("game_channel_id")
+    guild = bot.get_guild(int(guild_id))
+    channel = guild.get_channel(int(channel_id)) if guild and str(channel_id or "").isdigit() else None
+    if not isinstance(channel, discord.TextChannel):
+        raise RuntimeError("Select a valid Game Channel in the dashboard first.")
+    title, prompt, answer, wrong = _ironwolf_game_payload(game_name)
     embed = discord.Embed(title=title, description=prompt, color=discord.Color.blurple())
     embed.set_footer(text="IronWolf Games · Choose one of the three answers · 60 seconds")
-    await interaction.response.send_message(
-        embed=embed,
-        view=IronWolfGameView(answer, options, game_name),
-    )
+    await channel.send(embed=embed, view=IronWolfGameView(answer, [answer] + wrong[:2], game_name))
+    return channel
 
 
-@bot.tree.command(name="counting-channel", description="Set the channel for the community counting game")
-@app_commands.guild_only()
-@app_commands.checks.has_permissions(manage_guild=True)
-@app_commands.describe(channel="Text channel where members count in order")
-async def counting_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    cfg = guild_config(interaction.guild_id)
-    cfg["counting_channel_id"] = channel.id
-    data.setdefault("counting_state", {})[str(interaction.guild_id)] = {"count": 0, "last_user_id": None, "best": 0}
-    save_json(CONFIG_FILE, config)
-    save_json(DATA_FILE, data)
-    await interaction.response.send_message(
-        f"✅ Counting channel set to {channel.mention}. Start with **1**!",
-        ephemeral=True,
-    )
-
-
-@bot.tree.command(name="flag-guess", description="Guess the country shown by its flag")
-@app_commands.guild_only()
-async def flag_guess(interaction: discord.Interaction):
-    flag, answer, wrong = random.choice(_GAME_FLAGS)
-    await _send_ironwolf_choice_game(interaction, "🚩 Flag Guess", f"Which country does this flag belong to?\n\n# {flag}", answer, wrong, "flag")
-
-
-@bot.tree.command(name="math-game", description="Solve a math problem with three possible answers")
-@app_commands.guild_only()
-async def math_game(interaction: discord.Interaction):
-    a, b = random.randint(2, 30), random.randint(2, 20)
-    op = random.choice(["+", "-", "×"])
-    answer = a + b if op == "+" else a - b if op == "-" else a * b
-    wrong = set()
-    while len(wrong) < 2:
-        candidate = answer + random.choice([-12, -9, -5, -3, 3, 5, 9, 12])
-        if candidate != answer:
-            wrong.add(candidate)
-    await _send_ironwolf_choice_game(interaction, "➗ Math Game", f"What is **{a} {op} {b}**?", str(answer), [str(x) for x in wrong], "math")
-
-
-@bot.tree.command(name="trivia", description="Answer a general knowledge question")
-@app_commands.guild_only()
-async def trivia_game(interaction: discord.Interaction):
-    question, answer, wrong = random.choice(_GAME_TRIVIA)
-    await _send_ironwolf_choice_game(interaction, "🧠 Trivia", question, answer, wrong, "trivia")
-
-
-@bot.tree.command(name="quiz", description="Play a quick general knowledge quiz")
-@app_commands.guild_only()
-async def quiz_game(interaction: discord.Interaction):
-    question, answer, wrong = random.choice(_GAME_TRIVIA)
-    await _send_ironwolf_choice_game(interaction, "❓ Quick Quiz", question, answer, wrong, "quiz")
-
-
-@bot.tree.command(name="game-stats", description="Show your IronWolf Games score")
-@app_commands.guild_only()
-async def game_stats(interaction: discord.Interaction):
-    stats = data.setdefault("game_stats", {}).get(str(interaction.guild_id), {})
-    score = int(stats.get(str(interaction.user.id), 0))
-    ranking = sorted(
-        ((int(points), int(user_id)) for user_id, points in stats.items()),
-        reverse=True,
-    )[:5]
-    lines = [f"<@{user_id}> — **{points}**" for points, user_id in ranking]
-    embed = discord.Embed(
-        title="🏆 IronWolf Games · Leaderboard",
-        description=f"Your correct answers: **{score}**\n\n" + ("\n".join(lines) if lines else "No scores yet."),
-        color=discord.Color.gold(),
-    )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+bot.send_ironwolf_game = send_ironwolf_game
+bot.game_data = data
 
 
 @bot.tree.command(name="wolfanalytics", description="Send a WolfAnalytics activity chart to the configured channel")
@@ -5818,7 +5789,7 @@ async def on_message(message: discord.Message):
 
         # Counting: one number at a time, no consecutive turns by the same member.
         counting_id = cfg.get("counting_channel_id")
-        if str(counting_id or "").isdigit() and int(counting_id) == message.channel.id:
+        if cfg.get("ironwolf_games_enabled", False) and cfg.get("counting_enabled", False) and str(counting_id or "").isdigit() and int(counting_id) == message.channel.id:
             state = data.setdefault("counting_state", {}).setdefault(
                 str(guild.id), {"count": 0, "last_user_id": None, "best": 0}
             )
