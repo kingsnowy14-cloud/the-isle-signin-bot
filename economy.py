@@ -33,14 +33,29 @@ def credit(g, u, gross):
     return actual, tax, net - actual
 
 
+DISABLED_GUILDS = {1561027077984227371}
+
+
+async def silently_ignore_disabled_guild(interaction: discord.Interaction) -> bool:
+    """Acknowledge and immediately remove interactions from disabled servers."""
+    if interaction.guild_id not in DISABLED_GUILDS:
+        return False
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
+    try:
+        await interaction.delete_original_response()
+    except discord.HTTPException:
+        pass
+    return True
+
+
 class BankView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="View my account", style=discord.ButtonStyle.primary, emoji="🏦", custom_id="ironwolf:bank:account")
     async def show_account(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if True:
-            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
+        if await silently_ignore_disabled_guild(interaction):
             return
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True)
@@ -72,8 +87,7 @@ class ShopItemSelect(discord.ui.Select):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
-        if True:
-            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
+        if await silently_ignore_disabled_guild(interaction):
             return
         self.parent_view.selected_name = self.values[0]
         item = self.parent_view.items.get(self.values[0])
@@ -92,6 +106,8 @@ class ShopBuyButton(discord.ui.Button):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
+        if await silently_ignore_disabled_guild(interaction):
+            return
         if interaction.guild_id != self.parent_view.guild_id:
             await interaction.response.send_message("This shop belongs to a different server.", ephemeral=True)
             return
@@ -124,6 +140,8 @@ class ShopView(discord.ui.View):
 
     @discord.ui.button(label="Buy item", style=discord.ButtonStyle.success, emoji="🛒", custom_id="ironwolf:shop:buy")
     async def open_purchase(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await silently_ignore_disabled_guild(interaction):
+            return
         if interaction.guild_id is None:
             await interaction.response.send_message("Only available in a server.", ephemeral=True)
             return
@@ -142,19 +160,16 @@ def admin():
     return app_commands.checks.has_permissions(manage_guild=True)
 
 class Economy(commands.Cog):
-    DISABLED_GUILDS = {1561027077984227371}
+    DISABLED_GUILDS = DISABLED_GUILDS
 
     async def cog_check(self, ctx):
-        if ctx.guild and ctx.guild.id in self.DISABLED_GUILDS:
-            await ctx.reply("The economy system is disabled on this server.", mention_author=False)
-            return False
-        return True
+        # Suppress all economy prefix commands without sending a bot message.
+        return not (ctx.guild and ctx.guild.id in self.DISABLED_GUILDS)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.guild_id in self.DISABLED_GUILDS:
-            await interaction.response.send_message("The economy system is disabled on this server.", ephemeral=True)
-            return False
-        return True
+        # Slash commands must be acknowledged by Discord, then the empty
+        # ephemeral response is immediately deleted so users see no bot reply.
+        return not await silently_ignore_disabled_guild(interaction)
     def __init__(self, bot):
         self.bot = bot
 
