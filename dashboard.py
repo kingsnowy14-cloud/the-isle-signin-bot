@@ -6185,7 +6185,7 @@ def guild_games(guild_id):
         if not _csrf_ok():
             abort(400, "CSRF validation failed. Please reload the page.")
         action = request.form.get("action", "")
-        if action == "save":
+        if action in {"save", "post_game"}:
             text_channels = {str(channel.id) for channel in guild.text_channels}
             counting_channel = request.form.get("counting_channel_id", "").strip()
             game_channels = {game: request.form.get("game_" + game + "_channel_id", "").strip() for game in ("flag", "math", "trivia")}
@@ -6203,8 +6203,9 @@ def guild_games(guild_id):
                 cfg["game_" + game + "_enabled"] = request.form.get("game_" + game + "_enabled") == "on"
             _save_json(data_path("config.json"), _config)
             _audit_dashboard_change(guild.id, "IronWolf Games", session.get("user_id"), "Game settings saved from the dashboard.")
-            notice = '<div class="alert success">Game settings saved successfully.</div>'
-        elif action == "post_game":
+            if action == "save":
+                notice = '<div class="alert success">Game settings saved successfully.</div>'
+        if action == "post_game":
             game_name = request.form.get("game", "").strip().lower()
             if game_name not in {"flag", "math", "trivia"}:
                 abort(400, "Unknown game.")
@@ -6259,10 +6260,8 @@ def guild_games(guild_id):
         enabled = cfg.get("game_" + key + "_enabled", False)
         selected_channel = cfg.get("game_" + key + "_channel_id") or cfg.get("game_channel_id")
         button = (
-            '<form method="post" class="inline-form">' + _csrf_field() +
-            '<input type="hidden" name="action" value="post_game">' +
             '<input type="hidden" name="game" value="' + key + '">' +
-            '<button type="submit"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and selected_channel else ' disabled') + '>▶ Post a round</button></form>'
+            '<button class="secondary" type="submit" name="action" value="post_game"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and selected_channel else ' disabled') + '>▶ Post a round</button>'
         )
         return (
             '<article class="card"><div class="pill">' + ('ENABLED' if enabled else 'DISABLED') + '</div>' +
@@ -6275,7 +6274,6 @@ def guild_games(guild_id):
         '<p>Configure your community games here. No Discord slash commands are needed. Choose the channels, enable the games and publish rounds directly from this dashboard.</p>'
         + notice +
         '<form method="post">' + _csrf_field() +
-        '<input type="hidden" name="action" value="save">' +
         '<label class="setting-toggle"><input type="checkbox" name="ironwolf_games_enabled"' + checked("ironwolf_games_enabled") + '> Enable IronWolf Games</label>' +
         '<h2>🔢 Counting</h2><label class="setting-toggle"><input type="checkbox" name="counting_enabled"' + checked("counting_enabled") + '> Enable Counting</label>' +
         '<label for="counting_channel_id">Counting channel (separate channel)</label><select id="counting_channel_id" name="counting_channel_id">' + channel_options + '</select>' +
@@ -6285,7 +6283,7 @@ def guild_games(guild_id):
         game_card("flag", "Flag Guess", "Guess the country from its flag. Three possible answers.", "🚩") +
         game_card("math", "Math Game", "Solve a random calculation with three possible answers.", "➗") +
         game_card("trivia", "Trivia & Quiz", "Answer general knowledge questions with three possible answers.", "🧠") +
-        '</section><button type="submit">Save game settings</button></form></section>' +
+        '</section><button type="submit" name="action" value="save">Save game settings</button></form></section>' +
         '<section class="grid">' +
         '</section>' +
         '<section class="card"><h2>🔢 Counting status</h2><p>Current count: <strong>' + str(int(counting.get('count') or 0)) + '</strong> · Best: <strong>' + str(int(counting.get('best') or 0)) + '</strong></p>' +
