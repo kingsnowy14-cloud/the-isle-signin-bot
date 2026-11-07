@@ -7705,10 +7705,10 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 (role, prefix) for role, prefix in normalized_rules
                 if role.id in gained_role_ids
             ]
-            if gained_matches:
+            if gained_matches or _auto_nickname_original_key(after) in data.get("auto_nickname_originals", {}):
                 await apply_auto_nickname(
                     after,
-                    "AutoNickname: newly assigned configured role",
+                    "AutoNickname: role hierarchy changed",
                     preferred_role_ids=gained_role_ids,
                 )
         elif can_edit and lost_role_ids:
