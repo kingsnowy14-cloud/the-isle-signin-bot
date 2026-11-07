@@ -6841,13 +6841,15 @@ def guild_tickets(guild_id):
         description = request.form.get("description", "").strip()[:4000]
         submitted_labels = [request.form.get(f"button{i}", "").strip()[:80] for i in range(1, 11)]
         submitted_descriptions = [request.form.get(f"button_description{i}", "").strip()[:100] for i in range(1, 11)]
+        submitted_emojis = [request.form.get(f"button_emoji{i}", "").strip()[:100] for i in range(1, 11)]
         option_pairs = [
-            (label, submitted_descriptions[index])
+            (label, submitted_descriptions[index], submitted_emojis[index])
             for index, label in enumerate(submitted_labels)
             if label
         ]
-        labels = [label for label, _ in option_pairs]
-        option_descriptions = [description for _, description in option_pairs]
+        labels = [label for label, _, _ in option_pairs]
+        option_descriptions = [description for _, description, _ in option_pairs]
+        option_emojis = [emoji for _, _, emoji in option_pairs]
         channel_raw = request.form.get("channel_id", "").strip()
         category_raw = request.form.get("category_id", "").strip()
         role_raw = request.form.get("support_role_id", "").strip()
@@ -6891,6 +6893,7 @@ def guild_tickets(guild_id):
             "description": description,
             "labels": labels,
             "option_descriptions": option_descriptions,
+            "option_emojis": option_emojis,
             "display_mode": display_mode,
             "channel_id": channel.id,
             "category_id": category.id if category else None,
@@ -6953,7 +6956,7 @@ def guild_tickets(guild_id):
             elif isinstance(logo_url, str) and logo_url.startswith("https://") and len(logo_url) <= 500:
                 embed.set_thumbnail(url=logo_url)
             embed.set_footer(text=f"IronWolf · Created by KingSnowy · Ticket-Panel ID {panel_key}")
-            view = view_cls(panel_key, labels, display_mode, option_descriptions)
+            view = view_cls(panel_key, labels, display_mode, option_descriptions, option_emojis)
             old_channel_id = panel.get("channel_id")
             old_message_id = panel.get("message_id")
             # Existing panels with a saved message ID are edited in place when possible.
@@ -7039,7 +7042,8 @@ def guild_tickets(guild_id):
         + '<label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket">'
         + '<label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea>'
         + '<label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">'
-        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80">' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80">' for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>'))
+        + '<label>Emoji für Anfrage 1 (optional · leer = automatisch)</label><input name="button_emoji1" maxlength="100" placeholder="z. B. 🎫, 💬 oder Discord-Custom-Emoji">'
+        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + ' (optional · leer = automatisch)</label><input name="button_emoji' + str(i) + '" maxlength="100" placeholder="z. B. 🛠️ oder ❓">' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + ' (optional · leer = automatisch)</label><input name="button_emoji' + str(i) + '" maxlength="100" placeholder="z. B. 🛠️ oder ❓">' for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>'))
         + (('<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Dropdown / mehrere Buttons</option></select></div>')
         + '<p class="muted">Im Free-Plan sind bis zu zwei Anfrage-Buttons pro Panel verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p>'
         + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
@@ -7058,15 +7062,20 @@ def guild_tickets(guild_id):
         if not isinstance(option_descriptions, list):
             option_descriptions = []
         button_fields = ""
+        option_emojis = panel.get("option_emojis", [])
+        if not isinstance(option_emojis, list):
+            option_emojis = []
         for i in range(1, 11):
             value = labels[i-1] if len(labels) >= i else ""
             option_description = option_descriptions[i-1] if len(option_descriptions) >= i else ""
+            option_emoji = option_emojis[i-1] if len(option_emojis) >= i else ""
             if i > 2 and not guild_has_feature(cfg, "ticket"):
                 button_fields += '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong>'
                 button_fields += f'<label>Button {i} (Premium)</label><input disabled type="text" value="{html.escape(str(value), quote=True)}">'
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description (Premium)</label><input disabled type="text" value="{html.escape(str(option_description), quote=True)}"></div></div>'
             else:
                 button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
+                button_fields += f'<label>Emoji für Anfrage {i} (optional · leer = automatisch)</label><input type="text" name="button_emoji{i}" maxlength="100" value="{html.escape(str(option_emoji), quote=True)}" placeholder="z. B. 🎫, 💬 oder Discord-Custom-Emoji">'
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input type="text" name="button_description{i}" maxlength="100" value="{html.escape(str(option_description), quote=True)}" placeholder="Kurze Erklärung für diese Anfrageart"></div>'
         body += (
             '<section class="card"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
