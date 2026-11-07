@@ -2031,6 +2031,183 @@ def anonymous_feedback():
     return _render("Anonymes Feedback", body)
 
 
+_WEBSITE_VERIFY_STORE = data_path("website_verify_links.json")
+_WEBSITE_VERIFY_LOCK = threading.Lock()
+_WEBSITE_VERIFY_TTL_SECONDS = 600
+
+
+def _website_verify_oauth_ready():
+    callback_uri = _env("WEBSITE_VERIFY_REDIRECT_URI")
+    parsed = urlparse(callback_uri)
+    return bool(
+        _env("DISCORD_CLIENT_ID") and _env("DISCORD_CLIENT_SECRET")
+        and parsed.scheme == "https" and parsed.hostname
+        and not parsed.username and not parsed.password
+        and not parsed.query and not parsed.fragment
+        and parsed.path == "/verify/website/callback"
+    )
+
+
+def _create_website_verify_url(guild_id, discord_user_id):
+    if not _website_verify_oauth_ready():
+        raise ValueError("Website Verify ist nicht konfiguriert. Setze WEBSITE_VERIFY_REDIRECT_URI auf die öffentliche HTTPS-Adresse mit /verify/website/callback.")
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _WEBSITE_VERIFY_LOCK:
+        try:
+            store = json.loads(_WEBSITE_VERIFY_STORE.read_text(encoding="utf-8"))
+            if not isinstance(store, dict):
+                store = {}
+        except (OSError, json.JSONDecodeError):
+            store = {}
+        store = {
+            key: row for key, row in store.items()
+            if isinstance(row, dict) and float(row.get("expires_at", 0) or 0) > now
+            and row.get("status") == "pending"
+        }
+        store[token] = {
+            "guild_id": str(guild_id), "discord_id": str(discord_user_id),
+            "created_at": now, "expires_at": now + _WEBSITE_VERIFY_TTL_SECONDS,
+            "status": "pending",
+        }
+        temp = _WEBSITE_VERIFY_STORE.with_suffix(".tmp")
+        temp.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, _WEBSITE_VERIFY_STORE)
+    return request_host_origin() + "/verify/website/start?" + urlencode({"token": token})
+
+
+def request_host_origin():
+    configured = _env("DASHBOARD_PUBLIC_URL").rstrip("/")
+    if configured.startswith("https://"):
+        return configured
+    parsed = urlparse(_env("WEBSITE_VERIFY_REDIRECT_URI"))
+    return "https://" + parsed.netloc
+
+
+def _website_verify_claim(token):
+    now = time.time()
+    with _WEBSITE_VERIFY_LOCK:
+        try:
+            store = json.loads(_WEBSITE_VERIFY_STORE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        row = store.get(token) if isinstance(store, dict) else None
+        if not isinstance(row, dict) or row.get("status") != "pending" or float(row.get("expires_at", 0) or 0) <= now:
+            return None
+        row["status"] = "processing"
+        store[token] = row
+        temp = _WEBSITE_VERIFY_STORE.with_suffix(".tmp")
+        temp.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, _WEBSITE_VERIFY_STORE)
+        return dict(row)
+
+
+def _website_verify_finish(token, status):
+    with _WEBSITE_VERIFY_LOCK:
+        try:
+            store = json.loads(_WEBSITE_VERIFY_STORE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        row = store.get(token) if isinstance(store, dict) else None
+        if isinstance(row, dict):
+            row["status"] = status
+            store[token] = row
+            temp = _WEBSITE_VERIFY_STORE.with_suffix(".tmp")
+            temp.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(temp, _WEBSITE_VERIFY_STORE)
+
+
+@app.route("/verify/website/start")
+def website_verify_start():
+    token = request.args.get("token", "")
+    if not token or not re.fullmatch(r"[A-Za-z0-9_-]{30,100}", token):
+        abort(400, "Invalid verification link.")
+    with _WEBSITE_VERIFY_LOCK:
+        try:
+            store = json.loads(_WEBSITE_VERIFY_STORE.read_text(encoding="utf-8"))
+            row = store.get(token) if isinstance(store, dict) else None
+        except (OSError, json.JSONDecodeError):
+            row = None
+    if not isinstance(row, dict) or row.get("status") != "pending" or float(row.get("expires_at", 0) or 0) <= time.time():
+        return _render("Link expired", '<section class="card"><h1>Link expired or already used</h1><p>Return to Discord and click Website Verify again.</p></section>', 410)
+    if not _website_verify_oauth_ready():
+        abort(503)
+    state = secrets.token_urlsafe(32)
+    session["website_verify_state"] = state
+    session["website_verify_token"] = token
+    query = urlencode({
+        "client_id": _env("DISCORD_CLIENT_ID"),
+        "redirect_uri": _env("WEBSITE_VERIFY_REDIRECT_URI"),
+        "response_type": "code", "scope": "identify", "state": state,
+    })
+    return redirect("https://discord.com/oauth2/authorize?" + query)
+
+
+@app.route("/verify/website/callback")
+def website_verify_callback():
+    token = session.pop("website_verify_token", "")
+    expected = session.pop("website_verify_state", "")
+    state = request.args.get("state", "")
+    code = request.args.get("code", "")
+    if not token or not code or not state or not expected or not hmac.compare_digest(state, expected):
+        return _render("Verification failed", '<section class="card"><h1>Discord sign-in failed</h1><p>Return to Discord and start again.</p></section>', 400)
+    pending = _website_verify_claim(token)
+    if not pending:
+        return _render("Link expired", '<section class="card"><h1>Link expired or already used</h1><p>Return to Discord and click Website Verify again.</p></section>', 410)
+    try:
+        response = requests.post(
+            DISCORD_API + "/oauth2/token",
+            data={
+                "client_id": _env("DISCORD_CLIENT_ID"),
+                "client_secret": _env("DISCORD_CLIENT_SECRET"),
+                "grant_type": "authorization_code", "code": code,
+                "redirect_uri": _env("WEBSITE_VERIFY_REDIRECT_URI"),
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=10,
+        )
+        response.raise_for_status()
+        access_token = response.json()["access_token"]
+        profile = requests.get(DISCORD_API + "/users/@me",
+            headers={"Authorization": "Bearer " + access_token}, timeout=10)
+        profile.raise_for_status()
+        discord_user_id = str(profile.json().get("id", ""))
+        if not discord_user_id or discord_user_id != str(pending.get("discord_id")):
+            _website_verify_finish(token, "rejected")
+            return _render("Wrong Discord account", '<section class="card"><h1>Wrong Discord account</h1><p>Sign in with the same Discord account that clicked the verification button.</p></section>', 403)
+        if not _bot or not _guild_config:
+            raise RuntimeError("Discord bot is unavailable")
+        guild = _bot.get_guild(int(pending["guild_id"]))
+        if guild is None:
+            raise RuntimeError("The Discord server is unavailable")
+        member = guild.get_member(int(discord_user_id))
+        if member is None:
+            raise RuntimeError("The Discord member is no longer in this server")
+        cfg = _guild_config(int(pending["guild_id"]))
+        role_id = cfg.get("verified_role")
+        role = guild.get_role(int(role_id)) if role_id else None
+        if role is None or guild.me is None or role.is_default() or role >= guild.me.top_role or not guild.me.guild_permissions.manage_roles:
+            raise RuntimeError("The configured verification role cannot be assigned")
+        async def grant_role_and_dm():
+            unverified_id = cfg.get("unverified_role")
+            unverified = guild.get_role(int(unverified_id)) if unverified_id else None
+            if unverified and unverified in member.roles:
+                await member.remove_roles(unverified, reason="Website Verify completed")
+            if role not in member.roles:
+                await member.add_roles(role, reason="Website Verify completed")
+            try:
+                await member.send("✅ You have been successfully verified on **" + guild.name + "** using IronWolf Website Verify.")
+            except discord.Forbidden:
+                print(f"[WEBSITE VERIFY] Could not DM user {discord_user_id}; role was assigned.", flush=True)
+        future = asyncio.run_coroutine_threadsafe(grant_role_and_dm(), _bot.loop)
+        future.result(timeout=25)
+        _website_verify_finish(token, "completed")
+        return _render("Verified", '<section class="card"><h1>✅ You are verified!</h1><p>Your Discord account has been verified successfully. You can return to Discord now.</p></section>')
+    except Exception as exc:
+        _website_verify_finish(token, "failed")
+        print(f"[WEBSITE VERIFY] Completion failed: {type(exc).__name__}: {exc}", flush=True)
+        return _render("Verification failed", '<section class="card"><h1>Verification could not be completed</h1><p>Check that IronWolf is online and has Manage Roles permission, then try again from Discord.</p></section>', 502)
+
+
 @app.route("/login")
 def login():
     if not _oauth_ready():
@@ -6144,8 +6321,10 @@ def guild_verification(guild_id):
         if unverified_role and unverified_role.id == verified_role.id:
             abort(400, "Die zu vergebende und die zu entfernende Rolle müssen unterschiedlich sein.")
         mode = request.form.get("mode", "click")
-        if mode not in ("click", "code"):
+        if mode not in ("click", "code", "website"):
             abort(400, "Ungültiger Verifizierungsmodus.")
+        if mode == "website" and not _website_verify_oauth_ready():
+            abort(503, "Website Verify benötigt WEBSITE_VERIFY_REDIRECT_URI mit dem HTTPS-Pfad /verify/website/callback.")
         title = request.form.get("title", "").strip()[:256] or "🔐 Server-Verifizierung"
         description = request.form.get("description", "").strip()[:4000] or "Lies die Serverregeln und klicke auf den Button, um dich zu verifizieren."
         button_label = request.form.get("button_label", "").strip()[:80] or "Verifizieren"
@@ -6172,7 +6351,7 @@ def guild_verification(guild_id):
             if old_verify_message_id and str(old_verify_channel_id) == str(channel.id):
                 try:
                     old_message = await channel.fetch_message(int(old_verify_message_id))
-                    await old_message.edit(embed=embed, view=view_cls(button_label, emoji))
+                    await old_message.edit(embed=embed, view=view_cls(button_label, emoji, mode))
                     return old_message.id, "Verifizierungs-Panel wurde aktualisiert."
                 except discord.NotFound:
                     pass
