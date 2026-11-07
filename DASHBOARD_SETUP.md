@@ -54,3 +54,14 @@ Der Modulgenerator erstellt eine **Vorlage**, die du vor der Verwendung prüfen 
 - Änderungen an Einstellungen werden in die vorhandene `config.json` geschrieben. Sichere die Railway-Daten/Volume vor größeren Umbauten.
 - Das Dashboard startet im selben Service auf dem von Railway bereitgestellten `PORT`.
 - Nach dem Deploy müssen die Slash-Commands synchronisiert sein. Falls `/module-manager` und `/module-status` nicht erscheinen, prüfe Railway-Logs und die `GUILD_ID`-Variable.
+
+
+## Website Verify (Discord OAuth2)
+
+To enable the third verification method in the dashboard, set the Railway variable `WEBSITE_VERIFY_REDIRECT_URI` to the public HTTPS callback URL:
+
+```text
+https://ironwolf-bot.up.railway.app/verify/website/callback
+```
+
+Add this exact URL to the Discord Developer Portal under OAuth2 Redirects for the same application used by IronWolf. Keep `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, and `DASHBOARD_SECRET_KEY` configured. The dashboard then offers **Website Verify** as a third method. Links are single-use and expire after 10 minutes; the Discord account must match the member who requested the link.
