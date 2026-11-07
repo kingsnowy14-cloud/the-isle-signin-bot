@@ -7232,6 +7232,58 @@ async def ironwolf_profile(
     except (ValueError, requests.RequestException) as exc:
         await interaction.followup.send("❌ Profile update failed: {}".format(str(exc)[:700]), ephemeral=True)
 
+def _auto_nickname_rule_for_member(member):
+    """Return the first configured AutoNickname rule matching a member's current roles."""
+    cfg = config.get(str(member.guild.id), {})
+    rules = cfg.get("auto_nickname_rules")
+    if not isinstance(rules, list):
+        legacy_role = cfg.get("auto_nickname_role_id")
+        legacy_prefix = str(cfg.get("auto_nickname_value") or "").strip()
+        rules = ([{"role_id": legacy_role, "nickname": legacy_prefix}]
+                 if legacy_role and legacy_prefix else [])
+
+    active_role_ids = {role.id for role in member.roles}
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        try:
+            role_id = int(rule.get("role_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        prefix = str(rule.get("nickname") or "").strip()
+        if role_id in active_role_ids and prefix and member.guild.get_role(role_id) is not None:
+            return prefix
+    return None
+
+
+async def apply_auto_nickname(member, reason="AutoNickname: matching role is present"):
+    """Apply the configured nickname whenever a member currently has any configured trigger role."""
+    if member.bot:
+        return False
+    me = member.guild.me
+    if me is None or not me.guild_permissions.manage_nicknames or member.top_role >= me.top_role:
+        return False
+    prefix = _auto_nickname_rule_for_member(member)
+    if not prefix:
+        return False
+    desired = f"{prefix} {member.name}"[:32]
+    if member.nick == desired:
+        return True
+    try:
+        await member.edit(nick=desired, reason=reason)
+        print(f"[AutoNickname] Applied nickname to member {member.id} in guild {member.guild.id}.", flush=True)
+        return True
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[AutoNickname] Could not set nickname for member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}", flush=True)
+        return False
+
+
+@bot.listen("on_member_join")
+async def apply_auto_nickname_to_new_member(member):
+    """Apply AutoNickname immediately when a member joins with an already-assigned role."""
+    await apply_auto_nickname(member, "AutoNickname: member joined with configured role")
+
+
 _auto_nickname_startup_task = None
 
 
@@ -7271,16 +7323,8 @@ async def apply_auto_nickname_to_existing_members():
             for member in list(guild.members):
                 if member.id == bot.user.id or member.top_role >= me.top_role:
                     continue
-                match = next(((role, prefix) for role, prefix in normalized if role in member.roles), None)
-                if match is None:
-                    continue
-                desired = f"{match[1]} {member.name}"[:32]
-                if member.nick != desired:
-                    try:
-                        await member.edit(nick=desired, reason="AutoNickname: startup sync for existing role")
-                        print(f"[AutoNickname] Synced existing role nickname for member {member.id} in guild {guild.id}.", flush=True)
-                    except (discord.Forbidden, discord.HTTPException) as exc:
-                        print(f"[AutoNickname] Startup sync failed for member {member.id} in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                if _auto_nickname_rule_for_member(member):
+                    await apply_auto_nickname(member, "AutoNickname: startup sync for existing role")
                     await asyncio.sleep(1)
 
     _auto_nickname_startup_task = asyncio.create_task(sweep())
@@ -7370,14 +7414,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 else:
                     await after.edit(nick=None, reason="AutoNickname: configured role was removed; restore original username")
             else:
-                for trigger_role, nickname_prefix in normalized_rules:
-                    # Apply the nickname whenever the member currently has the
-                    # configured role, not only on the exact role-add event.
-                    if trigger_role.id in active_role_ids:
-                        target_nickname = f"{nickname_prefix} {after.name}"[:32]
-                        if after.nick != target_nickname:
-                            await after.edit(nick=target_nickname, reason="AutoNickname: configured role is present")
-                        break
+                # Re-check all configured role mappings on every member update.
+                # This also repairs nicknames if another moderator or integration changed them.
+                await apply_auto_nickname(after, "AutoNickname: configured role is present")
     except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
         print(f"[AutoNickname] Could not set nickname for member {after.id} in guild {after.guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
