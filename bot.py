@@ -7407,7 +7407,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             bot_member is not None
             and bot_member.guild_permissions.manage_nicknames
             and after.top_role < bot_member.top_role
-            and not after.bot
         )
         if can_edit and gained_role_ids:
             gained_matches = [
