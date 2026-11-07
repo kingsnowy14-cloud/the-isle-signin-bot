@@ -8542,7 +8542,6 @@ async def ironwolf_global_stats_worker():
             )
             embed.add_field(name="👥 Users", value=f"**{len(user_ids):,}**", inline=True)
             embed.add_field(name="🌐 Servers", value=f"**{len(guilds):,}**", inline=True)
-            embed.add_field(name="🤖 Bot Accounts", value=f"**{len(bot_ids):,}**", inline=True)
             embed.add_field(name="📊 Total Member Slots", value=f"**{total_member_slots:,}**", inline=True)
             embed.add_field(
                 name="🔗 Dashboard",
