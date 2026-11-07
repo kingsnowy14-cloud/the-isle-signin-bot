@@ -2782,6 +2782,9 @@ async def activity_report(interaction: discord.Interaction, tage: app_commands.R
 @bot.command(name="stats")
 async def stats_command(ctx, member: discord.Member = None):
     """Show message and voice-channel statistics for yourself or another member."""
+    # Silently ignore !stats on the specified IronWolf server.
+    if ctx.guild is not None and ctx.guild.id == 1561027077984227371:
+        return
     if ctx.guild is None:
         await ctx.reply("This command can only be used in a server.", mention_author=False)
         return
