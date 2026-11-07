@@ -502,6 +502,7 @@ DEFAULT_GUILD_CONFIG = {
     "leave_embed": False,
     "invite_tracker_enabled": False,
     "invite_log_channel": None,
+    "invite_leaderboard_channel": None,
     "social_links": {},
     "automod_enabled": False,
     "automod_threshold": 6,
@@ -3180,6 +3181,27 @@ async def welcome_test(interaction: discord.Interaction):
             await interaction.followup.send(f"The welcome test could not be sent to {channel.mention}. Check the bot's View Channel and Send Messages permissions; see Railway logs for details.", ephemeral=True)
     except (discord.Forbidden, discord.HTTPException) as exc:
         await interaction.followup.send(f"Could not send the test welcome: {type(exc).__name__}. Check channel permissions.", ephemeral=True)
+
+
+@bot.tree.command(name="invite-leaderboard-channel", description="Set the channel for the top 10 invite leaderboard")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def invite_leaderboard_channel_set(interaction: discord.Interaction, channel: discord.TextChannel):
+    cfg = guild_config(interaction.guild_id)
+    if not guild_has_feature(cfg, "invite_tracker"):
+        await interaction.response.send_message(
+            "The Invite Tracker feature is not enabled for this server's plan.",
+            ephemeral=True,
+        )
+        return
+    cfg["invite_tracker_enabled"] = True
+    cfg["invite_leaderboard_channel"] = channel.id
+    save_json(CONFIG_FILE, config)
+    await interaction.response.send_message(
+        f"Invite Leaderboard is enabled. The Top 10 will be posted in {channel.mention}.",
+        ephemeral=True,
+    )
+    await refresh_invite_leaderboard(interaction.guild)
 
 
 @bot.tree.command(name="welcome-channel", description="Set the channel for public welcome messages")
@@ -6450,6 +6472,64 @@ async def send_welcome_for_member(member: discord.Member, cfg: dict, include_dm:
         return False
 
 
+async def refresh_invite_leaderboard(guild: discord.Guild):
+    """Create or edit the persistent Top 10 invite leaderboard message."""
+    cfg = guild_config(guild.id)
+    channel_id = cfg.get("invite_leaderboard_channel")
+    if not cfg.get("invite_tracker_enabled") or not channel_id:
+        return
+    channel = guild.get_channel(int(channel_id))
+    if not isinstance(channel, discord.TextChannel):
+        print(f"[INVITE LEADERBOARD] Configured channel {channel_id} is missing in guild {guild.id}.", flush=True)
+        return
+
+    all_guilds = data.setdefault("invite_leaderboard", {})
+    guild_data = all_guilds.setdefault(str(guild.id), {"members": {}, "message_id": None})
+    invited_members = guild_data.setdefault("members", {})
+    totals = defaultdict(int)
+    for inviter_id in invited_members.values():
+        if str(inviter_id).isdigit():
+            totals[str(inviter_id)] += 1
+
+    ranked = sorted(totals.items(), key=lambda item: (-item[1], int(item[0])))[:10]
+    lines = []
+    medals = ("🥇", "🥈", "🥉")
+    for index, (inviter_id, count) in enumerate(ranked):
+        member = guild.get_member(int(inviter_id))
+        display = member.mention if member else f"<@{inviter_id}>"
+        medal = medals[index] if index < len(medals) else f"**#{index + 1}**"
+        lines.append(f"{medal} {display} — **{count}** successful invite{'s' if count != 1 else ''}")
+    description = "\n".join(lines) if lines else "No successful invites have been recorded yet. Invite real members to appear here!"
+
+    embed = discord.Embed(
+        title="🏆 IronWolf · Invite Leaderboard",
+        description=description,
+        color=discord.Color.from_rgb(70, 195, 255),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(text="Top 10 inviters · Human members who joined through tracked invite links")
+    message = None
+    message_id = guild_data.get("message_id")
+    if message_id:
+        try:
+            message = await channel.fetch_message(int(message_id))
+        except (ValueError, TypeError, discord.NotFound):
+            message = None
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[INVITE LEADERBOARD] Could not fetch leaderboard in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+            return
+    try:
+        if message is None:
+            message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        else:
+            await message.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        guild_data["message_id"] = message.id
+        save_json(DATA_FILE, data)
+        print(f"[INVITE LEADERBOARD] Updated Top 10 in guild {guild.id}.", flush=True)
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        print(f"[INVITE LEADERBOARD] Could not publish in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+
+
 @bot.event
 async def on_member_join(member: discord.Member):
     if not member.bot:
@@ -6489,7 +6569,7 @@ async def on_member_join(member: discord.Member):
         if len(joins) >= raid_threshold and (len(joins) == raid_threshold or len(joins) % raid_threshold == 0):
             await security_log(member.guild, "Anti-Raid: Beitrittswelle erkannt", f"{len(joins)} Mitglieder sind innerhalb von 60 Sekunden beigetreten. Alarm ausgelöst; automatische Quarantäne ist nicht konfiguriert.", discord.Color.red())
     # Attribute this join to an invite by comparing its use count with the last snapshot.
-    if cfg.get("invite_tracker_enabled") and cfg.get("invite_log_channel") and guild_has_feature(cfg, "invite_tracker"):
+    if cfg.get("invite_tracker_enabled") and (cfg.get("invite_log_channel") or cfg.get("invite_leaderboard_channel")) and guild_has_feature(cfg, "invite_tracker"):
         guild_id = member.guild.id
         previous = _invite_cache.get(guild_id, {})
         try:
@@ -6503,7 +6583,18 @@ async def on_member_join(member: discord.Member):
             _invite_cache[guild_id] = {
                 invite.code: (invite.uses or 0) for invite in current_invites
             }
-            log_channel = member.guild.get_channel(int(cfg["invite_log_channel"]))
+            if used_invite and used_invite.inviter and not used_invite.inviter.bot and not member.bot:
+                leaderboard_data = data.setdefault("invite_leaderboard", {}).setdefault(
+                    str(guild_id), {"members": {}, "message_id": None}
+                )
+                tracked_members = leaderboard_data.setdefault("members", {})
+                # One joining Discord account can only be credited once.
+                tracked_members.setdefault(str(member.id), str(used_invite.inviter.id))
+                save_json(DATA_FILE, data)
+                await refresh_invite_leaderboard(member.guild)
+
+            log_channel_id = cfg.get("invite_log_channel")
+            log_channel = member.guild.get_channel(int(log_channel_id)) if log_channel_id else None
             if isinstance(log_channel, discord.TextChannel):
                 embed = discord.Embed(
                     title="🐺 IronWolf · Invite Tracker",
