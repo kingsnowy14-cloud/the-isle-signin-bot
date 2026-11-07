@@ -6188,17 +6188,18 @@ def guild_games(guild_id):
         if action == "save":
             text_channels = {str(channel.id) for channel in guild.text_channels}
             counting_channel = request.form.get("counting_channel_id", "").strip()
-            game_channel = request.form.get("game_channel_id", "").strip()
-            for label, value in (("Counting channel", counting_channel), ("Game channel", game_channel)):
+            game_channels = {game: request.form.get("game_" + game + "_channel_id", "").strip() for game in ("flag", "math", "trivia")}
+            for label, value in [("Counting channel", counting_channel)] + [(game.title() + " channel", value) for game, value in game_channels.items()]:
                 if value and value not in text_channels:
                     abort(400, label + ": select a valid text channel.")
-            if counting_channel and game_channel and counting_channel == game_channel:
-                abort(400, "Counting and IronWolf Games need separate channels. Please choose two different channels.")
+            selected_channels = [value for value in [counting_channel, *game_channels.values()] if value]
+            if len(selected_channels) != len(set(selected_channels)):
+                abort(400, "Bitte wähle für Counting und jedes Spiel einen eigenen Kanal.")
             cfg["ironwolf_games_enabled"] = request.form.get("ironwolf_games_enabled") == "on"
             cfg["counting_enabled"] = request.form.get("counting_enabled") == "on"
             cfg["counting_channel_id"] = int(counting_channel) if counting_channel else None
-            cfg["game_channel_id"] = int(game_channel) if game_channel else None
-            for game in ("flag", "math", "trivia"):
+            for game, channel_id in game_channels.items():
+                cfg["game_" + game + "_channel_id"] = int(channel_id) if channel_id else None
                 cfg["game_" + game + "_enabled"] = request.form.get("game_" + game + "_enabled") == "on"
             _save_json(data_path("config.json"), _config)
             _audit_dashboard_change(guild.id, "IronWolf Games", session.get("user_id"), "Game settings saved from the dashboard.")
@@ -6244,25 +6245,30 @@ def guild_games(guild_id):
         '>#' + html.escape(channel.name) + '</option>'
         for channel in guild.text_channels
     )
-    game_channel_options = '<option value="">Select a channel</option>' + "".join(
-        '<option value="' + str(channel.id) + '"' +
-        (' selected' if str(cfg.get("game_channel_id") or "") == str(channel.id) else '') +
-        '>#' + html.escape(channel.name) + '</option>'
-        for channel in guild.text_channels
-    )
+    def channel_options_for(current):
+        return '<option value="">Select a channel</option>' + "".join(
+            '<option value="' + str(channel.id) + '"' +
+            (' selected' if str(current or "") == str(channel.id) else '') +
+            '>#' + html.escape(channel.name) + '</option>'
+            for channel in guild.text_channels
+        )
+    channel_options = channel_options_for(cfg.get("counting_channel_id"))
     def checked(key):
         return " checked" if cfg.get(key, False) else ""
     def game_card(key, title, description, emoji):
         enabled = cfg.get("game_" + key + "_enabled", False)
+        selected_channel = cfg.get("game_" + key + "_channel_id") or cfg.get("game_channel_id")
         button = (
             '<form method="post" class="inline-form">' + _csrf_field() +
             '<input type="hidden" name="action" value="post_game">' +
             '<input type="hidden" name="game" value="' + key + '">' +
-            '<button type="submit"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and cfg.get("game_channel_id") else ' disabled') + '>▶ Post a round</button></form>'
+            '<button type="submit"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and selected_channel else ' disabled') + '>▶ Post a round</button></form>'
         )
         return (
             '<article class="card"><div class="pill">' + ('ENABLED' if enabled else 'DISABLED') + '</div>' +
-            '<h2>' + emoji + ' ' + title + '</h2><p>' + description + '</p>' + button + '</article>'
+            '<h2>' + emoji + ' ' + title + '</h2><p>' + description + '</p>' +
+            '<label class="setting-toggle"><input type="checkbox" name="game_' + key + '_enabled"' + checked("game_" + key + "_enabled") + '> Spiel aktivieren</label>' +
+            '<label>Eigener Kanal für ' + title + '<select name="game_' + key + '_channel_id">' + channel_options_for(selected_channel) + '</select></label>' + button + '</article>'
         )
     body = (
         '<section class="card"><span class="pill">GAMING CONTROL CENTER</span><h1>🎮 IronWolf Games</h1>'
@@ -6274,16 +6280,13 @@ def guild_games(guild_id):
         '<h2>🔢 Counting</h2><label class="setting-toggle"><input type="checkbox" name="counting_enabled"' + checked("counting_enabled") + '> Enable Counting</label>' +
         '<label for="counting_channel_id">Counting channel (separate channel)</label><select id="counting_channel_id" name="counting_channel_id">' + channel_options + '</select>' +
         '<p class="muted">Members count in order from 1. The same member cannot post two numbers in a row. A wrong number resets the current round.</p>' +
-        '<h2>🎯 Separate games channel</h2><label for="game_channel_id">Where should Flag Guess, Math Game and Trivia be posted?</label><select id="game_channel_id" name="game_channel_id">' + game_channel_options + '</select>' +
-        '<h2>🕹️ Enable games</h2>' +
-        '<label class="setting-toggle"><input type="checkbox" name="game_flag_enabled"' + checked("game_flag_enabled") + '> 🚩 Flag Guess</label>' +
-        '<label class="setting-toggle"><input type="checkbox" name="game_math_enabled"' + checked("game_math_enabled") + '> ➗ Math Game</label>' +
-        '<label class="setting-toggle"><input type="checkbox" name="game_trivia_enabled"' + checked("game_trivia_enabled") + '> 🧠 Trivia & Quiz</label>' +
-        '<button type="submit">Save game settings</button></form></section>' +
+        '<h2>🕹️ Spiele einzeln konfigurieren</h2><p class="muted">Jedes Spiel hat einen eigenen Bereich mit Aktivierung und eigenem Discord-Kanal.</p>' +
         '<section class="grid">' +
         game_card("flag", "Flag Guess", "Guess the country from its flag. Three possible answers.", "🚩") +
         game_card("math", "Math Game", "Solve a random calculation with three possible answers.", "➗") +
         game_card("trivia", "Trivia & Quiz", "Answer general knowledge questions with three possible answers.", "🧠") +
+        '</section><button type="submit">Save game settings</button></form></section>' +
+        '<section class="grid">' +
         '</section>' +
         '<section class="card"><h2>🔢 Counting status</h2><p>Current count: <strong>' + str(int(counting.get('count') or 0)) + '</strong> · Best: <strong>' + str(int(counting.get('best') or 0)) + '</strong></p>' +
         '<form method="post" class="inline-form">' + _csrf_field() + '<input type="hidden" name="action" value="reset_counting"><button class="secondary" type="submit">Reset current round</button></form></section>' +
