@@ -6283,7 +6283,7 @@ def guild_games(guild_id):
         game_card("math", "Math Game", "Solve a random calculation with three possible answers.", "➗") +
         game_card("trivia", "Trivia & Quiz", "Answer general knowledge questions with three possible answers.", "🧠") +
         '</section>' +
-        '<section class="card"><h2>🔢 Counting status</h2><p>Current count: <strong>' + String(Number(counting.count || 0)) + '</strong> · Best: <strong>' + String(Number(counting.best || 0)) + '</strong></p>' +
+        '<section class="card"><h2>🔢 Counting status</h2><p>Current count: <strong>' + str(int(counting.get('count') or 0)) + '</strong> · Best: <strong>' + str(int(counting.get('best') or 0)) + '</strong></p>' +
         '<form method="post" class="inline-form">' + _csrf_field() + '<input type="hidden" name="action" value="reset_counting"><button class="secondary" type="submit">Reset current round</button></form></section>' +
         '<section class="card"><h2>🏆 Games leaderboard</h2><table><thead><tr><th>#</th><th>Discord User ID</th><th>Points</th></tr></thead><tbody>' + ranking_html + '</tbody></table></section>'
     )
