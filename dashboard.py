@@ -4027,9 +4027,6 @@ def guild_page(guild_id):
                         "automod_threshold": (3, 20, 6),
                         "automod_window_seconds": (3, 30, 8),
                         "automod_timeout_minutes": (1, 60, 2),
-                        "xp_cooldown_seconds": (10, 600, 60),
-                        "xp_min": (0, 100, 5),
-                        "xp_max": (0, 100, 15),
                     }
                     for key, (minimum, maximum, default) in numeric_settings.items():
                         try:
@@ -4039,8 +4036,6 @@ def guild_page(guild_id):
                         if not minimum <= value <= maximum:
                             abort(400, f"{key} muss zwischen {minimum} und {maximum} liegen.")
                         cfg[key] = value
-                    if cfg["xp_min"] > cfg["xp_max"]:
-                        abort(400, "Die minimale XP-Zahl darf nicht größer als die maximale XP-Zahl sein.")
                     requested_invite_tracker = request.form.get("invite_tracker_enabled") == "on"
                     if requested_invite_tracker and not guild_has_feature(cfg, "invite_tracker"):
                         abort(403, "Der Invite-Tracker benötigt ein aktives Premium-Modul.")
@@ -4153,7 +4148,7 @@ def guild_page(guild_id):
             settings_html += '<p class="muted">👑 The Invite Tracker is a premium feature. Enable it only if this server has an active premium subscription.</p>'
             for key, label in TEXT_SETTINGS.items():
                 settings_html += f'<label for="{key}">{label["label"]}</label><small>{label["help"]}</small><textarea id="{key}" name="{key}" maxlength="{label["max_length"]}">{html.escape(str(cfg.get(key, "")))}</textarea>'
-            for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
+            for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled"):
                 label = {"welcome_embed": "Send welcome message as an embed", "leave_enabled": "Enable goodbye messages", "leave_embed": "Send goodbye message as an embed"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
