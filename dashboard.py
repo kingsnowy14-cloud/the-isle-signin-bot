@@ -6184,7 +6184,7 @@ def guild_games(guild_id):
     if request.method == "POST":
         if not _csrf_ok():
             abort(400, "CSRF validation failed. Please reload the page.")
-        action = request.form.get("action", "")
+        action = request.form.get("action", "") or ("post_game" if request.form.get("launch_game") else "")
         if action in {"save", "post_game"}:
             text_channels = {str(channel.id) for channel in guild.text_channels}
             counting_channel = request.form.get("counting_channel_id", "").strip()
@@ -6206,7 +6206,7 @@ def guild_games(guild_id):
             if action == "save":
                 notice = '<div class="alert success">Game settings saved successfully.</div>'
         if action == "post_game":
-            game_name = request.form.get("game", "").strip().lower()
+            game_name = request.form.get("launch_game", "").strip().lower()
             if game_name not in {"flag", "math", "trivia"}:
                 abort(400, "Unknown game.")
             if not cfg.get("ironwolf_games_enabled", False) or not cfg.get("game_" + game_name + "_enabled", False):
@@ -6260,8 +6260,7 @@ def guild_games(guild_id):
         enabled = cfg.get("game_" + key + "_enabled", False)
         selected_channel = cfg.get("game_" + key + "_channel_id") or cfg.get("game_channel_id")
         button = (
-            '<input type="hidden" name="game" value="' + key + '">' +
-            '<button class="secondary" type="submit" name="action" value="post_game"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and selected_channel else ' disabled') + '>▶ Post a round</button>'
+            '<button class="secondary" type="submit" name="launch_game" value="' + key + '"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and selected_channel else ' disabled') + '>▶ Post a round</button>'
         )
         return (
             '<article class="card"><div class="pill">' + ('ENABLED' if enabled else 'DISABLED') + '</div>' +
