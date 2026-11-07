@@ -1847,6 +1847,30 @@ async def send_captcha_challenge(interaction: discord.Interaction):
     )
 
 
+async def _refresh_verification_panel(guild, cfg):
+    """Refresh the verified-member count in the published verification embed footer."""
+    channel_id = cfg.get("verify_channel")
+    message_id = cfg.get("verify_message_id")
+    role_id = cfg.get("verified_role")
+    channel = guild.get_channel(int(channel_id)) if channel_id else None
+    role = guild.get_role(int(role_id)) if role_id else None
+    if not isinstance(channel, discord.TextChannel) or not message_id or role is None:
+        return
+    try:
+        message = await channel.fetch_message(int(message_id))
+        embed = message.embeds[0].copy() if message.embeds else discord.Embed(
+            title=str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")),
+            description=str(cfg.get("verify_embed_description", "")),
+        )
+        embed.set_footer(text=f"IronWolf · Verifiziert: {len(role.members)}")
+        await message.edit(embed=embed)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError, TypeError) as exc:
+        print(f"[VERIFY] Could not refresh verified count: {type(exc).__name__}: {exc}", flush=True)
+
+
+bot.refresh_verification_panel = _refresh_verification_panel
+
+
 async def finish_verification(interaction: discord.Interaction, cfg):
     """Apply roles and respond correctly whether the interaction was deferred or not."""
     async def respond(message: str):
@@ -1870,6 +1894,7 @@ async def finish_verification(interaction: discord.Interaction, cfg):
     except (discord.Forbidden, discord.HTTPException) as exc:
         await respond(f"Could not update the role: {type(exc).__name__}. Please check the bot role hierarchy.")
         return
+    await _refresh_verification_panel(interaction.guild, cfg)
     await respond("✅ You are now verified. Welcome!")
 
 
@@ -1950,17 +1975,8 @@ class VerifyView(discord.ui.View):
             emoji=emoji or None,
             custom_id="verify:accept",
         )
-        button.callback = self.verify_button
+        button.callback = self.website_verify_button if mode == "website" else self.verify_button
         self.add_item(button)
-        if mode == "website":
-            website_button = discord.ui.Button(
-                label="Website Verify",
-                style=discord.ButtonStyle.primary,
-                emoji="🌐",
-                custom_id="verify:website",
-            )
-            website_button.callback = self.website_verify_button
-            self.add_item(website_button)
 
     async def website_verify_button(self, interaction: discord.Interaction):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
@@ -1999,7 +2015,7 @@ class VerifyView(discord.ui.View):
             )
             return
         if cfg.get("verify_mode", "click") == "website":
-            await interaction.response.send_message("Please use the Website Verify button and complete Discord sign-in.", ephemeral=True)
+            await self.website_verify_button(interaction)
             return
         if cfg.get("verify_mode", "click") == "code":
             await send_captcha_challenge(interaction)
