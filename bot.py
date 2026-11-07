@@ -2154,8 +2154,8 @@ bot.build_dashboard_message_view = build_dashboard_message_view
 
 
 class VerifyView(discord.ui.View):
-    """Persistent verification panel; supports one-click and image-captcha verification."""
-    def __init__(self, label: str = "Regeln akzeptieren / Verifizieren", emoji: str = "✅"):
+    """Persistent verification panel with click, captcha and Discord website methods."""
+    def __init__(self, label: str = "Regeln akzeptieren / Verifizieren", emoji: str = "✅", mode: str = "click"):
         super().__init__(timeout=None)
         button = discord.ui.Button(
             label=(label or "Verifizieren")[:80],
@@ -2165,6 +2165,39 @@ class VerifyView(discord.ui.View):
         )
         button.callback = self.verify_button
         self.add_item(button)
+        if mode == "website":
+            website_button = discord.ui.Button(
+                label="Website Verify",
+                style=discord.ButtonStyle.primary,
+                emoji="🌐",
+                custom_id="verify:website",
+            )
+            website_button.callback = self.website_verify_button
+            self.add_item(website_button)
+
+    async def website_verify_button(self, interaction: discord.Interaction):
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
+            return
+        cfg = guild_config(interaction.guild.id)
+        if cfg.get("verify_mode") != "website":
+            await interaction.response.send_message("Website verification is not enabled on this server.", ephemeral=True)
+            return
+        try:
+            from dashboard import _create_website_verify_url
+            link = _create_website_verify_url(interaction.guild.id, interaction.user.id)
+            await interaction.response.send_message(
+                "🌐 **Website Verify**\nOpen this one-time link and sign in with your Discord account. "
+                "The link expires after 10 minutes.\n" + link,
+                ephemeral=True,
+            )
+        except Exception as exc:
+            print(f"[WEBSITE VERIFY] Link creation failed: {type(exc).__name__}: {exc}", flush=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "Website verification is not configured yet. Please contact a server administrator.",
+                    ephemeral=True,
+                )
 
     async def verify_button(self, interaction: discord.Interaction):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
@@ -2181,7 +2214,6 @@ class VerifyView(discord.ui.View):
         if cfg.get("verify_mode", "click") == "code":
             await send_captcha_challenge(interaction)
             return
-        # Role changes can take longer than Discord's initial interaction window.
         await interaction.response.defer(ephemeral=True, thinking=True)
         await finish_verification(interaction, cfg)
 
@@ -4339,7 +4371,7 @@ async def verify_command(
         color=discord.Color.green(),
     )
     try:
-        verification_message = await kanal.send(embed=embed, view=VerifyView(panel_button, panel_emoji))
+        verification_message = await kanal.send(embed=embed, view=VerifyView(panel_button, panel_emoji, mode_value))
         cfg["verify_message_id"] = verification_message.id
         save_json(CONFIG_FILE, config)
     except discord.Forbidden:
@@ -4413,7 +4445,7 @@ async def verify_setup(
         ),
         color=discord.Color.green(),
     )
-    verification_message = await kanal.send(embed=embed, view=VerifyView(button_text, emoji))
+    verification_message = await kanal.send(embed=embed, view=VerifyView(button_text, emoji, mode_value))
     cfg["verify_message_id"] = verification_message.id
     save_json(CONFIG_FILE, config)
     await interaction.response.send_message(f"Verifizierungs-Panel in {kanal.mention} erstellt.", ephemeral=True)
@@ -9056,6 +9088,7 @@ async def on_ready():
     bot.add_view(LanguageView())
     bot.add_view(TicketControlView())
     bot.add_view(VerifyView())
+    bot.add_view(VerifyView(mode="website"))
 
     # Restore persistent ticket panel views saved in config.
     _restored_ticket_panels = 0
