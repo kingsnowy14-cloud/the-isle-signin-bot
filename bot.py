@@ -8510,21 +8510,45 @@ async def ironwolf_global_stats_worker():
                 raise TypeError("Configured global stats channel is not a text channel.")
 
             guilds = list(bot.guilds)
-            # Count distinct human Discord accounts across all guilds; bot accounts are excluded.
-            human_user_ids = {
-                member.id
-                for guild in guilds
-                for member in guild.members
-                if not member.bot
-            }
+            # Count distinct Discord accounts across the network, avoiding duplicate users
+            # who share multiple servers. Bots are tracked separately.
+            cached_members = [member for guild in guilds for member in guild.members]
+            user_ids = {member.id for member in cached_members if not member.bot}
+            bot_ids = {member.id for member in cached_members if member.bot}
+            total_member_slots = sum(int(guild.member_count or len(guild.members)) for guild in guilds)
+            total_boosts = sum(int(guild.premium_subscription_count or 0) for guild in guilds)
+            total_text_channels = sum(len(guild.text_channels) for guild in guilds)
+            total_voice_channels = sum(len(guild.voice_channels) for guild in guilds)
+            active_voice_users = sum(
+                1 for guild in guilds for voice_channel in guild.voice_channels
+                for member in voice_channel.members if not member.bot
+            )
+            tracked_messages = 0
+            tracked_voice_seconds = 0
+            for server_stats in data.get("stats", {}).values():
+                if not isinstance(server_stats, dict):
+                    continue
+                for member_stats in server_stats.values():
+                    if isinstance(member_stats, dict):
+                        tracked_messages += max(0, int(member_stats.get("messages", 0) or 0))
+                        tracked_voice_seconds += max(0, int(member_stats.get("voice_seconds", 0) or 0))
+
             embed = discord.Embed(
                 title="🐺 IronWolf · Global Statistics",
                 description="Live overview of the entire IronWolf bot network.",
                 color=discord.Color.blurple(),
                 timestamp=datetime.now(timezone.utc),
             )
-            embed.add_field(name="👥 Human Users", value=f"**{len(human_user_ids):,}**", inline=True)
+            embed.add_field(name="👥 Users", value=f"**{len(user_ids):,}**", inline=True)
             embed.add_field(name="🌐 Servers", value=f"**{len(guilds):,}**", inline=True)
+            embed.add_field(name="🤖 Bot Accounts", value=f"**{len(bot_ids):,}**", inline=True)
+            embed.add_field(name="📊 Total Member Slots", value=f"**{total_member_slots:,}**", inline=True)
+            embed.add_field(name="🚀 Server Boosts", value=f"**{total_boosts:,}**", inline=True)
+            embed.add_field(name="🎙️ Users in Voice", value=f"**{active_voice_users:,}**", inline=True)
+            embed.add_field(name="💬 Text Channels", value=f"**{total_text_channels:,}**", inline=True)
+            embed.add_field(name="🔊 Voice Channels", value=f"**{total_voice_channels:,}**", inline=True)
+            embed.add_field(name="⌨️ Tracked Messages", value=f"**{tracked_messages:,}**", inline=True)
+            embed.add_field(name="⏱️ Tracked Voice Time", value=f"**{tracked_voice_seconds // 3600:,} hours**", inline=True)
             embed.add_field(
                 name="🔗 Dashboard",
                 value=f"[Open IronWolf Dashboard]({_IRONWOLF_DASHBOARD_URL})",
