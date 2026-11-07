@@ -494,7 +494,6 @@ DEFAULT_GUILD_CONFIG = {
     "welcome_dm_enabled": False,
     "self_roles": [],
     "birthday_channel": None,
-    "levelup_channel": None,
     "birthdays": {},
     "birthday_greeted_year": {},
     "leave_enabled": True,
@@ -508,14 +507,9 @@ DEFAULT_GUILD_CONFIG = {
     "automod_threshold": 6,
     "automod_window_seconds": 8,
     "automod_timeout_minutes": 2,
-    "xp_enabled": True,
-    "xp_cooldown_seconds": 60,
-    "xp_min": 5,
-    "xp_max": 15,
     "verify_channel": None,
     "verified_role": None,
     "unverified_role": None,
-    "level_roles": {},
     "tempvoice_trigger": None,
     "tempvoice_category": None,
     "social_alerts": {},
@@ -1723,238 +1717,6 @@ async def close_ticket(channel, closed_by, meta):
     save_json(DATA_FILE, data)
     await channel.delete(reason=f"Ticket closed by {closed_by}")
 
-
-
-# ----------------------------- LEVEL SYSTEM -----------------------------
-
-import random
-
-
-def get_user_level(xp: int) -> int:
-    """Use the same cumulative XP curve as /rank and /level."""
-    return calculate_level(max(0, int(xp)))
-
-
-def xp_for_level(level: int) -> int:
-    """Total XP required to reach a level."""
-    return 100 * level * level
-
-
-def add_message_xp(guild_id: int, user_id: int):
-    """Award configured XP with a per-server cooldown and return only new level-ups."""
-    if int(guild_id) == 1561027077984227371:
-        return 0, 0
-    cfg = guild_config(guild_id)
-    if not cfg.get("xp_enabled", True):
-        return 0, 0
-    # 0 cooldown means XP can be earned on every message.
-    cooldown = max(0, min(600, int(cfg.get("xp_cooldown_seconds", 60))))
-    # 0 XP is allowed; only enforce the supported 0-100 range.
-    xp_min = max(0, min(100, int(cfg.get("xp_min", 5))))
-    xp_max = max(xp_min, min(100, int(cfg.get("xp_max", 15))))
-    stats = get_user_stats(guild_id, user_id)
-    now = time.time()
-    last_xp_at = float(stats.get("last_xp_at", 0))
-    old_xp = max(0, int(stats.get("xp", 0)))
-    old_level = calculate_level(old_xp)
-    if now - last_xp_at < cooldown:
-        return 0, 0
-    earned_xp = random.randint(xp_min, xp_max)
-    stats["xp"] = old_xp + earned_xp
-    stats["level"] = calculate_level(stats["xp"])
-    stats["last_xp_at"] = now
-
-    new_level = stats["level"]
-    save_json(DATA_FILE, data)
-    return earned_xp, new_level if new_level > old_level else 0
-
-XP_COOLDOWN = 60
-XP_MIN = 15
-XP_MAX = 25
-
-# Zeitpunkte werden nur im Speicher gehalten.
-# Die XP selbst werden dauerhaft in data.json gespeichert.
-_level_cooldowns = {}
-
-
-def get_level_xp(guild_id, user_id):
-    """Get or create persistent XP data for a member."""
-    server_stats = data.setdefault("stats", {}).setdefault(str(guild_id), {})
-    stats = server_stats.setdefault(
-        str(user_id),
-        {"messages": 0, "voice_seconds": 0}
-    )
-
-    stats.setdefault("xp", 0)
-    stats.setdefault("level", 0)
-    return stats
-
-
-def xp_for_next_level(level):
-    """XP required to reach the next level."""
-    return 100 * (level + 1) ** 2
-
-
-def calculate_level(xp):
-    """Calculate level from total XP."""
-    level = 0
-    while xp >= xp_for_next_level(level):
-        xp -= xp_for_next_level(level)
-        level += 1
-    return level
-
-
-def total_xp_for_level(level):
-    """Total XP needed to reach a level."""
-    return sum(xp_for_next_level(i) for i in range(level))
-
-
-async def award_message_xp(message):
-    """Award XP with a cooldown and announce level-ups."""
-    if not message.guild or message.author.bot:
-        return
-    if message.guild.id == 1561027077984227371:
-        return
-
-    content = (message.content or "").strip()
-    if not content:
-        return
-
-    cfg = guild_config(message.guild.id)
-    if not cfg.get("xp_enabled", True):
-        return
-
-    cooldown = max(0, min(600, int(cfg.get("xp_cooldown_seconds", 60))))
-    xp_min = max(0, min(100, int(cfg.get("xp_min", 5))))
-    xp_max = max(xp_min, min(100, int(cfg.get("xp_max", 15))))
-
-    key = (message.guild.id, message.author.id)
-    now = time.monotonic()
-
-    last_award = _level_cooldowns.get(key, 0)
-    if cooldown > 0 and now - last_award < cooldown:
-        return
-
-    if cooldown > 0:
-        _level_cooldowns[key] = now
-
-    stats = get_level_xp(message.guild.id, message.author.id)
-    old_level = int(stats.get("level", 0))
-
-    stats["xp"] = int(stats.get("xp", 0)) + random.randint(xp_min, xp_max)
-    new_level = calculate_level(stats["xp"])
-    stats["level"] = new_level
-
-    save_json(DATA_FILE, data)
-
-    if new_level > old_level:
-        embed = create_embed(
-            title="🎉 Levelaufstieg!",
-            description=(
-                f"Congratulations {message.author.mention}!\n\n"
-                f"You are now **Level {new_level}**!\n"
-                f"⭐ XP insgesamt: **{stats['xp']}**"
-            ),
-            color=discord.Color.gold(),
-        )
-        cfg = guild_config(message.guild.id)
-        levelup_channel_id = cfg.get("levelup_channel")
-        levelup_channel = message.guild.get_channel(int(levelup_channel_id)) if levelup_channel_id else None
-        if not isinstance(levelup_channel, discord.TextChannel):
-            levelup_channel = message.channel
-        try:
-            await levelup_channel.send(embed=embed)
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            print(f"[LEVELING] Could not send level-up announcement in guild {message.guild.id}: {type(exc).__name__}: {exc}", flush=True)
-        role_id = cfg.get("level_roles", {}).get(str(new_level))
-        role = message.guild.get_role(int(role_id)) if role_id else None
-        if role and isinstance(message.author, discord.Member):
-            try:
-                await message.author.add_roles(role, reason=f"Level {new_level} erreicht")
-            except (discord.Forbidden, discord.HTTPException):
-                pass
-
-
-@bot.command(name="level", aliases=["lvl"])
-async def level_command(ctx, member: discord.Member = None):
-    """Show a member's level and XP progress."""
-    if ctx.guild is None:
-        await ctx.reply("This command can only be used in a server.")
-        return
-
-    target = member or ctx.author
-    stats = get_level_xp(ctx.guild.id, target.id)
-
-    xp = int(stats.get("xp", 0))
-    level = calculate_level(xp)
-    current_level_xp = total_xp_for_level(level)
-    next_level_xp = total_xp_for_level(level + 1)
-
-    progress = xp - current_level_xp
-    required = next_level_xp - current_level_xp
-    percent = min(100, int(progress / required * 100)) if required else 100
-
-    filled = int(percent / 10)
-    progress_bar = "🟩" * filled + "⬛" * (10 - filled)
-
-    embed = create_embed(
-        title=f"🏆 Level von {target.display_name}",
-        color=discord.Color.gold(),
-    )
-    embed.set_thumbnail(url=target.display_avatar.url)
-    embed.add_field(name="Level", value=f"**{level}**", inline=True)
-    embed.add_field(name="Gesamt-XP", value=f"**{xp:,}**".replace(",", "."), inline=True)
-    embed.add_field(
-        name="Fortschritt",
-        value=(
-            f"{progress_bar}\n"
-            f"**{progress} / {required} XP** ({percent} %)"
-        ),
-        inline=False,
-    )
-
-    await ctx.reply(embed=embed, mention_author=False)
-
-
-@bot.command(name="leaderboard", aliases=["lb", "rangliste"])
-async def leaderboard_command(ctx):
-    """Show the ten highest-ranking members of this server."""
-    if ctx.guild is None:
-        await ctx.reply("This command can only be used in a server.")
-        return
-
-    server_stats = data.setdefault("stats", {}).get(str(ctx.guild.id), {})
-
-    members = []
-    for user_id, stats in server_stats.items():
-        xp = int(stats.get("xp", 0))
-        level = calculate_level(xp)
-        members.append((int(user_id), xp, level))
-
-    members.sort(key=lambda entry: entry[1], reverse=True)
-    members = members[:10]
-
-    if not members:
-        await ctx.reply("There is no level data for this server yet.")
-        return
-
-    lines = []
-    for rank, (user_id, xp, level) in enumerate(members, start=1):
-        member = ctx.guild.get_member(user_id)
-        name = member.display_name if member else f"Unbekannt ({user_id})"
-        name = discord.utils.escape_markdown(name)
-
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"`#{rank}`")
-        lines.append(
-            f"{medal} **{name}** — Level **{level}** · **{xp:,} XP**".replace(",", ".")
-        )
-
-    embed = create_embed(
-        title=f"🏆 Rangliste — {ctx.guild.name}",
-        description="\n".join(lines),
-        color=discord.Color.gold(),
-    )
-    await ctx.reply(embed=embed, mention_author=False)
 
 
 def _verify_code_hash(code: str, salt: bytes) -> str:
@@ -4035,54 +3797,6 @@ async def automod_set(interaction: discord.Interaction, aktiviert: bool):
     await interaction.response.send_message(f"AutoMod is now **{'enabled' if aktiviert else 'disabled'}**. Active: 6 messages within 8 seconds trigger deletion and a 2-minute timeout.", ephemeral=True)
 
 
-@bot.tree.command(name="daily", description="Claim XP once every 24 hours")
-async def daily_command(interaction: discord.Interaction):
-    if not interaction.guild_id:
-        await interaction.response.send_message("This command is only available in a server.", ephemeral=True)
-        return
-    key = f"{interaction.guild_id}:{interaction.user.id}"
-    now = time.time()
-    last = float(data.setdefault("daily_claims", {}).get(key, 0))
-    if now - last < 86400:
-        hours = int((86400 - (now - last)) // 3600)
-        minutes = int(((86400 - (now - last)) % 3600) // 60)
-        await interaction.response.send_message(f"You have already claimed your daily reward. Come back in **{hours} hr {minutes} min**.", ephemeral=True)
-        return
-    stats = get_level_xp(interaction.guild_id, interaction.user.id)
-    reward = random.randint(40, 80)
-    stats["xp"] = int(stats.get("xp", 0)) + reward
-    stats["level"] = calculate_level(stats["xp"])
-    data["daily_claims"][key] = now
-    save_json(DATA_FILE, data)
-    await interaction.response.send_message(f"🎁 Du hast **{reward} XP** erhalten! Gesamt: **{stats['xp']} XP**.")
-
-
-@bot.tree.command(name="rank", description="Show a member’s XP, level and progress")
-async def rank_command(interaction: discord.Interaction, mitglied: discord.Member = None):
-    target = mitglied or interaction.user
-    stats = get_level_xp(interaction.guild_id, target.id)
-    xp = int(stats.get("xp", 0)); level = calculate_level(xp)
-    start = total_xp_for_level(level); next_level = total_xp_for_level(level + 1)
-    required = max(1, next_level - start); progress = max(0, xp - start)
-    embed = create_embed(title=f"🏆 Rangkarte: {target.display_name}", color=discord.Color.gold())
-    embed.set_thumbnail(url=target.display_avatar.url)
-    embed.add_field(name="Level", value=str(level), inline=True)
-    embed.add_field(name="XP", value=f"{xp:,}".replace(",", "."), inline=True)
-    embed.add_field(name="Fortschritt", value=f"{min(100, int(progress / required * 100))}% · {progress}/{required} XP", inline=False)
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="level-role-set", description="Automatically assign a role when a member reaches a level")
-@app_commands.checks.has_permissions(manage_guild=True)
-async def level_role_set(interaction: discord.Interaction, level: app_commands.Range[int, 1, 1000], rolle: discord.Role):
-    if rolle.is_default() or rolle >= interaction.guild.me.top_role:
-        await interaction.response.send_message("The bot role must be above the target role.", ephemeral=True)
-        return
-    guild_config(interaction.guild_id).setdefault("level_roles", {})[str(level)] = rolle.id
-    save_json(CONFIG_FILE, config)
-    await interaction.response.send_message(f"Ab Level **{level}** wird {rolle.mention} vergeben, sobald das Mitglied dieses Level erreicht.", ephemeral=True)
-
-
 @bot.tree.command(name="tempvoice-setup", description="Set up the join channel for temporary voice rooms")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def tempvoice_setup(interaction: discord.Interaction, trigger: discord.VoiceChannel, kategorie: discord.CategoryChannel = None):
@@ -5980,41 +5694,13 @@ async def on_message(message: discord.Message):
                 except (discord.Forbidden, discord.HTTPException):
                     pass
 
-        # Count messages and award XP with a cooldown.
+        # Count messages and update member activity only; leveling has been removed.
         stats = get_user_stats(guild.id, message.author.id)
         stats["messages"] = int(stats.get("messages", 0)) + 1
         activity_now = datetime.now(timezone.utc).isoformat()
         stats["last_message_at"] = activity_now
         stats["last_activity_at"] = activity_now
-        xp_enabled = bool(cfg.get("xp_enabled", True))
-        xp_min = int(cfg.get("xp_min", 5) or 0)
-        xp_max = int(cfg.get("xp_max", 15) or 0)
-        # The XP module is disabled by the dashboard toggle or by setting either XP amount to 0.
-        reached_level = None
-        if xp_enabled and xp_min > 0 and xp_max > 0:
-            earned_xp, reached_level = add_message_xp(guild.id, message.author.id)
         save_json(DATA_FILE, data)
-
-        if reached_level:
-            embed = create_embed(
-                title="🎉 Levelaufstieg!",
-                description=(
-                    f"Glückwunsch {message.author.mention}!\n"
-                    f"Du hast **Level {reached_level}** erreicht!"
-                ),
-                color=discord.Color.gold(),
-            )
-            levelup_channel_id = guild_config(guild.id).get("levelup_channel")
-            levelup_channel = guild.get_channel(int(levelup_channel_id)) if levelup_channel_id else None
-            target_channel = levelup_channel if isinstance(levelup_channel, discord.TextChannel) else message.channel
-            await target_channel.send(embed=embed)
-            level_role_id = guild_config(guild.id).get("level_roles", {}).get(str(reached_level))
-            level_role = guild.get_role(int(level_role_id)) if level_role_id else None
-            if level_role and isinstance(message.author, discord.Member):
-                try:
-                    await message.author.add_roles(level_role, reason=f"Level {reached_level} erreicht")
-                except (discord.Forbidden, discord.HTTPException):
-                    pass
 
         # Honeypot: configurable action and durable per-guild statistics.
         cfg = guild_config(guild.id)
