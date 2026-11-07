@@ -2181,7 +2181,7 @@ def website_verify_callback():
             raise RuntimeError("The Discord server is unavailable")
         member = guild.get_member(int(discord_user_id))
         if member is None:
-            member = await_member = asyncio.run_coroutine_threadsafe(
+            member = asyncio.run_coroutine_threadsafe(
                 guild.fetch_member(int(discord_user_id)), _bot.loop
             ).result(timeout=15)
         cfg = _guild_config(int(pending["guild_id"]))
