@@ -7366,6 +7366,8 @@ def _auto_nickname_rule_for_member(member, preferred_role_ids=None):
             pair[0],
         ),
     )
+    # A configured trigger only applies while it is the member's highest role.
+    top_role_id = member.top_role.id
     for _, rule in ordered_rules:
         if not isinstance(rule, dict):
             continue
@@ -7374,22 +7376,57 @@ def _auto_nickname_rule_for_member(member, preferred_role_ids=None):
         except (TypeError, ValueError):
             continue
         prefix = str(rule.get("nickname") or "").strip()
-        if role_id in active_role_ids and prefix and member.guild.get_role(role_id) is not None:
+        if role_id == top_role_id and role_id in active_role_ids and prefix and member.guild.get_role(role_id) is not None:
             return prefix
     return None
 
 
+def _auto_nickname_original_key(member):
+    return f"{member.guild.id}:{member.id}"
+
+
+async def restore_auto_nickname(member, reason="AutoNickname: trigger role is no longer the highest role"):
+    """Restore the nickname that existed before AutoNickname first changed it."""
+    key = _auto_nickname_original_key(member)
+    originals = data.setdefault("auto_nickname_originals", {})
+    if key not in originals:
+        return False
+    original = originals.pop(key)
+    save_json(DATA_FILE, data)
+    me = member.guild.me
+    if me is None or not me.guild_permissions.manage_nicknames or member.top_role >= me.top_role:
+        # Keep the original saved so it can be restored on a later sync.
+        originals[key] = original
+        save_json(DATA_FILE, data)
+        return False
+    try:
+        await member.edit(nick=original, reason=reason)
+        print(f"[AutoNickname] Restored previous nickname for member {member.id} in guild {member.guild.id}.", flush=True)
+        return True
+    except (discord.Forbidden, discord.HTTPException) as exc:
+        originals[key] = original
+        save_json(DATA_FILE, data)
+        print(f"[AutoNickname] Could not restore nickname for member {member.id} in guild {member.guild.id}: {type(exc).__name__}: {exc}", flush=True)
+        return False
+
+
 async def apply_auto_nickname(member, reason="AutoNickname: matching role is present", preferred_role_ids=None):
-    """Apply the configured nickname to human or bot accounts with a configured trigger role."""
+    """Apply a nickname only when its configured role is the member's highest role."""
     me = member.guild.me
     if me is None or not me.guild_permissions.manage_nicknames or member.top_role >= me.top_role:
         return False
     prefix = _auto_nickname_rule_for_member(member, preferred_role_ids=preferred_role_ids)
     if not prefix:
+        await restore_auto_nickname(member)
         return False
     desired = f"{prefix} {member.name}"[:32]
     if member.nick == desired:
         return True
+    originals = data.setdefault("auto_nickname_originals", {})
+    key = _auto_nickname_original_key(member)
+    if key not in originals:
+        originals[key] = member.nick
+        save_json(DATA_FILE, data)
     try:
         await member.edit(nick=desired, reason=reason)
         print(f"[AutoNickname] Applied nickname to member {member.id} in guild {member.guild.id}.", flush=True)
@@ -7539,17 +7576,10 @@ async def start_auto_role_nickname_monitor():
                                 if isinstance(rule, dict) and str(rule.get("nickname") or "").strip()
                             }
                             if member.nick and member.nick in generated_nicks:
-                                try:
-                                    await member.edit(
-                                        nick=None,
-                                        reason="AutoNickname: 10-second sync found no configured trigger role",
-                                    )
-                                except (discord.Forbidden, discord.HTTPException) as exc:
-                                    print(
-                                        f"[AutoNickname] 10-second sync could not reset nickname for "
-                                        f"{member.id} in guild {guild.id}: {type(exc).__name__}: {exc}",
-                                        flush=True,
-                                    )
+                                await restore_auto_nickname(
+                                    member,
+                                    "AutoNickname: trigger role is no longer the highest role",
+                                )
                     await asyncio.sleep(0.05)
             await asyncio.sleep(10)
 
@@ -7696,9 +7726,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                         "AutoNickname: another configured role remains",
                     )
                 else:
-                    await after.edit(
-                        nick=None,
-                        reason="AutoNickname: configured role was removed; restore original username",
+                    await restore_auto_nickname(
+                        after,
+                        "AutoNickname: configured role was removed or is no longer highest; restore previous nickname",
                     )
     except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
         print(f"[AutoNickname] Could not set nickname for member {after.id} in guild {after.guild.id}: {type(exc).__name__}: {exc}", flush=True)
