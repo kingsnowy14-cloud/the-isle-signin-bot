@@ -7670,39 +7670,45 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
 @bot.listen("on_ready")
 async def enforce_premium_nicknames_on_all_servers():
-    """Remove legacy custom nicknames from every non-Premium server."""
-    changed = 0
-    skipped = 0
-    failed = 0
-    for guild in bot.guilds:
-        if guild_has_feature(guild_config(guild.id), "custom_bot"):
-            continue
-        member = guild.me
-        if member is None or member.nick is None:
-            continue
-        if not member.guild_permissions.change_nickname:
-            skipped += 1
-            print(f"[nickname-guard] Missing Change Nickname permission in guild {guild.id}.", flush=True)
-            continue
-        try:
-            await member.edit(
-                nick=None,
-                reason="IronWolf Premium policy: restore standard name on non-Premium server",
-            )
-            changed += 1
-            await asyncio.sleep(0.35)
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            failed += 1
+    """Periodically remove legacy custom nicknames from every non-Premium server."""
+    task = getattr(bot, "_premium_nickname_sweep_task", None)
+    if task is not None and not task.done():
+        return
+
+    async def sweep_forever():
+        # Let other startup jobs finish before making guild-member API calls.
+        await asyncio.sleep(90)
+        while not bot.is_closed():
+            changed = skipped = failed = 0
+            for guild in list(bot.guilds):
+                if guild_has_feature(guild_config(guild.id), "custom_bot"):
+                    continue
+                member = guild.me
+                if member is None or member.nick is None:
+                    continue
+                if not member.guild_permissions.change_nickname:
+                    skipped += 1
+                    print(f"[nickname-guard] Missing Change Nickname permission in guild {guild.id}.", flush=True)
+                    continue
+                try:
+                    await member.edit(
+                        nick=None,
+                        reason="IronWolf Premium policy: restore standard name on non-Premium server",
+                    )
+                    changed += 1
+                    print(f"[nickname-guard] Restored standard name in guild {guild.id}.", flush=True)
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    failed += 1
+                    print(f"[nickname-guard] Reset failed in guild {guild.id}: {type(exc).__name__}: {exc}", flush=True)
+                await asyncio.sleep(3)
             print(
-                f"[nickname-guard] Startup reset failed in guild {guild.id}: "
-                f"{type(exc).__name__}: {exc}",
+                f"[nickname-guard] Sweep complete: reset={changed}, skipped={skipped}, "
+                f"failed={failed}. Next check in 10 minutes.",
                 flush=True,
             )
-    print(
-        f"[nickname-guard] Premium nickname sweep complete: reset={changed}, "
-        f"skipped={skipped}, failed={failed}.",
-        flush=True,
-    )
+            await asyncio.sleep(600)
+
+    bot._premium_nickname_sweep_task = asyncio.create_task(sweep_forever())
 
 
 # ---------------------- IRONWOLF FEATURES (INLINE) ----------------------
