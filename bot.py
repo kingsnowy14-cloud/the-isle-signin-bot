@@ -8494,6 +8494,7 @@ _ironwolf_global_stats_task = None
 _IRONWOLF_GLOBAL_STATS_CHANNEL_ID = 1568564524649291797
 _IRONWOLF_DASHBOARD_URL = "https://ironwolf-bot.up.railway.app/"
 _IRONWOLF_INVITE_URL = "https://discord.com/oauth2/authorize?client_id=1558547445187743804"
+_IRONWOLF_DISCORD_SERVER_INVITE_URL = "https://discord.gg/KDKs5WPgaC"
 _IRONWOLF_GLOBAL_STATS_MESSAGE_FILE = data_path("ironwolf_global_stats_message.json")
 
 
@@ -8551,6 +8552,11 @@ async def ironwolf_global_stats_worker():
             embed.add_field(
                 name="🤖 Invite IronWolf",
                 value=f"[Add IronWolf to your server]({_IRONWOLF_INVITE_URL})",
+                inline=False,
+            )
+            embed.add_field(
+                name="💬 Discord Server · Permanent Invite",
+                value=f"[Join the IronWolf Discord Server]({_IRONWOLF_DISCORD_SERVER_INVITE_URL})",
                 inline=False,
             )
             embed.set_footer(text="IronWolf · Global stats update every 5 minutes")
