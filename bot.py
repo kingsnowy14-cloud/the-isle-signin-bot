@@ -420,6 +420,56 @@ bot.config = config
 bot.CONFIG_FILE = CONFIG_FILE
 bot.save_json = save_json
 data = load_json(DATA_FILE, {"languages": {}, "registrations": {}})
+
+# This role is a one-time, first-come-first-served verification reward.
+LIMITED_VERIFICATION_ROLE_ID = 1561797828173369424
+LIMITED_VERIFICATION_ROLE_LIMIT = 30
+_verification_role_claim_lock = asyncio.Lock()
+
+
+async def assign_limited_verification_role(member, role, reason="Member completed verification"):
+    """Assign the capped verification role to the first 30 members permanently."""
+    if role.id != LIMITED_VERIFICATION_ROLE_ID:
+        if role not in member.roles:
+            await member.add_roles(role, reason=reason)
+        return True
+
+    async with _verification_role_claim_lock:
+        claims_by_role = data.setdefault("verification_role_claims", {})
+        claim_key = f"{member.guild.id}:{role.id}"
+        claim_record = claims_by_role.get(claim_key)
+        if not isinstance(claim_record, dict) or claim_record.get("initialized") is not True:
+            # Existing holders occupy places too; saved claims remain after they leave.
+            existing_ids = [str(existing.id) for existing in role.members]
+            claim_record = {
+                "initialized": True,
+                "user_ids": list(dict.fromkeys(existing_ids)),
+            }
+            claims_by_role[claim_key] = claim_record
+            save_json(DATA_FILE, data)
+
+        claimed_ids = claim_record.get("user_ids")
+        if not isinstance(claimed_ids, list):
+            claimed_ids = []
+            claim_record["user_ids"] = claimed_ids
+
+        member_id = str(member.id)
+        if member_id in claimed_ids:
+            if role not in member.roles:
+                await member.add_roles(role, reason=reason)
+            return True
+
+        if len(claimed_ids) >= LIMITED_VERIFICATION_ROLE_LIMIT:
+            return False
+
+        if role not in member.roles:
+            await member.add_roles(role, reason=reason)
+        claimed_ids.append(member_id)
+        save_json(DATA_FILE, data)
+        return True
+
+
+bot.assign_limited_verification_role = assign_limited_verification_role
 # Stats are stored per server and per user in data.json.
 data.setdefault("stats", {})
 data.setdefault("moderation_warnings", {})
@@ -1890,13 +1940,17 @@ async def finish_verification(interaction: discord.Interaction, cfg):
     try:
         if unverified_role and unverified_role in interaction.user.roles:
             await interaction.user.remove_roles(unverified_role, reason="Member completed verification")
-        if verified_role not in interaction.user.roles:
-            await interaction.user.add_roles(verified_role, reason="Member completed verification")
+        role_granted = await assign_limited_verification_role(
+            interaction.user, verified_role, reason="Member completed verification"
+        )
     except (discord.Forbidden, discord.HTTPException) as exc:
         await respond(f"Could not update the role: {type(exc).__name__}. Please check the bot role hierarchy.")
         return
     await _refresh_verification_panel(interaction.guild, cfg)
-    await respond("✅ You are now verified. Welcome!")
+    if role_granted:
+        await respond("✅ You are now verified. Welcome!")
+    else:
+        await respond("✅ Your verification is complete, but the limited role has already reached its limit of 30 members.")
 
 
 class DashboardMessageView(discord.ui.View):
