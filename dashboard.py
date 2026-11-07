@@ -73,7 +73,6 @@ BOOL_SETTINGS = {
     "welcome_dm_enabled": "Send a private welcome DM to new members",
     "invite_tracker_enabled": "Invite-Tracker aktivieren",
     "automod_enabled": "AutoMod",
-    "xp_enabled": "Level- und XP-System aktivieren",
     "anti_nuke_enabled": "Anti-Nuke-Schutz",
     "anti_raid_enabled": "Anti-Raid-Schutz",
 }
@@ -81,7 +80,6 @@ CHANNEL_SETTINGS = {
     "welcome_channel": "Public welcome channel",
     "goodbye_channel": "Goodbye channel",
     "birthday_channel": "Geburtstagskanal",
-    "levelup_channel": "Level-up channel",
     "invite_log_channel": "Invite-Tracker-Logkanal",
     "security_log_channel": "Security log channel",
     "analytics_log_channel": "WolfAnalytics report channel",
@@ -1278,7 +1276,6 @@ def _module_navigation():
         ("actions", "⚔️ Action Center", "/actions"),
         ("__ai_category__", "📈 AUTOMATION & PROGRESS", ""),
         ("automation", "📣 Automation", "/automation"),
-        ("general", "📊 Leveling & XP", "?section=general#settings-panel"),
         ("economy", "💰 Economy", "/economy"),
         ("server-boost", "🚀 Server Boosts", "/server-boost"),
         ("shift-tracker", "⏱️ Shift Management", "/shifts"),
@@ -4024,7 +4021,7 @@ def guild_page(guild_id):
                             if len(value) > meta["max_length"]:
                                 abort(400, f"{meta['label']} is too long.")
                             cfg[key] = value
-                    for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled", "xp_enabled"):
+                    for key in ("welcome_bots_enabled", "welcome_dm_enabled", "welcome_embed", "leave_enabled", "leave_embed", "automod_enabled"):
                         cfg[key] = request.form.get(key) == "on"
                     numeric_settings = {
                         "automod_threshold": (3, 20, 6),
@@ -4119,15 +4116,6 @@ def guild_page(guild_id):
                         if raw and raw not in role_ids:
                             abort(400, "Ungültige Rolle ausgewählt.")
                         cfg[key] = int(raw) if raw else None
-                    # Level rewards are editable per server; blank means no reward at that level.
-                    level_roles = {}
-                    for level in range(1, 51):
-                        raw = request.form.get(f"level_role_{level}", "").strip()
-                        if raw:
-                            if raw not in role_ids:
-                                abort(400, f"Ungültige Level-Rolle für Level {level}.")
-                            level_roles[str(level)] = int(raw)
-                    cfg["level_roles"] = level_roles
                 _save_json(data_path("config.json"), _config)
                 changed_keys = sorted(key for key in set(original_cfg) | set(cfg) if original_cfg.get(key) != cfg.get(key))
                 _audit_dashboard_change(guild.id, "Einstellungen: " + settings_section, session.get("user_id"), "Geänderte Felder: " + ", ".join(changed_keys))
@@ -4169,8 +4157,8 @@ def guild_page(guild_id):
                 label = {"welcome_embed": "Send welcome message as an embed", "leave_enabled": "Enable goodbye messages", "leave_embed": "Send goodbye message as an embed"}.get(key, BOOL_SETTINGS.get(key, key))
                 checked = " checked" if cfg.get(key, False) else ""
                 settings_html += f'<div class="check"><input type="checkbox" id="{key}" name="{key}"{checked}><label for="{key}">{html.escape(label)}</label></div>'
-            settings_html += "<h3>Configure AutoMod & XP</h3>"
-            for key, label, minimum, maximum, default in [("automod_threshold", "Messages before spam detection", 3, 20, 6), ("automod_window_seconds", "Spam detection window (seconds)", 3, 30, 8), ("automod_timeout_minutes", "Timeout duration (minutes)", 1, 60, 2), ("xp_cooldown_seconds", "XP-Cooldown in Sekunden", 10, 600, 60), ("xp_min", "Minimum XP per message (0 = XP aus)", 0, 100, 5), ("xp_max", "Maximum XP per message (0 = XP aus)", 0, 100, 15)]:
+            settings_html += "<h3>Configure AutoMod</h3>"
+            for key, label, minimum, maximum, default in [("automod_threshold", "Messages before spam detection", 3, 20, 6), ("automod_window_seconds", "Spam detection window (seconds)", 3, 30, 8), ("automod_timeout_minutes", "Timeout duration (minutes)", 1, 60, 2)]:
                 value = max(minimum, min(maximum, int(cfg.get(key, default) or default)))
                 settings_html += f'<label for="{key}">{label}</label><input id="{key}" name="{key}" type="number" min="{minimum}" max="{maximum}" value="{value}" required>'
             if guild_has_feature(cfg, "invite_tracker"):
@@ -4187,11 +4175,6 @@ def guild_page(guild_id):
         if section == "roles":
             for key, label in ROLE_SETTINGS.items():
                 settings_html += f'<label for="{key}">{html.escape(label)}</label><select id="{key}" name="{key}">{options(roles, cfg.get(key))}</select>'
-            settings_html += '<h3>🏆 Level-Rollen</h3><p class="muted">Wähle optional eine Rolle für Level 1 bis 50. Beim Erreichen des Levels versucht IronWolf, die passende Rolle zu vergeben. Die Bot-Rolle muss darüber liegen.</p>'
-            configured_level_roles = cfg.get("level_roles", {}) if isinstance(cfg.get("level_roles", {}), dict) else {}
-            for level in range(1, 51):
-                current_role = configured_level_roles.get(str(level))
-                settings_html += f'<label for="level_role_{level}">Belohnungsrolle für Level {level}</label><select id="level_role_{level}" name="level_role_{level}">{options(roles, current_role)}</select>'
             if request.args.get("role_created") == "1":
                 settings_html += '<div class="notice">✅ Discord-Rolle erstellt. Du kannst sie jetzt im Nachrichten-Editor für einen Rollen-Button auswählen.</div>'
         if section == "voice":
@@ -4243,9 +4226,9 @@ def guild_page(guild_id):
     modules_html += '<button type="submit">Save modules</button></form></section>'
     module_form = '<section class="card" id="module-template"><h2>🛠️ Create module template</h2><p class="muted">Creates a downloadable, safe discord.py cog template. The file is not loaded automatically.</p><form method="post" action="/create-module">' + _csrf_field() + f'<input type="hidden" name="guild_id" value="{gid}"><label for="module_name">Module name</label><input id="module_name" name="module_name" type="text" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_]*" placeholder="mein_modul"><label for="description">Description</label><input id="description" name="description" type="text" maxlength="120" placeholder="What does this module do?"><label for="command_name">Example command</label><input id="command_name" name="command_name" type="text" maxlength="32" pattern="[a-z][a-z0-9-]*" value="mein-modul" required><button type="submit">Create template</button></form></section>'
     section_links = [
-        ("general", "⚙️ Welcome, XP & General", "XP aktivieren, Cooldown und XP-Belohnung einstellen"),
-        ("channels", "📡 Channels & Logs", "Log-, Level-Up-, Ticket-, Vorschlags- und Verifizierungskanäle"),
-        ("roles", "🎭 Roles & Level Rewards", "Support-, Sicherheits- und Level-Rollen konfigurieren"),
+        ("general", "⚙️ Welcome & General", "General server settings"),
+        ("channels", "📡 Channels & Logs", "Log-, Ticket-, Vorschlags- und Verifizierungskanäle"),
+        ("roles", "🎭 Roles", "Support- und Sicherheitsrollen konfigurieren"),
         ("voice", "🔊 Temporary Voice Channels", "Trigger und Zielkategorie für temporäre Räume"),
     ]
     settings_cards = ''.join('<a class="card dashboard-card" href="/guild/' + gid + '?section=' + key + '"><h2>' + title + '</h2><p>' + desc + '</p><span class="card-link">Open settings →</span></a>' for key, title, desc in section_links)
@@ -4261,12 +4244,12 @@ def guild_page(guild_id):
         ("🧪", "Security Lab", "Safely simulate raid, nuke and malicious-link attacks with no real server changes", "/security-lab"),
     ]
     categories = [
-        ("👥 Community & Engagement", [("👋", "Welcome & Goodbye", "Public welcomes, goodbye messages and DMs", "/welcome"), ("🎭", "Reaction Roles", "Self-service roles through reactions", "/reaction-roles"), ("💬", "Anonymous Feedback", "Collect suggestions and feedback", "/feedback"), ("🎂", "Birthdays", "Birthday announcements and saved dates", "/birthdays"), ("📈", "Leveling & XP", "XP, cooldowns and level rewards", "?section=general#settings-panel"), ("👥", "Team List", "Publish your server team", "/teamlist")]),
+        ("👥 Community & Engagement", [("👋", "Welcome & Goodbye", "Public welcomes, goodbye messages and DMs", "/welcome"), ("🎭", "Reaction Roles", "Self-service roles through reactions", "/reaction-roles"), ("💬", "Anonymous Feedback", "Collect suggestions and feedback", "/feedback"), ("🎂", "Birthdays", "Birthday announcements and saved dates", "/birthdays"), ("👥", "Team List", "Publish your server team", "/teamlist")]),
         ("🛡️ Security & Moderation", [("🧪", "Security Lab", "Run /security-test to simulate attacks safely without changing server content", "/security-lab"), ("🔐", "Verification", "Verification panels, channels and roles", "/verification"), ("🎮", "Gaming Verification", "Connect supported gaming accounts", "/verified-accounts"), ("🍯", "Honeypot", "Hidden trap channel and moderation response", "/honeypot"), ("🛡️", "Ping Protection", "Protect selected members from unwanted mentions", "/ping-protection"), ("⚙️", "Protection Settings", "Anti-raid and anti-nuke controls", "?section=security#settings-panel"), ("🎮", "Action Center", "Moderation and server actions", "/actions")]),
         ("🎟️ Ticket System", [("🎟️", "Ticket Panels", "Create and manage ticket panels", "/tickets"), ("🤖", "AI Ticket Support", "AI replies, knowledge and learning", "/ai")]),
         ("🧩 Modules", [("🆘", "Quick Support", "Automatic support-team pings in tickets", "/quick-support")]),
         ("📨 Support & Communication", [("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages"), ("📣", "Automation", "Recurring announcements and templates", "/automation"), ("📝", "Applications", "Manage application forms and submissions", "/applications")]),
-        ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("🎭", "Roles & Rewards", "Bot roles and level rewards", "?section=roles#settings-panel"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
+        ("⚙️ Server Tools & Customization", [("🎨", "Server Branding", "Customize server presentation", "/branding"), ("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("✨", "Premium", "Premium status and unlocked features", "/premium"), ("🚀", "Server Boosts", "Boost announcements and rewards", "/server-boost"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
         ("📊 Insights & Administration", [("📊", "WolfAnalytics", "Server joins, leaves and message activity", "/wolfanalytics"), ("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "System-Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
     ]
     def module_cards(items, popular_style=False):
