@@ -7409,6 +7409,97 @@ async def apply_auto_roles_to_existing_members():
 
 
 _auto_nickname_startup_task = None
+_auto_role_nickname_monitor_task = None
+
+
+@bot.listen("on_ready")
+async def start_auto_role_nickname_monitor():
+    """Reconcile configured AutoRoles and AutoNicknames every 10 seconds."""
+    global _auto_role_nickname_monitor_task
+    if _auto_role_nickname_monitor_task is not None and not _auto_role_nickname_monitor_task.done():
+        return
+
+    async def monitor():
+        await bot.wait_until_ready()
+        while not bot.is_closed():
+            for guild in list(bot.guilds):
+                cfg = config.get(str(guild.id), {})
+                me = guild.me
+                if me is None:
+                    continue
+
+                for member in list(guild.members):
+                    if bot.user is not None and member.id == bot.user.id:
+                        continue
+
+                    # Keep the configured AutoRole assignments present for existing members.
+                    if me.guild_permissions.manage_roles:
+                        role_key = "auto_role_bot_ids" if member.bot else "auto_role_member_ids"
+                        configured = cfg.get(role_key, [])
+                        if not isinstance(configured, list):
+                            configured = [configured] if configured else []
+                        missing_roles = []
+                        for role_id in configured:
+                            if not str(role_id).isdigit():
+                                continue
+                            role = guild.get_role(int(role_id))
+                            if (role is not None and not role.is_default() and not role.managed
+                                    and role < me.top_role and role not in member.roles):
+                                missing_roles.append(role)
+                        if missing_roles:
+                            try:
+                                await member.add_roles(
+                                    *missing_roles,
+                                    reason="IronWolf AutoRole: 10-second role sync",
+                                )
+                                print(
+                                    f"[AUTOROLE] Re-applied {len(missing_roles)} configured role(s) "
+                                    f"to {member.id} in guild {guild.id}.", flush=True,
+                                )
+                            except (discord.Forbidden, discord.HTTPException) as exc:
+                                print(
+                                    f"[AUTOROLE] 10-second sync failed for {member.id} in guild "
+                                    f"{guild.id}: {type(exc).__name__}: {exc}", flush=True,
+                                )
+
+                    # Ensure the nickname matches the selected nickname for any trigger role.
+                    if me.guild_permissions.manage_nicknames and member.top_role < me.top_role:
+                        matching_prefix = _auto_nickname_rule_for_member(member)
+                        if matching_prefix:
+                            await apply_auto_nickname(
+                                member,
+                                "AutoNickname: 10-second role and nickname sync",
+                            )
+                        else:
+                            # Only clear a nickname that this feature previously generated;
+                            # never overwrite an unrelated/custom nickname.
+                            nickname_rules = cfg.get("auto_nickname_rules")
+                            if not isinstance(nickname_rules, list):
+                                legacy_role = cfg.get("auto_nickname_role_id")
+                                legacy_prefix = str(cfg.get("auto_nickname_value") or "").strip()
+                                nickname_rules = ([{"role_id": legacy_role, "nickname": legacy_prefix}]
+                                                  if legacy_role and legacy_prefix else [])
+                            generated_nicks = {
+                                f"{str(rule.get('nickname') or '').strip()} {member.name}"[:32]
+                                for rule in nickname_rules
+                                if isinstance(rule, dict) and str(rule.get("nickname") or "").strip()
+                            }
+                            if member.nick and member.nick in generated_nicks:
+                                try:
+                                    await member.edit(
+                                        nick=None,
+                                        reason="AutoNickname: 10-second sync found no configured trigger role",
+                                    )
+                                except (discord.Forbidden, discord.HTTPException) as exc:
+                                    print(
+                                        f"[AutoNickname] 10-second sync could not reset nickname for "
+                                        f"{member.id} in guild {guild.id}: {type(exc).__name__}: {exc}",
+                                        flush=True,
+                                    )
+                    await asyncio.sleep(0.05)
+            await asyncio.sleep(10)
+
+    _auto_role_nickname_monitor_task = asyncio.create_task(monitor())
 
 
 @bot.listen("on_ready")
