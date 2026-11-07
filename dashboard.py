@@ -6259,7 +6259,7 @@ def guild_games(guild_id):
             '<button type="submit"' + ('' if cfg.get("ironwolf_games_enabled") and enabled and cfg.get("game_channel_id") else ' disabled') + '>▶ Post a round</button></form>'
         )
         return (
-            '<article class="card"><div class="pill">' + ('ENABLED' if enabled else 'DISABLED') + '</div>'
+            '<article class="card"><div class="pill">' + ('ENABLED' if enabled else 'DISABLED') + '</div>' +
             '<h2>' + emoji + ' ' + title + '</h2><p>' + description + '</p>' + button + '</article>'
         )
     body = (
