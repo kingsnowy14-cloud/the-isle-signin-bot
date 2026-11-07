@@ -2181,7 +2181,9 @@ def website_verify_callback():
             raise RuntimeError("The Discord server is unavailable")
         member = guild.get_member(int(discord_user_id))
         if member is None:
-            raise RuntimeError("The Discord member is no longer in this server")
+            member = await_member = asyncio.run_coroutine_threadsafe(
+                guild.fetch_member(int(discord_user_id)), _bot.loop
+            ).result(timeout=15)
         cfg = _guild_config(int(pending["guild_id"]))
         role_id = cfg.get("verified_role")
         role = guild.get_role(int(role_id)) if role_id else None
@@ -2196,7 +2198,7 @@ def website_verify_callback():
                 await member.add_roles(role, reason="Website Verify completed")
             try:
                 await member.send("✅ You have been successfully verified on **" + guild.name + "** using IronWolf Website Verify.")
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.HTTPException):
                 print(f"[WEBSITE VERIFY] Could not DM user {discord_user_id}; role was assigned.", flush=True)
         future = asyncio.run_coroutine_threadsafe(grant_role_and_dm(), _bot.loop)
         future.result(timeout=25)
