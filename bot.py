@@ -29,6 +29,7 @@ from wolfchronicle import create_incident, list_incidents
 from wolfanalytics import record as wolfanalytics_record, get_stats as wolfanalytics_get_stats, build_report as wolfanalytics_build_report, build_chart as wolfanalytics_build_chart, get_timeline as wolfanalytics_get_timeline
 from isle_registration import get_registration as _get_isle_registration, set_registration as _set_isle_registration, remove_registration as _remove_isle_registration
 from github_backup import github_backup_worker
+from wolfguard import setup_wolfguard
 
 
 # Install:
@@ -10222,6 +10223,9 @@ async def ironwolf_guild_directory_on_join(guild):
 @bot.listen("on_guild_remove")
 async def ironwolf_guild_directory_on_remove(guild):
     await refresh_ironwolf_guild_directory()
+
+
+setup_wolfguard(bot, guild_config, config, data, save_json, CONFIG_FILE, DATA_FILE)
 
 
 if __name__ == "__main__":
