@@ -2082,8 +2082,18 @@ _WEBSITE_VERIFY_LOCK = threading.Lock()
 _WEBSITE_VERIFY_TTL_SECONDS = 600
 
 
+def _website_verify_redirect_uri():
+    configured = _env("WEBSITE_VERIFY_REDIRECT_URI").strip()
+    if configured:
+        return configured
+    public_url = _env("DASHBOARD_PUBLIC_URL").strip().rstrip("/")
+    if public_url.startswith("https://"):
+        return public_url + "/verify/website/callback"
+    return ""
+
+
 def _website_verify_oauth_ready():
-    callback_uri = _env("WEBSITE_VERIFY_REDIRECT_URI")
+    callback_uri = _website_verify_redirect_uri()
     parsed = urlparse(callback_uri)
     return bool(
         _env("DISCORD_CLIENT_ID") and _env("DISCORD_CLIENT_SECRET")
@@ -2126,7 +2136,7 @@ def request_host_origin():
     configured = _env("DASHBOARD_PUBLIC_URL").rstrip("/")
     if configured.startswith("https://"):
         return configured
-    parsed = urlparse(_env("WEBSITE_VERIFY_REDIRECT_URI"))
+    parsed = urlparse(_website_verify_redirect_uri())
     return "https://" + parsed.netloc
 
 
@@ -2183,7 +2193,7 @@ def website_verify_start():
     session["website_verify_token"] = token
     query = urlencode({
         "client_id": _env("DISCORD_CLIENT_ID"),
-        "redirect_uri": _env("WEBSITE_VERIFY_REDIRECT_URI"),
+        "redirect_uri": _website_verify_redirect_uri(),
         "response_type": "code", "scope": "identify", "state": state,
     })
     return redirect("https://discord.com/oauth2/authorize?" + query)
@@ -2207,7 +2217,7 @@ def website_verify_callback():
                 "client_id": _env("DISCORD_CLIENT_ID"),
                 "client_secret": _env("DISCORD_CLIENT_SECRET"),
                 "grant_type": "authorization_code", "code": code,
-                "redirect_uri": _env("WEBSITE_VERIFY_REDIRECT_URI"),
+                "redirect_uri": _website_verify_redirect_uri(),
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=10,
         )
@@ -2242,6 +2252,7 @@ def website_verify_callback():
                 await member.remove_roles(unverified, reason="Website Verify completed")
             if role not in member.roles:
                 await member.add_roles(role, reason="Website Verify completed")
+            await _bot.refresh_verification_panel(guild, cfg)
             try:
                 await member.send("✅ You have been successfully verified on **" + guild.name + "** using IronWolf Website Verify.")
             except (discord.Forbidden, discord.HTTPException):
@@ -6502,7 +6513,7 @@ def guild_verification(guild_id):
             if not re.fullmatch(r"[0-9a-fA-F]{6}", raw_embed_color):
                 raw_embed_color = "5865F2"
             embed = discord.Embed(title=title, description=description, color=discord.Color(int(raw_embed_color, 16)))
-            embed.set_footer(text="IronWolf · Created by KingSnowy")
+            embed.set_footer(text=f"IronWolf · Verifiziert: {len(verified_role.members)}")
             if old_verify_message_id and str(old_verify_channel_id) == str(channel.id):
                 try:
                     old_message = await channel.fetch_message(int(old_verify_message_id))
@@ -6510,7 +6521,7 @@ def guild_verification(guild_id):
                     return old_message.id, "Verifizierungs-Panel wurde aktualisiert."
                 except discord.NotFound:
                     pass
-            message = await channel.send(embed=embed, view=view_cls(button_label, emoji), allowed_mentions=discord.AllowedMentions.none())
+            message = await channel.send(embed=embed, view=view_cls(button_label, emoji, mode), allowed_mentions=discord.AllowedMentions.none())
             return message.id, "Verifizierungs-Panel wurde erstellt."
         try:
             message_id, message = asyncio.run_coroutine_threadsafe(publish_verification(), _bot.loop).result(timeout=25)
@@ -6778,6 +6789,22 @@ def guild_ai_knowledge(guild_id):
     return _render(guild.name + " · KI-Wissen", body)
 
 
+def _ticket_emoji_select(name, current=""):
+    choices = [
+        ("", "Automatisch passend"), ("🎫", "🎫 Ticket"), ("💬", "💬 Chat / Support"),
+        ("❓", "❓ Frage / Hilfe"), ("🛠️", "🛠️ Technik / Bug"), ("🚨", "🚨 Meldung / Report"),
+        ("⚖️", "⚖️ Einspruch / Ban"), ("💳", "💳 Zahlung / Shop"), ("📝", "📝 Bewerbung / Antrag"),
+        ("🤝", "🤝 Partnerschaft"), ("👤", "👤 Account"), ("🛡️", "🛡️ Team / Moderation"),
+        ("⭐", "⭐ Sonstiges / Priorität"),
+    ]
+    selected = str(current or "")
+    return '<select name="' + html.escape(name, quote=True) + '">' + "".join(
+        '<option value="' + html.escape(value, quote=True) + '"' +
+        (' selected' if value == selected else '') + '>' + html.escape(label) + '</option>'
+        for value, label in choices
+    ) + '</select>'
+
+
 @app.route("/guild/<guild_id>/tickets", methods=["GET", "POST"])
 def guild_tickets(guild_id):
     guild, response = _authorized_guild(guild_id)
@@ -7042,8 +7069,8 @@ def guild_tickets(guild_id):
         + '<label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket">'
         + '<label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea>'
         + '<label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">'
-        + '<label>Emoji für Anfrage 1 (optional · leer = automatisch)</label><input name="button_emoji1" maxlength="100" placeholder="z. B. 🎫, 💬 oder Discord-Custom-Emoji">'
-        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + ' (optional · leer = automatisch)</label><input name="button_emoji' + str(i) + '" maxlength="100" placeholder="z. B. 🛠️ oder ❓">' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + ' (optional · leer = automatisch)</label><input name="button_emoji' + str(i) + '" maxlength="100" placeholder="z. B. 🛠️ oder ❓">' for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>'))
+        + '<label>Emoji für Anfrage 1</label>' + _ticket_emoji_select("button_emoji1") + ''
+        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + '</label>' + _ticket_emoji_select("button_emoji" + str(i)) + '' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + ' (optional · leer = automatisch)</label><input name="button_emoji' + str(i) + '" maxlength="100" placeholder="z. B. 🛠️ oder ❓">' for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>'))
         + (('<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Dropdown / mehrere Buttons</option></select></div>')
         + '<p class="muted">Im Free-Plan sind bis zu zwei Anfrage-Buttons pro Panel verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p>'
         + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
@@ -7075,7 +7102,7 @@ def guild_tickets(guild_id):
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description (Premium)</label><input disabled type="text" value="{html.escape(str(option_description), quote=True)}"></div></div>'
             else:
                 button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
-                button_fields += f'<label>Emoji für Anfrage {i} (optional · leer = automatisch)</label><input type="text" name="button_emoji{i}" maxlength="100" value="{html.escape(str(option_emoji), quote=True)}" placeholder="z. B. 🎫, 💬 oder Discord-Custom-Emoji">'
+                button_fields += f'<label>Emoji für Anfrage {i}</label>' + _ticket_emoji_select(f"button_emoji{i}", option_emoji)
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input type="text" name="button_description{i}" maxlength="100" value="{html.escape(str(option_description), quote=True)}" placeholder="Kurze Erklärung für diese Anfrageart"></div>'
         body += (
             '<section class="card"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
