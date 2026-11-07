@@ -1862,7 +1862,7 @@ async def _refresh_verification_panel(guild, cfg):
             title=str(cfg.get("verify_embed_title", "🔐 Server-Verifizierung")),
             description=str(cfg.get("verify_embed_description", "")),
         )
-        embed.set_footer(text=f"IronWolf · Verifiziert: {len(role.members)}")
+        embed.set_footer(text=f"IronWolf · Verify User: {len(role.members)}")
         await message.edit(embed=embed)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException, ValueError, TypeError) as exc:
         print(f"[VERIFY] Could not refresh verified count: {type(exc).__name__}: {exc}", flush=True)
@@ -4337,7 +4337,7 @@ async def verify_setup(
         color=discord.Color.green(),
     )
     verified_count = len(verifiziert.members)
-    embed.set_footer(text=f"IronWolf · Verifiziert: {verified_count}")
+    embed.set_footer(text=f"IronWolf · Verify User: {verified_count}")
     verification_message = await kanal.send(embed=embed, view=VerifyView(button_text, emoji, mode_value))
     cfg["verify_message_id"] = verification_message.id
     save_json(CONFIG_FILE, config)
