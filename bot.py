@@ -7232,7 +7232,7 @@ async def ironwolf_profile(
     except (ValueError, requests.RequestException) as exc:
         await interaction.followup.send("❌ Profile update failed: {}".format(str(exc)[:700]), ephemeral=True)
 
-def _auto_nickname_rule_for_member(member):
+def _auto_nickname_rule_for_member(member, preferred_role_ids=None):
     """Return the first configured AutoNickname rule matching a member's current roles."""
     cfg = config.get(str(member.guild.id), {})
     rules = cfg.get("auto_nickname_rules")
@@ -7243,7 +7243,16 @@ def _auto_nickname_rule_for_member(member):
                  if legacy_role and legacy_prefix else [])
 
     active_role_ids = {role.id for role in member.roles}
-    for rule in rules:
+    preferred_role_ids = set(preferred_role_ids or ())
+    ordered_rules = sorted(
+        enumerate(rules),
+        key=lambda pair: (
+            0 if isinstance(pair[1], dict) and str(pair[1].get("role_id") or "").isdigit()
+            and int(pair[1].get("role_id")) in preferred_role_ids else 1,
+            pair[0],
+        ),
+    )
+    for _, rule in ordered_rules:
         if not isinstance(rule, dict):
             continue
         try:
@@ -7256,14 +7265,14 @@ def _auto_nickname_rule_for_member(member):
     return None
 
 
-async def apply_auto_nickname(member, reason="AutoNickname: matching role is present"):
+async def apply_auto_nickname(member, reason="AutoNickname: matching role is present", preferred_role_ids=None):
     """Apply the configured nickname whenever a member currently has any configured trigger role."""
     if member.bot:
         return False
     me = member.guild.me
     if me is None or not me.guild_permissions.manage_nicknames or member.top_role >= me.top_role:
         return False
-    prefix = _auto_nickname_rule_for_member(member)
+    prefix = _auto_nickname_rule_for_member(member, preferred_role_ids=preferred_role_ids)
     if not prefix:
         return False
     desired = f"{prefix} {member.name}"[:32]
@@ -7368,7 +7377,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 except (discord.Forbidden, discord.HTTPException) as exc:
                     print(f"[SERVER BOOST] Could not remove booster role in guild {after.guild.id}: {type(exc).__name__}")
 
-    # AutoNickname: apply the configured nickname when the trigger role is newly added.
+    # AutoNickname: a newly assigned trigger role takes priority over older matching roles.
     try:
         auto_cfg = config.get(str(after.guild.id), {})
         rules = auto_cfg.get("auto_nickname_rules")
@@ -7377,25 +7386,43 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             legacy_prefix = str(auto_cfg.get("auto_nickname_value") or "").strip()
             rules = ([{"role_id": legacy_role, "nickname": legacy_prefix}]
                      if legacy_role and legacy_prefix else [])
-        active_role_ids = {role.id for role in after.roles}
-        lost_role_ids = {role.id for role in before.roles} - active_role_ids
-        bot_member = after.guild.me
-        if bot_member is not None and bot_member.guild_permissions.manage_nicknames and after.top_role < bot_member.top_role:
-            normalized_rules = []
-            for rule in rules:
-                if not isinstance(rule, dict):
-                    continue
-                try:
-                    role_id = int(rule.get("role_id") or 0)
-                except (TypeError, ValueError):
-                    continue
-                prefix = str(rule.get("nickname") or "").strip()
-                trigger_role = after.guild.get_role(role_id)
-                if trigger_role is not None and prefix:
-                    normalized_rules.append((trigger_role, prefix))
 
-            # If a trigger role is removed, remove its prefix and restore the
-            # member's original Discord username (unless another rule still applies).
+        before_role_ids = {role.id for role in before.roles}
+        after_role_ids = {role.id for role in after.roles}
+        gained_role_ids = after_role_ids - before_role_ids
+        lost_role_ids = before_role_ids - after_role_ids
+        normalized_rules = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            try:
+                role_id = int(rule.get("role_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            prefix = str(rule.get("nickname") or "").strip()
+            trigger_role = after.guild.get_role(role_id)
+            if trigger_role is not None and prefix:
+                normalized_rules.append((trigger_role, prefix))
+
+        bot_member = after.guild.me
+        can_edit = (
+            bot_member is not None
+            and bot_member.guild_permissions.manage_nicknames
+            and after.top_role < bot_member.top_role
+            and not after.bot
+        )
+        if can_edit and gained_role_ids:
+            gained_matches = [
+                (role, prefix) for role, prefix in normalized_rules
+                if role.id in gained_role_ids
+            ]
+            if gained_matches:
+                await apply_auto_nickname(
+                    after,
+                    "AutoNickname: newly assigned configured role",
+                    preferred_role_ids=gained_role_ids,
+                )
+        elif can_edit and lost_role_ids:
             removed_rule = next(
                 ((role, prefix) for role, prefix in normalized_rules
                  if role.id in lost_role_ids
@@ -7403,20 +7430,17 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 None,
             )
             if removed_rule is not None:
-                remaining_rule = next(
-                    ((role, prefix) for role, prefix in normalized_rules
-                     if role.id in {item.id for item in after.roles}),
-                    None,
-                )
-                if remaining_rule is not None:
-                    target_nickname = f"{remaining_rule[1]} {after.name}"[:32]
-                    await after.edit(nick=target_nickname, reason="AutoNickname: another configured role remains")
+                remaining_rule = _auto_nickname_rule_for_member(after)
+                if remaining_rule:
+                    await apply_auto_nickname(
+                        after,
+                        "AutoNickname: another configured role remains",
+                    )
                 else:
-                    await after.edit(nick=None, reason="AutoNickname: configured role was removed; restore original username")
-            else:
-                # Re-check all configured role mappings on every member update.
-                # This also repairs nicknames if another moderator or integration changed them.
-                await apply_auto_nickname(after, "AutoNickname: configured role is present")
+                    await after.edit(
+                        nick=None,
+                        reason="AutoNickname: configured role was removed; restore original username",
+                    )
     except (ValueError, discord.Forbidden, discord.HTTPException) as exc:
         print(f"[AutoNickname] Could not set nickname for member {after.id} in guild {after.guild.id}: {type(exc).__name__}: {exc}", flush=True)
 
