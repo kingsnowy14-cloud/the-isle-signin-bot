@@ -7291,6 +7291,63 @@ async def apply_auto_nickname_to_new_member(member):
     await apply_auto_nickname(member, "AutoNickname: member joined with configured role")
 
 
+_auto_role_existing_members_task = None
+
+
+@bot.listen("on_ready")
+async def apply_auto_roles_to_existing_members():
+    """Backfill configured AutoRoles for members and bots already in the guild."""
+    global _auto_role_existing_members_task
+    if _auto_role_existing_members_task is not None and not _auto_role_existing_members_task.done():
+        return
+
+    async def sweep():
+        await asyncio.sleep(20)
+        for guild in list(bot.guilds):
+            me = guild.me
+            if me is None or not me.guild_permissions.manage_roles:
+                continue
+            for member in list(guild.members):
+                if member.id == bot.user.id:
+                    continue
+                cfg = config.get(str(guild.id), {})
+                key = "auto_role_bot_ids" if member.bot else "auto_role_member_ids"
+                configured = cfg.get(key, [])
+                if not isinstance(configured, list):
+                    configured = [configured] if configured else []
+                roles = []
+                for role_id in configured:
+                    if not str(role_id).isdigit():
+                        continue
+                    role = guild.get_role(int(role_id))
+                    if (
+                        role is not None
+                        and not role.is_default()
+                        and not role.managed
+                        and role < me.top_role
+                        and role not in member.roles
+                    ):
+                        roles.append(role)
+                if not roles:
+                    continue
+                try:
+                    await member.add_roles(*roles, reason="IronWolf AutoRole: sync existing member")
+                    print(
+                        f"[AUTOROLE] Backfilled {len(roles)} role(s) to {member} "
+                        f"({member.id}) in guild {guild.id}.",
+                        flush=True,
+                    )
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    print(
+                        f"[AUTOROLE] Could not backfill roles in guild {guild.id} "
+                        f"for {member.id}: {type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+                await asyncio.sleep(0.5)
+
+    _auto_role_existing_members_task = asyncio.create_task(sweep())
+
+
 _auto_nickname_startup_task = None
 
 
