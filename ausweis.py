@@ -195,7 +195,7 @@ class Ausweis(commands.Cog):
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
-    @app_commands.describe(kanal="Channel where completed ID cards will be published")
+    @app_commands.describe(channel="Channel where completed ID cards will be published")
     async def id_card(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if interaction.guild is None:
             await interaction.response.send_message(
