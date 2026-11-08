@@ -6959,16 +6959,16 @@ def guild_ai_knowledge(guild_id):
 def _ticket_emoji_select(name, current="", guild=None):
     """Render 100 built-in emoji choices plus all custom emojis from this server."""
     unicode_emojis = """
-    🎫 💬 ❓ 🛠️ 🚨 ⚖️ 💳 📝 🤝 👤 🛡️ ⭐
-    😀 😂 😊 😍 😎 🤔 😢 😭 😡 🥳 🤖 👻
-    ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 💢 💥
-    👋 👍 👎 👏 🙌 🙏 💪 🤝 👀 👤 🧑‍💻 👮
-    🐶 🐱 🦊 🐻 🐼 🦁 🐸 🐵 🐧 🦄 🐺 🐉
-    🌲 🌳 🌴 🌵 🌹 🌻 🌈 ☀️ 🌙 ⭐ 🔥 ❄️
-    🎉 🎊 🎁 🏆 🥇 🎯 🎮 🎲 🎨 🎭 🎵 🎤
-    💻 📱 🖥️ ⚙️ 🔧 🔨 🧰 🔒 🔓 🔑 🛡️ 🔔
-    📁 📂 📝 📋 📌 📎 📅 📊 📈 📉 📄 📚
-    🚀 🚗 ✈️ 🚁 🚢 🚲 🏠 🏢 🏥 🏫 🏰 🌍
+    🎫 💬 ❓ 🛠️ 🚨 ⚖️ 💳 📝 🤝 🛡️
+    😀 😂 😊 😍 😎 🤔 😢 😭 😡 🥳
+    ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯
+    👋 👍 👎 👏 🙌 🙏 💪 👀 👤 🧑‍💻
+    🐶 🐱 🦊 🐻 🐼 🦁 🐸 🐵 🐧 🦄
+    🌲 🌳 🌴 🌵 🌹 🌻 🌈 ☀️ 🌙 🔥
+    🎉 🎊 🎁 🏆 🥇 🎯 🎮 🎲 🎨 🎭
+    💻 📱 🖥️ ⚙️ 🔧 🔨 🧰 🔒 🔑 🔔
+    📁 📂 📋 📌 📎 📅 📊 📈 📉 📄
+    🚀 🚗 ✈️ 🚁 🚢 🚲 🏠 🏢 🏥 🏰
     """
     choices = [("", "Automatisch passend")]
     seen = {""}
