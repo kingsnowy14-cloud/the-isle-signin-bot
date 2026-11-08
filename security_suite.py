@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 from storage import data_path
 
@@ -141,7 +140,6 @@ class SecuritySuite(commands.Cog):
             return False, "Dem Bot fehlt **Nachrichten verwalten**."
         return True, ""
 
-    @app_commands.command(name="secure-log-setup", description="Sets the central security log channel")
     @app_commands.guild_only()
     @is_admin()
     async def log_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel):
@@ -270,7 +268,6 @@ class SecuritySuite(commands.Cog):
         embed.set_footer(text="Read-only-Prüfung · Es wurden keine Rechte geändert")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="secure-verify-setup", description="Konfiguriert Verifizierung und veröffentlicht einen Button")
     @app_commands.guild_only()
     @is_admin()
     async def verify_setup(self, interaction: discord.Interaction, kanal: discord.TextChannel, verified_rolle: discord.Role, unverified_rolle: discord.Role = None):
@@ -302,7 +299,6 @@ class SecuritySuite(commands.Cog):
             return
         await interaction.response.send_message(f"Verification configured in {kanal.mention}.", ephemeral=True)
 
-    @app_commands.command(name="secure-scam-setup", description="Enabled Link filter und verwaltet gesperrte Domains")
     @app_commands.guild_only()
     @is_admin()
     async def scam_setup(self, interaction: discord.Interaction, aktiv: bool, domains: str = ""):
@@ -324,7 +320,6 @@ class SecuritySuite(commands.Cog):
             ephemeral=True
         )
 
-    @app_commands.command(name="secure-alt-setup", description="Konfiguriert Warnungen für sehr neue Accounts")
     @app_commands.guild_only()
     @is_admin()
     async def alt_setup(self, interaction: discord.Interaction, mindestalter_tage: app_commands.Range[int, 1, 365] = 7, aktiv: bool = True):
