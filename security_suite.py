@@ -449,5 +449,11 @@ class SecuritySuite(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(SecuritySuite(bot))
+    cog = SecuritySuite(bot)
+    # These commands are server-only; register them per guild so they do not
+    # consume Discord's shared 100-command global application-command limit.
+    guild_ids = [guild.id for guild in bot.guilds]
+    for command in cog.get_app_commands():
+        command.guild_ids = guild_ids
+    await bot.add_cog(cog)
     bot.add_view(VerifyButton())
