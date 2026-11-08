@@ -1366,6 +1366,17 @@ async def _open_ticket_flow(interaction: discord.Interaction, panel_key: str, bu
 
 
 
+def _ticket_parse_emoji(value, fallback):
+    """Parse saved Unicode or server-custom emoji markup for Discord components."""
+    raw = str(value or "").strip()
+    if raw.startswith("<") and raw.endswith(">"):
+        try:
+            return discord.PartialEmoji.from_str(raw)
+        except (TypeError, ValueError):
+            return fallback
+    return raw or fallback
+
+
 def _ticket_auto_emoji(label: str) -> str:
     """Choose a useful Unicode emoji when a ticket option has no custom choice."""
     text = str(label or "").casefold()
@@ -1397,7 +1408,7 @@ class TicketPanelSelect(discord.ui.Select):
                 description=(str(descriptions[index]).strip()[:100] or None)
                 if index < len(descriptions)
                 else None,
-                emoji=(str(emojis[index]).strip()[:100] if index < len(emojis) and str(emojis[index]).strip() else _ticket_auto_emoji(label)),
+                emoji=_ticket_parse_emoji(emojis[index] if index < len(emojis) else "", _ticket_auto_emoji(label)),
             )
             for index, label in enumerate(labels[:10])
         ]
