@@ -1,11 +1,9 @@
 """Persistent shift tracking panels for IronWolf."""
 import asyncio
 import json
-import secrets
 from datetime import datetime, timedelta, timezone
 
 import discord
-from discord import app_commands
 from discord.ext import commands, tasks
 from storage import data_path
 from premium import guild_has_feature
@@ -387,7 +385,6 @@ class ShiftTracker(commands.Cog):
         await self.bot.wait_until_ready()
 
     @app_commands.guild_only()
-    @app_commands.command(name="schichtpanel_erstellen", description="Create a shift panel with check-in, break and check-out.")
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(name="Name des Panels, z. B. Polizei oder EMS", logkanal="Kanal für alle Schicht-Protokolle",
                            pausenminuten="Vorgeschlagene Pausenlänge", warnungen="Warnung vergeben, wenn jemand Nein auswählt")
@@ -438,7 +435,6 @@ class ShiftTracker(commands.Cog):
         await self.log(guild, panel, f"⚙️ Shift panel **{name}** wurde von {interaction.user.mention} erstellt.")
 
     @app_commands.guild_only()
-    @app_commands.command(name="schichtpanel_liste", description="List shift panels on this server.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def list_panels(self, interaction: discord.Interaction):
         panels = _guild_data(interaction.guild_id)["panels"]
@@ -449,7 +445,6 @@ class ShiftTracker(commands.Cog):
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     @app_commands.guild_only()
-    @app_commands.command(name="schichtpanel_loeschen", description="Delete a shift panel.")
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.describe(panel_id="ID aus /schichtpanel_liste")
     async def delete_panel(self, interaction: discord.Interaction, panel_id: str):
@@ -476,9 +471,4 @@ class ShiftTracker(commands.Cog):
 
 async def setup(bot):
     cog = ShiftTracker(bot)
-    # These commands are server-only; register them per guild so they do not
-    # consume Discord's shared 100-command global application-command limit.
-    guild_ids = [guild.id for guild in bot.guilds]
-    for command in cog.get_app_commands():
-        command.guild_ids = guild_ids
     await bot.add_cog(cog)
