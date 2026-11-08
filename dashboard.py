@@ -7222,14 +7222,29 @@ def guild_tickets(guild_id):
         '<div class="notice"><small>Geschlossene Tickets (gespeicherte Historie)</small><h2>' + str(len(closed_history)) + '</h2></div>'
         '</div><p class="muted">Die Historie beginnt mit den neuen Bot-Versionen; ältere Schließungen werden nicht rückwirkend ergänzt.</p></section>'
     )
-    body = ticket_metrics_html + (
-        f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
+    closed_history = sorted(closed_history, key=lambda item: str(item.get("closed_at") or item.get("created_at") or ""), reverse=True)
+    history_rows = []
+    for item in closed_history[:12]:
+        ticket_number = html.escape(str(item.get("ticket_number") or "—"))
+        label = html.escape(str(item.get("label") or "Support"))
+        owner_id = html.escape(str(item.get("owner_id") or "—"))
+        closed_by = html.escape(str(item.get("closed_by") or "—"))
+        closed_at = html.escape(str(item.get("closed_at") or "Unbekannt")[:16].replace("T", " "))
+        duration = item.get("resolution_minutes")
+        duration_label = (f"{int(duration)} Min." if duration is not None and duration < 60 else f"{duration / 60:.1f} Std." if isinstance(duration, (int, float)) else "—")
+        history_rows.append('<div class="ticket-history-row"><div><strong>#' + ticket_number + ' · ' + label + '</strong><small>Ersteller: ' + owner_id + ' · Geschlossen von: ' + closed_by + '</small></div><div class="ticket-history-meta"><strong>' + html.escape(duration_label) + '</strong><small>' + closed_at + '</small></div></div>')
+    history_html = '<section class="card" id="ticket-history"><div class="ticket-section-heading"><div><span class="pill">ARCHIV</span><h2>🗂️ Geschlossene Tickets</h2><p class="muted">Die letzten 12 geschlossenen Tickets auf einen Blick.</p></div><span class="ticket-count">' + str(len(closed_history)) + ' gespeichert</span></div>' + (''.join(history_rows) if history_rows else '<p class="muted">Noch keine geschlossenen Tickets in der gespeicherten Historie.</p>') + '</section>'
+    body = (
+        '<style>.ticket-nav{position:sticky;top:10px;z-index:5;display:flex;gap:8px;flex-wrap:wrap;padding:12px;margin:14px 0;background:var(--surface,#111827);border:1px solid var(--border,#334155);border-radius:14px}.ticket-nav a{padding:9px 13px;border-radius:9px;background:var(--surface-2,#263244);text-decoration:none;font-weight:600}.ticket-section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.ticket-count{font-size:12px;padding:6px 10px;border-radius:99px;background:var(--surface-2,#263244)}.ticket-panel-details{margin:14px 0;border:1px solid var(--border,#334155);border-radius:14px;background:var(--surface,#111827);overflow:hidden}.ticket-panel-details>summary{cursor:pointer;list-style:none;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:700}.ticket-panel-details>summary::-webkit-details-marker{display:none}.ticket-panel-details>summary:after{content:"＋";font-size:20px}.ticket-panel-details[open]>summary:after{content:"−"}.ticket-panel-content{padding:0 16px 16px}.ticket-history-row{display:flex;justify-content:space-between;gap:12px;padding:12px 4px;border-bottom:1px solid var(--border,#334155)}.ticket-history-row:last-child{border-bottom:0}.ticket-history-row small{display:block;color:var(--muted,#94a3b8);margin-top:4px;overflow-wrap:anywhere}.ticket-history-meta{text-align:right;white-space:nowrap}@media(max-width:600px){.ticket-history-row{flex-direction:column}.ticket-history-meta{text-align:left}}</style>'
+        + ticket_metrics_html
+        + '<nav class="ticket-nav"><a href="#ticket-create">＋ Neues Panel</a><a href="#ticket-panels">⚙️ Panel-Einstellungen (' + str(len(panels)) + ')</a><a href="#ticket-history">🗂️ Geschlossene Tickets (' + str(len(closed_history)) + ')</a></nav>'
+        + f'<span class="pill">IRONWOLF · TICKET CENTER</span><h1 style="margin-top:12px">🎟️ Ticket-System · {html.escape(guild.name)}</h1>'
         '<p class="muted">Bearbeite Titel, Description, Anfragearten, Ticket-Kategorie und Support role. Im Ticket können Teammitglieder private Notizen speichern; beim Schließen werden Transcript und Bearbeitungszeit protokolliert.</p>'
         '<div class="notice"><strong>Free vs. Premium Ticket-System</strong><br>🆓 <b>Normal:</b> Tickets eröffnen, private Ticket-Kanäle, Support role, Claim/Freigeben und Schließen sowie bis zu zwei Anfrage-Buttons pro Panel. Ein Transcript wird in den Logkanal hochgeladen, wenn er eingerichtet ist.<br>✨ <b>Premium Ticket-System:</b> mehrere konfigurierbare Ticket-Panels, bis zu zehn Anfrage-Buttons oder ein Dropdown-Menü mit bis zu zehn Anfragearten pro Panel, eigenes Panel-Branding (Farbe und Logo), Prioritätsmarkierung für wichtige Tickets und Transcript zusätzlich per DM an den Ticket-Ersteller. Premium-Funktionen benötigen einen verknüpften Premium-Plan oder eine aktive Testphase.</div>'
         + result_html
     )
     body += (
-        '<section class="card"><h2>＋ Neues Ticket-Panel erstellen</h2>'
+        '<section class="card" id="ticket-create"><details class="ticket-panel-details" open><summary><span>＋ Neues Ticket-Panel erstellen</span><span class="ticket-count">Neues Panel</span></summary><div class="ticket-panel-content">'
         '<p class="muted">Erstellt und veröffentlicht ein neues Ticket-Panel direkt aus dem Dashboard.</p>'
         '<form method="post" enctype="multipart/form-data">' + _csrf_field()
         + '<input type="hidden" name="panel_id" value="__new__">'
@@ -7246,8 +7261,9 @@ def guild_tickets(guild_id):
         + '<label>Support-Rolle (optional)</label><select name="support_role_id">' + options(roles, None, "— Standard-Support-Rolle verwenden —") + '</select>'
 
         + (('<label>Premium-Prioritätsrolle</label><select name="priority_role_id">' + options(roles, None, "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Prioritätsrolle</option></select></div>')
-        + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></section>'
+        + '<button type="submit">Ticket-Panel erstellen und veröffentlichen</button></form></div></details></section>'
     )
+    body += '<section id="ticket-panels" class="card"><div class="ticket-section-heading"><div><h2>⚙️ Bestehende Ticket-Panels</h2><p class="muted">Jedes Panel lässt sich einzeln öffnen und bearbeiten.</p></div><span class="ticket-count">' + str(len(panels)) + ' Panels</span></div>'
     if not panels:
         body += '<div class="notice">Für diesen Server sind noch keine Ticket-Panels gespeichert. Nutze das Formular „Neues Ticket-Panel erstellen“ oben, um eines direkt hier anzulegen.</div>'
     for panel_key, panel in sorted(panels.items(), key=lambda pair: pair[0]):
@@ -7271,8 +7287,11 @@ def guild_tickets(guild_id):
                 button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
                 button_fields += f'<label>Emoji für Anfrage {i}</label>' + _ticket_emoji_select(f"button_emoji{i}", option_emoji)
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input type="text" name="button_description{i}" maxlength="100" value="{html.escape(str(option_description), quote=True)}" placeholder="Kurze Erklärung für diese Anfrageart"></div>'
+        panel_summary = html.escape(str(panel.get("title", "Support-Ticket")))
+        panel_channel = guild.get_channel(int(panel.get("channel_id") or 0))
+        panel_channel_label = ('#' + panel_channel.name) if panel_channel else 'Kein Kanal ausgewählt'
         body += (
-            '<section class="card"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
+            '<details class="ticket-panel-details"><summary><span>🎫 ' + panel_summary + '</span><span class="ticket-count">' + html.escape(panel_channel_label) + ' · ID ' + html.escape(str(panel_key)) + '</span></summary><div class="ticket-panel-content"><span class="pill">PANEL-ID ' + html.escape(str(panel_key)) + '</span>'
             '<form method="post" enctype="multipart/form-data">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '">'
             '<label>Titel</label><input type="text" name="title" maxlength="256" required value="' + html.escape(str(panel.get("title", "Support-Ticket")), quote=True) + '">'
             '<label>Description</label><textarea name="description" maxlength="4000">' + html.escape(str(panel.get("description", ""))) + '</textarea>'
@@ -7285,8 +7304,9 @@ def guild_tickets(guild_id):
             + (('<label>✨ Premium-Prioritätsrolle (wird im Ticket erwähnt und erhält Zugriff)</label><select name="priority_role_id">' + options(roles, panel.get("priority_role_id"), "— Keine Prioritätsrolle —") + '</select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Prioritätsrolle</option></select></div>')
             + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
             + ('<h3>✨ Custom Branding</h3><label>Embed-Farbe</label><div style="display:flex;gap:12px;align-items:center"><input type="color" name="brand_color_picker" value="#' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color.value=this.value.slice(1)" style="width:64px;height:48px;padding:3px"><input name="brand_color" maxlength="6" pattern="[0-9a-fA-F]{6}" value="' + html.escape(str(panel.get("brand_color", "5865F2")).lstrip("#"), quote=True) + '" oninput="this.form.brand_color_picker.value=\'#\'+this.value" placeholder="5865F2"></div><label>Logo vom Computer hochladen (PNG, JPG, GIF, WEBP; max. 5 MB)</label><input type="file" name="brand_logo_file" accept="image/png,image/jpeg,image/gif,image/webp"><small>' + ('Aktuelles Logo: ' + html.escape(str(panel.get("brand_logo_filename", "hochgeladen")), quote=True) if panel.get("brand_logo_file") else 'Noch kein hochgeladenes Logo.') + '</small><label>Alternativ Logo-URL (HTTPS, optional)</label><input name="brand_logo_url" type="url" maxlength="500" value="' + html.escape(str(panel.get("brand_logo_url", "")), quote=True) + '"><div class="check"><input type="checkbox" name="remove_brand_logo" id="remove-logo-' + html.escape(str(panel_key), quote=True) + '"><label for="remove-logo-' + html.escape(str(panel_key), quote=True) + '">Hochgeladenes Logo entfernen</label></div>' if guild_has_feature(cfg, "branding") else '<h3>🔒 Premium Funktion</h3><p class="muted">Custom Branding ist gesperrt. Verknüpfe Premium mit diesem Server, um Farbe und Logo bearbeiten zu können.</p><fieldset disabled style="opacity:.55"><label>Embed-Farbe</label><input value="5865F2"><label>Logo-URL</label><input value="Premium erforderlich"></fieldset>')
-            + '<button type="submit">Panel speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Dieses Ticket-Panel und seine Nachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '"><input type="hidden" name="action" value="delete_panel"><button type="submit" class="secondary">🗑️ Panel und Nachricht löschen</button></form></section>'
+            + '<button type="submit">Panel speichern und veröffentlichen</button></form><form method="post" onsubmit="return confirm(\'Dieses Ticket-Panel und seine Nachricht wirklich löschen?\')">' + _csrf_field() + '<input type="hidden" name="panel_id" value="' + html.escape(str(panel_key), quote=True) + '"><input type="hidden" name="action" value="delete_panel"><button type="submit" class="secondary">🗑️ Panel und Nachricht löschen</button></form></div></details>'
         )
+    body += '</section>' + history_html
     body += f'<p><a class="button secondary" href="/guild/{gid}">← Zur Serververwaltung</a></p>'
     return _render(guild.name + " · Ticket-System", body)
 
