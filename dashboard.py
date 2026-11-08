@@ -6957,73 +6957,34 @@ def guild_ai_knowledge(guild_id):
 
 
 def _ticket_emoji_select(name, current="", guild=None):
-    """Render up to 200 emoji choices, prioritizing this server's custom emojis."""
+    """Render 100 built-in emoji choices plus all custom emojis from this server."""
     unicode_emojis = """
     🎫 💬 ❓ 🛠️ 🚨 ⚖️ 💳 📝 🤝 👤 🛡️ ⭐
-    😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😎 🤓 🧐 🤔
-    🤗 🤭 🤫 🤥 😐 😑 😶 🙄 😏 😣 😥 😮 🤐 😯 😪 😫 🥱 😴
-    😌 😛 😜 😝 🤤 😒 😓 😔 😕 🙃 🤑 😲 ☹️ 🙁 😖 😞 😟 😤
-    😢 😭 😦 😧 😨 😩 🤯 😬 😰 😱 🥵 🥶 😳 🤪 😵 🥴 🤢 🤮
-    🤧 😷 🤒 🤕 🥳 😈 👿 💀 ☠️ 👻 👽 🤖 💩 🎃 😺 😸 😹 😻
-    😼 😽 🙀 😿 😾 🙈 🙉 🙊 💋 💌 💘 💝 💖 💗 💓 💞 💕 💟
-    ❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💔 ❣️ 💯 💢 💥 💫 💦 💨
-    🏳️‍🌈 🏳️‍⚧️ 🏴‍☠️ 👋 🤚 🖐️ ✋ 🖖 🫱 🫲 🫳 🫴 👌 🤌 🤏
-    ✌️ 🤞 🫰 🤟 🤘 🤙 👈 👉 👆 🖕 👇 ☝️ 👍 👎 ✊ 👊 🤛 🤜
-    👏 🙌 🫶 👐 🤲 🙏 ✍️ 💅 🤳 💪 🦾 🦿 🦵 🦶 👂 🦻 👃
-    🧠 🫀 🫁 🦷 🦴 👀 👁️ 👅 👄 🫦 👶 🧒 👦 👧 🧑 👨 👩 🧔
-    👮 🕵️ 💂 🥷 👷 🤴 👸 👳 👲 🧕 🤵 👰 🤰 🫃 🫄 🤱 👼
-    🎅 🤶 🧑‍🎄 🦸 🦹 🧙 🧚 🧛 🧜 🧝 🧞 🧟 💆 💇 🚶 🧍
-    🧎 🏃 💃 🕺 🕴️ 👯 🧖 🧗 🤺 🏇 ⛷️ 🏂 🏌️ 🏄 🚣 🏊
-    ⛹️ 🏋️ 🚴 🚵 🤸 🤼 🤽 🤾 🤹 🧘 🛀 🛌 🧑‍⚕️ 🧑‍🎓 🧑‍🏫
-    🧑‍⚖️ 🧑‍🌾 🧑‍🍳 🧑‍🔧 🧑‍🏭 🧑‍💼 🧑‍🔬 🧑‍💻 🧑‍🎤 🧑‍🎨 🧑‍✈️
-    🧑‍🚀 🧑‍🚒 👣 🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐻‍❄️ 🐨 🐯 🦁
-    🐮 🐷 🐸 🐵 🙉 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴
-    🦄 🐝 🪱 🐛 🦋 🐌 🐞 🐜 🪰 🪲 🪳 🦟 🦗 🕷️ 🦂 🐢
-    🐍 🦎 🦖 🦕 🐙 🦑 🦐 🦞 🦀 🐡 🐠 🐟 🐬 🐳 🦈 🐊
-    🐅 🐆 🦓 🦍 🦧 🐘 🦛 🦏 🐪 🐫 🦒 🦘 🦬 🐃 🐂 🐄
-    🐎 🐖 🐏 🐑 🦙 🐐 🦌 🐕 🦮 🐕‍🦺 🐩 🐈 🐓 🦃 🦚 🦜
-    🦢 🦩 🕊️ 🐇 🦝 🦨 🦡 🦫 🦦 🦥 🐁 🐀 🐿️ 🦔 🐉 🐲
-    🌵 🎄 🌲 🌳 🌴 🪵 🌱 🌿 ☘️ 🍀 🎍 🪴 🎋 🍃 🍂 🍁 🍄
-    🌾 💐 🌷 🌹 🥀 🪷 🌺 🌸 🌼 🌻 🌞 🌝 🌛 🌜 🌚 🌕 🌖
-    🌗 🌘 🌑 🌒 🌓 🌔 🌙 🌎 🌍 🌏 🪐 💫 ⭐ 🌟 ✨ ⚡ ☄️
-    🔥 🌪️ 🌈 ☀️ 🌤️ ⛅ 🌥️ ☁️ 🌦️ 🌧️ ⛈️ 🌩️ 🌨️ ❄️ ☃️ ⛄
-    💧 🌊 🎃 🎄 🎆 🎇 🧨 ✨ 🎈 🎉 🎊 🎋 🎍 🎎 🎏 🎐 🎑
-    🏮 🎀 🎁 🎗️ 🎟️ 🎫 🏆 🥇 🥈 🥉 🏅 🎖️ 🏵️ 🎯 🎮 🕹️
-    🎲 ♟️ 🎭 🎨 🧵 🪡 🧶 🪢 👓 🕶️ 🥽 🥼 🦺 👔 👕 👖
-    🧣 🧤 🧥 🧦 👗 👘 🥻 🩱 🩲 🩳 👙 👚 🪭 👛 👜 👝
-    🎒 🩴 👞 👟 🥾 🥿 👠 👡 🩰 👢 👑 👒 🎩 🎓 🧢 🪖
-    ⛑️ 📿 💄 💍 💎 🔇 🔈 🔉 🔊 📢 📣 📯 🔔 🔕 🎼 🎵 🎶
-    🎙️ 🎚️ 🎛️ 🎤 🎧 📻 🎷 🪗 🎸 🎹 🎺 🎻 🪕 🥁 🪘 🪇
-    📱 📲 ☎️ 📞 📟 📠 🔋 🪫 🔌 💻 🖥️ 🖨️ ⌨️ 🖱️ 🖲️ 💽
-    💾 💿 📀 🧮 🎥 🎞️ 📽️ 🎬 📺 📷 📸 📹 📼 🔍 🔎 🕯️ 💡
-    🔦 🏮 🪔 📔 📕 📖 📗 📘 📙 📚 📓 📒 📃 📜 📄 📰
-    🗞️ 📑 🔖 🏷️ 💰 🪙 💴 💵 💶 💷 💸 💳 🧾 💹 ✉️ 📧
-    📨 📩 📤 📥 📦 📫 📪 📬 📭 📮 🗳️ ✏️ ✒️ 🖋️ 🖊️ 🖌️
-    🖍️ 📝 💼 📁 📂 🗂️ 📅 📆 🗒️ 🗓️ 📇 📈 📉 📊 📋 📌
-    📍 📎 🖇️ 📏 📐 ✂️ 🗃️ 🗄️ 🗑️ 🔒 🔓 🔏 🔐 🔑 🗝️
-    🔨 🪓 ⛏️ ⚒️ 🛠️ 🗡️ ⚔️ 💣 🪃 🏹 🛡️ 🪚 🔧 🪛 🔩 ⚙️
-    🗜️ ⚖️ 🦯 🔗 ⛓️ 🪝 🧰 🧲 🪜 🧪 🧫 🧬 🔬 🔭 📡 💉
-    🩸 💊 🩹 🩺 🚪 🛏️ 🛋️ 🪑 🚽 🪠 🚿 🛁 🪤 🪒 🧴 🧷
-    🧹 🧺 🧻 🪣 🧼 🫧 🪥 🧽 🧯 🛒 🚬 ⚰️ 🪦 ⚱️ 🧿 🪬
-    🗿 🪧 🪪 🏧 🚮 🚰 ♿ 🚹 🚺 🚻 🚼 🚾 🛂 🛃 🛄 🛅
-    ⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️ ↕️ ↔️ ↩️ ↪️ ⤴️ ⤵️ 🔃 🔄
-    🔙 🔚 🔛 🔜 🔝 🛐 ⚛️ 🕉️ ✡️ ☸️ ☯️ ✝️ ☦️ ☪️ ☮️
-    🕎 🔯 ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓
+    😀 😂 😊 😍 😎 🤔 😢 😭 😡 🥳 🤖 👻
+    ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 💢 💥
+    👋 👍 👎 👏 🙌 🙏 💪 🤝 👀 👤 🧑‍💻 👮
+    🐶 🐱 🦊 🐻 🐼 🦁 🐸 🐵 🐧 🦄 🐺 🐉
+    🌲 🌳 🌴 🌵 🌹 🌻 🌈 ☀️ 🌙 ⭐ 🔥 ❄️
+    🎉 🎊 🎁 🏆 🥇 🎯 🎮 🎲 🎨 🎭 🎵 🎤
+    💻 📱 🖥️ ⚙️ 🔧 🔨 🧰 🔒 🔓 🔑 🛡️ 🔔
+    📁 📂 📝 📋 📌 📎 📅 📊 📈 📉 📄 📚
+    🚀 🚗 ✈️ 🚁 🚢 🚲 🏠 🏢 🏥 🏫 🏰 🌍
     """
     choices = [("", "Automatisch passend")]
+    seen = {""}
     if guild is not None:
-        for custom in sorted(getattr(guild, "emojis", []), key=lambda item: item.name.casefold())[:199]:
+        for custom in sorted(getattr(guild, "emojis", []), key=lambda item: item.name.casefold()):
             value = f"<a:{custom.name}:{custom.id}>" if custom.animated else f"<:{custom.name}:{custom.id}>"
-            choices.append((value, f"{'GIF ' if custom.animated else ''}:{custom.name}: · Server-Emoji"))
-    seen = {value for value, _ in choices}
+            if value not in seen:
+                choices.append((value, f"{'GIF ' if custom.animated else ''}:{custom.name}: · Server-Emoji"))
+                seen.add(value)
     for emoji in unicode_emojis.split():
-        if emoji not in seen and len(choices) < 200:
+        if emoji not in seen:
             choices.append((emoji, emoji))
             seen.add(emoji)
     selected = str(current or "")
     if selected and selected not in {value for value, _ in choices}:
         choices.insert(1, (selected, selected))
-        choices = choices[:200]
     return '<select class="ticket-emoji-select" name="' + html.escape(name, quote=True) + '">' + "".join(
         '<option value="' + html.escape(value, quote=True) + '"' +
         (' selected' if value == selected else '') + '>' + html.escape(label) + '</option>'
