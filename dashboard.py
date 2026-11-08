@@ -7012,7 +7012,7 @@ def _ticket_emoji_select(name, current="", guild=None):
     """
     choices = [("", "Automatisch passend")]
     if guild is not None:
-        for custom in sorted(getattr(guild, "emojis", []), key=lambda item: item.name.casefold()):
+        for custom in sorted(getattr(guild, "emojis", []), key=lambda item: item.name.casefold())[:199]:
             value = f"<a:{custom.name}:{custom.id}>" if custom.animated else f"<:{custom.name}:{custom.id}>"
             choices.append((value, f"{'GIF ' if custom.animated else ''}:{custom.name}: · Server-Emoji"))
     seen = {value for value, _ in choices}
