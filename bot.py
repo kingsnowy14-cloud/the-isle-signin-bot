@@ -1447,7 +1447,7 @@ class TicketPanelView(discord.ui.View):
         for index, label in enumerate(safe_labels):
             button = discord.ui.Button(
                 label=label,
-                emoji=(str(emojis[index]).strip()[:100] if index < len(emojis) and str(emojis[index]).strip() else _ticket_auto_emoji(label)),
+                emoji=_ticket_parse_emoji(emojis[index] if index < len(emojis) else "", _ticket_auto_emoji(label)),
                 style=discord.ButtonStyle.primary,
                 custom_id=f"ticket:create:{panel_key}:{index}",
                 row=index // 4,
