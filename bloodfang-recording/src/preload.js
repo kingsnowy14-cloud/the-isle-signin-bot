@@ -1,0 +1,2 @@
+const {contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('bloodfang',{getSources:()=>ipcRenderer.invoke('recording:sources'),saveRecording:(buffer,suggestedName)=>ipcRenderer.invoke('recording:save',{buffer,suggestedName})});
