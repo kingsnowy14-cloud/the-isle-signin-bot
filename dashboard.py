@@ -6957,39 +6957,48 @@ def guild_ai_knowledge(guild_id):
 
 
 def _ticket_emoji_select(name, current="", guild=None):
-    """Render 100 built-in emoji choices plus all custom emojis from this server."""
-    unicode_emojis = """
-    🎫 💬 ❓ 🛠️ 🚨 ⚖️ 💳 📝 🤝 🛡️
-    😀 😂 😊 😍 😎 🤔 😢 😭 😡 🥳
-    ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯
-    👋 👍 👎 👏 🙌 🙏 💪 👀 👤 🧑‍💻
-    🐶 🐱 🦊 🐻 🐼 🦁 🐸 🐵 🐧 🦄
-    🌲 🌳 🌴 🌵 🌹 🌻 🌈 ☀️ 🌙 🔥
-    🎉 🎊 🎁 🏆 🥇 🎯 🎮 🎲 🎨 🎭
-    💻 📱 🖥️ ⚙️ 🔧 🔨 🧰 🔒 🔑 🔔
-    📁 📂 📋 📌 📎 📅 📊 📈 📉 📄
-    🚀 🚗 ✈️ 🚁 🚢 🚲 🏠 🏢 🏥 🏰
-    """
-    choices = [("", "Automatisch passend")]
-    seen = {""}
+    """Render a searchable-style five-column emoji grid with favorites and usage ranking."""
+    unicode_emojis = """🎫 💬 ❓ 🛠️ 🚨 ⚖️ 💳 📝 🤝 🛡️ 😀 😂 😊 😍 😎 🤔 😢 😭 😡 🥳 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💯 👋 👍 👎 👏 🙌 🙏 💪 👀 👤 🧑‍💻 🐶 🐱 🦊 🐻 🐼 🦁 🐸 🐵 🐧 🦄 🌲 🌳 🌴 🌵 🌹 🌻 🌈 ☀️ 🌙 🔥 🎉 🎊 🎁 🏆 🥇 🎯 🎮 🎲 🎨 🎭 💻 📱 🖥️ ⚙️ 🔧 🔨 🧰 🔒 🔑 🔔 📁 📂 📋 📌 📎 📅 📊 📈 📉 📄 🚀 🚗 ✈️ 🚁 🚢 🚲 🏠 🏢 🏥 🏰 😃 😄 😁 😆 😅 🤣 🙂 🙃 😉 😇 🥰 🤩 🤓 🧐 🤗 🤫 😐 🙄 😏 😣 😥 😮 😴 😌 😛 😜 😝 🤑 😲 😞 😤 🤯 😱 🥶 😳 🤪 🤢 🤮 🤧 😷 🤒 🤕 😈 👿 💀 ☠️ 👻 👽 💩 🎃 🙈 🙉 🙊 💘 💝 💖 💗 💓 💞 💕 💟 ❣️ 💢 💫 💦 💨 🏳️‍🌈 👌 🤌 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ ✊ 👊 🤛 🤜 🫶 👐 🤲 ✍️ 💅 🦾 🦿 🧠 🫀 🫁 🦷 👁️ 👅 👄 👶 👨 👩 👮 🕵️ 🥷 👷 🤴 👸 🧙 🧚 🧛 🧜 🦸 🦹 🧟 🐭 🐹 🐰 🐨 🐯 🐮 🐷 🐔 🐦 🦆 🦅 🦉 🦇 🐺 🐴 🐝 🦋 🐞 🐢 🐍 🦎 🦖 🐙 🦑 🦀 🐠 🐟 🐬 🐳 🦈 🐊 🐘 🦒 🦘 🦬 🐎 🐕 🐈 🦜 🦢 🐇 🦝 🦦 🐉 🐲 🌱 🌿 ☘️ 🍀 🍃 🍂 🍁 🍄 🌷 🥀 🪷 🌺 🌸 🌼 🌞 🌝 🌛 🌜 🌕 🌎 🪐 ✨ ⚡ ☄️ 🌪️ 🌊 ⛈️ 🌨️ ❄️ ☃️ 💧 🎆 🎇 🧨 🎈 🎟️ 🏅 🎖️ 🎳 🕹️ ♟️ 🧵 🧶 👓 🕶️ 👑 🎩 🧢 💍 💎 🔊 📢 📣 🎵 🎶 🎤 🎧 🎸 🥁 📞 🔋 🔌 🖨️ ⌨️ 🖱️ 💾 💿 🎥 🎬 📺 📷 🔍 💡 📚 📜 📰 💰 🪙 💵 💶 💸 🧾 ✉️ 📧 📦 ✏️ 🖊️ 🖌️ 💼 🗂️ 📆 🗓️ 📍 ✂️ 🗑️ 🔐 🗝️ 🪓 ⛏️ ⚔️ 🏹 🪚 🔩 🪛 🧲 🧪 🔬 🔭 💉 💊 🩹 🩺 🚪 🛋️ 🚽 🚿 🧼 🧯 🛒 🪪 🚮 ♿ ⬆️ ➡️ ⬇️ ⬅️ 🔄 ☮️ ☯️ ✝️ ☪️ ✡️ ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓"""
+    choices = []
+    seen = set()
     if guild is not None:
         for custom in sorted(getattr(guild, "emojis", []), key=lambda item: item.name.casefold()):
             value = f"<a:{custom.name}:{custom.id}>" if custom.animated else f"<:{custom.name}:{custom.id}>"
             if value not in seen:
-                choices.append((value, f"{'GIF ' if custom.animated else ''}:{custom.name}: · Server-Emoji"))
+                choices.append((value, f":{custom.name}:", str(custom.url)))
                 seen.add(value)
     for emoji in unicode_emojis.split():
         if emoji not in seen:
-            choices.append((emoji, emoji))
+            choices.append((emoji, emoji, ""))
             seen.add(emoji)
     selected = str(current or "")
-    if selected and selected not in {value for value, _ in choices}:
-        choices.insert(1, (selected, selected))
-    return '<select class="ticket-emoji-select" name="' + html.escape(name, quote=True) + '">' + "".join(
-        '<option value="' + html.escape(value, quote=True) + '"' +
-        (' selected' if value == selected else '') + '>' + html.escape(label) + '</option>'
-        for value, label in choices
-    ) + '</select>'
+    if selected and selected not in seen:
+        choices.insert(0, (selected, selected, ""))
+    field_name = html.escape(name, quote=True)
+    items = []
+    for value, label, image_url in choices:
+        safe_value = html.escape(value, quote=True)
+        safe_label = html.escape(label, quote=True)
+        if image_url:
+            visual = '<img src="' + html.escape(image_url, quote=True) + '" alt="' + safe_label + '">'
+        elif value:
+            visual = html.escape(value)
+        else:
+            visual = "—"
+        items.append(
+            '<div class="ticket-emoji-tile" data-value="' + safe_value + '" data-label="' + safe_label + '">'
+            '<button type="button" class="ticket-emoji-choice" title="' + safe_label + '" aria-label="' + safe_label + '">' + visual + '</button>'
+            '<button type="button" class="ticket-emoji-fav" title="Zu Favoriten hinzufügen" aria-label="Favorit umschalten">☆</button></div>'
+        )
+    return (
+        '<div class="ticket-emoji-picker" data-field="' + field_name + '">'
+        '<input type="hidden" name="' + field_name + '" value="' + html.escape(selected, quote=True) + '">'
+        '<div class="ticket-emoji-toolbar"><button type="button" class="ticket-emoji-favorites" aria-pressed="false">☆ Favoriten anzeigen</button>'
+        '<span class="ticket-emoji-hint">⭐ Stern an einem Emoji = Favorit</span></div>'
+        '<div class="ticket-emoji-grid">' + ''.join(items) + '</div></div>'
+        '<style>.ticket-emoji-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0}.ticket-emoji-favorites{border:1px solid var(--border,#475569);border-radius:8px;padding:7px 11px;background:var(--surface-2,#263244);color:inherit;cursor:pointer}.ticket-emoji-hint{font-size:12px;color:var(--muted,#94a3b8)}.ticket-emoji-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;max-height:330px;overflow-y:auto;padding:8px;border:1px solid var(--border,#334155);border-radius:12px}.ticket-emoji-tile{position:relative;min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border,#334155);border-radius:9px;background:var(--surface-2,#263244)}.ticket-emoji-choice{width:100%;height:48px;border:0;background:transparent;color:inherit;font-size:25px;cursor:pointer}.ticket-emoji-choice img{width:28px;height:28px;object-fit:contain;vertical-align:middle}.ticket-emoji-fav{position:absolute;right:1px;top:0;border:0;background:transparent;color:#eab308;font-size:17px;cursor:pointer;padding:0 3px}.ticket-emoji-tile.is-selected{outline:2px solid var(--accent,#5865f2)}.ticket-emoji-tile.is-favorite{background:rgba(234,179,8,.12)}@media(max-width:420px){.ticket-emoji-grid{gap:4px;padding:5px}.ticket-emoji-tile{min-height:42px}.ticket-emoji-choice{height:42px;font-size:22px}}</style>'
+        '<script>(function(){if(window.__ticketEmojiPickerReady)return;window.__ticketEmojiPickerReady=true;const favKey="ironwolf-ticket-emoji-favorites";const useKey="ironwolf-ticket-emoji-usage";const read=(key)=>{try{return JSON.parse(localStorage.getItem(key)||"{}")}catch(e){return {}}};const write=(key,val)=>{try{localStorage.setItem(key,JSON.stringify(val))}catch(e){}};function init(root){const grid=root.querySelector(".ticket-emoji-grid");if(!grid||grid.dataset.ready)return;grid.dataset.ready="1";const fav=read(favKey),usage=read(useKey);const tiles=[...grid.children];function sort(){const onlyFav=root.dataset.onlyFavorites==="1";tiles.sort((a,b)=>{const av=a.dataset.value,bv=b.dataset.value;const af=!!fav[av],bf=!!fav[bv];if(onlyFav&&af!==bf)return af?-1:1;return (Number(usage[bv])||0)-(Number(usage[av])||0)});tiles.forEach(tile=>{tile.hidden=onlyFav&&!fav[tile.dataset.value];tile.classList.toggle("is-favorite",!!fav[tile.dataset.value]);tile.querySelector(".ticket-emoji-fav").textContent=fav[tile.dataset.value]?"★":"☆";tile.querySelector(".ticket-emoji-fav").title=fav[tile.dataset.value]?"Aus Favoriten entfernen":"Zu Favoriten hinzufügen";grid.appendChild(tile)});const hidden=root.querySelector("input[type=hidden]");tiles.forEach(tile=>tile.classList.toggle("is-selected",tile.dataset.value===hidden.value))}root.querySelector(".ticket-emoji-favorites").addEventListener("click",function(){root.dataset.onlyFavorites=root.dataset.onlyFavorites==="1"?"0":"1";this.setAttribute("aria-pressed",root.dataset.onlyFavorites==="1"?"true":"false");this.textContent=root.dataset.onlyFavorites==="1"?"★ Alle Emojis anzeigen":"☆ Favoriten anzeigen";sort()});grid.addEventListener("click",function(event){const star=event.target.closest(".ticket-emoji-fav");const choice=event.target.closest(".ticket-emoji-choice");if(star){const tile=star.closest(".ticket-emoji-tile"),value=tile.dataset.value;if(fav[value])delete fav[value];else fav[value]=true;write(favKey,fav);sort();return}if(choice){const tile=choice.closest(".ticket-emoji-tile"),value=tile.dataset.value;root.querySelector("input[type=hidden]").value=value;usage[value]=(Number(usage[value])||0)+1;write(useKey,usage);sort()}});sort()}document.querySelectorAll(".ticket-emoji-picker").forEach(init);})();</script>'
+    )
 
 
 @app.route("/guild/<guild_id>/tickets", methods=["GET", "POST"])
