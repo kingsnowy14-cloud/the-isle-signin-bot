@@ -6956,16 +6956,75 @@ def guild_ai_knowledge(guild_id):
     return _render(guild.name + " · KI-Wissen", body)
 
 
-def _ticket_emoji_select(name, current=""):
-    choices = [
-        ("", "Automatisch passend"), ("🎫", "🎫 Ticket"), ("💬", "💬 Chat / Support"),
-        ("❓", "❓ Frage / Hilfe"), ("🛠️", "🛠️ Technik / Bug"), ("🚨", "🚨 Meldung / Report"),
-        ("⚖️", "⚖️ Einspruch / Ban"), ("💳", "💳 Zahlung / Shop"), ("📝", "📝 Bewerbung / Antrag"),
-        ("🤝", "🤝 Partnerschaft"), ("👤", "👤 Account"), ("🛡️", "🛡️ Team / Moderation"),
-        ("⭐", "⭐ Sonstiges / Priorität"),
-    ]
+def _ticket_emoji_select(name, current="", guild=None):
+    """Render up to 200 emoji choices, prioritizing this server's custom emojis."""
+    unicode_emojis = """
+    🎫 💬 ❓ 🛠️ 🚨 ⚖️ 💳 📝 🤝 👤 🛡️ ⭐
+    😀 😃 😄 😁 😆 😅 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😎 🤓 🧐 🤔
+    🤗 🤭 🤫 🤥 😐 😑 😶 🙄 😏 😣 😥 😮 🤐 😯 😪 😫 🥱 😴
+    😌 😛 😜 😝 🤤 😒 😓 😔 😕 🙃 🤑 😲 ☹️ 🙁 😖 😞 😟 😤
+    😢 😭 😦 😧 😨 😩 🤯 😬 😰 😱 🥵 🥶 😳 🤪 😵 🥴 🤢 🤮
+    🤧 😷 🤒 🤕 🥳 😈 👿 💀 ☠️ 👻 👽 🤖 💩 🎃 😺 😸 😹 😻
+    😼 😽 🙀 😿 😾 🙈 🙉 🙊 💋 💌 💘 💝 💖 💗 💓 💞 💕 💟
+    ❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💔 ❣️ 💯 💢 💥 💫 💦 💨
+    🏳️‍🌈 🏳️‍⚧️ 🏴‍☠️ 👋 🤚 🖐️ ✋ 🖖 🫱 🫲 🫳 🫴 👌 🤌 🤏
+    ✌️ 🤞 🫰 🤟 🤘 🤙 👈 👉 👆 🖕 👇 ☝️ 👍 👎 ✊ 👊 🤛 🤜
+    👏 🙌 🫶 👐 🤲 🙏 ✍️ 💅 🤳 💪 🦾 🦿 🦵 🦶 👂 🦻 👃
+    🧠 🫀 🫁 🦷 🦴 👀 👁️ 👅 👄 🫦 👶 🧒 👦 👧 🧑 👨 👩 🧔
+    👮 🕵️ 💂 🥷 👷 🤴 👸 👳 👲 🧕 🤵 👰 🤰 🫃 🫄 🤱 👼
+    🎅 🤶 🧑‍🎄 🦸 🦹 🧙 🧚 🧛 🧜 🧝 🧞 🧟 💆 💇 🚶 🧍
+    🧎 🏃 💃 🕺 🕴️ 👯 🧖 🧗 🤺 🏇 ⛷️ 🏂 🏌️ 🏄 🚣 🏊
+    ⛹️ 🏋️ 🚴 🚵 🤸 🤼 🤽 🤾 🤹 🧘 🛀 🛌 🧑‍⚕️ 🧑‍🎓 🧑‍🏫
+    🧑‍⚖️ 🧑‍🌾 🧑‍🍳 🧑‍🔧 🧑‍🏭 🧑‍💼 🧑‍🔬 🧑‍💻 🧑‍🎤 🧑‍🎨 🧑‍✈️
+    🧑‍🚀 🧑‍🚒 👣 🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐻‍❄️ 🐨 🐯 🦁
+    🐮 🐷 🐸 🐵 🙉 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴
+    🦄 🐝 🪱 🐛 🦋 🐌 🐞 🐜 🪰 🪲 🪳 🦟 🦗 🕷️ 🦂 🐢
+    🐍 🦎 🦖 🦕 🐙 🦑 🦐 🦞 🦀 🐡 🐠 🐟 🐬 🐳 🦈 🐊
+    🐅 🐆 🦓 🦍 🦧 🐘 🦛 🦏 🐪 🐫 🦒 🦘 🦬 🐃 🐂 🐄
+    🐎 🐖 🐏 🐑 🦙 🐐 🦌 🐕 🦮 🐕‍🦺 🐩 🐈 🐓 🦃 🦚 🦜
+    🦢 🦩 🕊️ 🐇 🦝 🦨 🦡 🦫 🦦 🦥 🐁 🐀 🐿️ 🦔 🐉 🐲
+    🌵 🎄 🌲 🌳 🌴 🪵 🌱 🌿 ☘️ 🍀 🎍 🪴 🎋 🍃 🍂 🍁 🍄
+    🌾 💐 🌷 🌹 🥀 🪷 🌺 🌸 🌼 🌻 🌞 🌝 🌛 🌜 🌚 🌕 🌖
+    🌗 🌘 🌑 🌒 🌓 🌔 🌙 🌎 🌍 🌏 🪐 💫 ⭐ 🌟 ✨ ⚡ ☄️
+    🔥 🌪️ 🌈 ☀️ 🌤️ ⛅ 🌥️ ☁️ 🌦️ 🌧️ ⛈️ 🌩️ 🌨️ ❄️ ☃️ ⛄
+    💧 🌊 🎃 🎄 🎆 🎇 🧨 ✨ 🎈 🎉 🎊 🎋 🎍 🎎 🎏 🎐 🎑
+    🏮 🎀 🎁 🎗️ 🎟️ 🎫 🏆 🥇 🥈 🥉 🏅 🎖️ 🏵️ 🎯 🎮 🕹️
+    🎲 ♟️ 🎭 🎨 🧵 🪡 🧶 🪢 👓 🕶️ 🥽 🥼 🦺 👔 👕 👖
+    🧣 🧤 🧥 🧦 👗 👘 🥻 🩱 🩲 🩳 👙 👚 🪭 👛 👜 👝
+    🎒 🩴 👞 👟 🥾 🥿 👠 👡 🩰 👢 👑 👒 🎩 🎓 🧢 🪖
+    ⛑️ 📿 💄 💍 💎 🔇 🔈 🔉 🔊 📢 📣 📯 🔔 🔕 🎼 🎵 🎶
+    🎙️ 🎚️ 🎛️ 🎤 🎧 📻 🎷 🪗 🎸 🎹 🎺 🎻 🪕 🥁 🪘 🪇
+    📱 📲 ☎️ 📞 📟 📠 🔋 🪫 🔌 💻 🖥️ 🖨️ ⌨️ 🖱️ 🖲️ 💽
+    💾 💿 📀 🧮 🎥 🎞️ 📽️ 🎬 📺 📷 📸 📹 📼 🔍 🔎 🕯️ 💡
+    🔦 🏮 🪔 📔 📕 📖 📗 📘 📙 📚 📓 📒 📃 📜 📄 📰
+    🗞️ 📑 🔖 🏷️ 💰 🪙 💴 💵 💶 💷 💸 💳 🧾 💹 ✉️ 📧
+    📨 📩 📤 📥 📦 📫 📪 📬 📭 📮 🗳️ ✏️ ✒️ 🖋️ 🖊️ 🖌️
+    🖍️ 📝 💼 📁 📂 🗂️ 📅 📆 🗒️ 🗓️ 📇 📈 📉 📊 📋 📌
+    📍 📎 🖇️ 📏 📐 ✂️ 🗃️ 🗄️ 🗑️ 🔒 🔓 🔏 🔐 🔑 🗝️
+    🔨 🪓 ⛏️ ⚒️ 🛠️ 🗡️ ⚔️ 💣 🪃 🏹 🛡️ 🪚 🔧 🪛 🔩 ⚙️
+    🗜️ ⚖️ 🦯 🔗 ⛓️ 🪝 🧰 🧲 🪜 🧪 🧫 🧬 🔬 🔭 📡 💉
+    🩸 💊 🩹 🩺 🚪 🛏️ 🛋️ 🪑 🚽 🪠 🚿 🛁 🪤 🪒 🧴 🧷
+    🧹 🧺 🧻 🪣 🧼 🫧 🪥 🧽 🧯 🛒 🚬 ⚰️ 🪦 ⚱️ 🧿 🪬
+    🗿 🪧 🪪 🏧 🚮 🚰 ♿ 🚹 🚺 🚻 🚼 🚾 🛂 🛃 🛄 🛅
+    ⬆️ ↗️ ➡️ ↘️ ⬇️ ↙️ ⬅️ ↖️ ↕️ ↔️ ↩️ ↪️ ⤴️ ⤵️ 🔃 🔄
+    🔙 🔚 🔛 🔜 🔝 🛐 ⚛️ 🕉️ ✡️ ☸️ ☯️ ✝️ ☦️ ☪️ ☮️
+    🕎 🔯 ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓
+    """
+    choices = [("", "Automatisch passend")]
+    if guild is not None:
+        for custom in sorted(getattr(guild, "emojis", []), key=lambda item: item.name.casefold()):
+            value = f"<a:{custom.name}:{custom.id}>" if custom.animated else f"<:{custom.name}:{custom.id}>"
+            choices.append((value, f"{'GIF ' if custom.animated else ''}:{custom.name}: · Server-Emoji"))
+    seen = {value for value, _ in choices}
+    for emoji in unicode_emojis.split():
+        if emoji not in seen and len(choices) < 200:
+            choices.append((emoji, emoji))
+            seen.add(emoji)
     selected = str(current or "")
-    return '<select name="' + html.escape(name, quote=True) + '">' + "".join(
+    if selected and selected not in {value for value, _ in choices}:
+        choices.insert(1, (selected, selected))
+        choices = choices[:200]
+    return '<select class="ticket-emoji-select" name="' + html.escape(name, quote=True) + '">' + "".join(
         '<option value="' + html.escape(value, quote=True) + '"' +
         (' selected' if value == selected else '') + '>' + html.escape(label) + '</option>'
         for value, label in choices
@@ -7251,8 +7310,8 @@ def guild_tickets(guild_id):
         + '<label>Titel</label><input name="title" maxlength="256" required value="Support-Ticket">'
         + '<label>Description</label><textarea name="description" maxlength="4000">Wähle unten die passende Anfrage aus.</textarea>'
         + '<label>Button 1</label><input name="button1" maxlength="80" required value="Allgemeiner Support">'
-        + '<label>Emoji für Anfrage 1</label>' + _ticket_emoji_select("button_emoji1") + ''
-        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + '</label>' + _ticket_emoji_select("button_emoji" + str(i)) + '' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + '</label>' + _ticket_emoji_select("button_emoji" + str(i)) for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>'))
+        + '<label>Emoji für Anfrage 1</label>' + _ticket_emoji_select("button_emoji1", guild=guild) + ''
+        + (''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + '</label>' + _ticket_emoji_select("button_emoji" + str(i), guild=guild) + '' for i in range(2, 3)) + (''.join('<label>Button ' + str(i) + ' (Premium)</label><input disabled placeholder="Button ' + str(i) + ' (Premium)">' for i in range(3, 11)) if not guild_has_feature(cfg, "ticket") else ''.join('<label>Button ' + str(i) + ' (optional)</label><input name="button' + str(i) + '" maxlength="80"><label>Emoji für Anfrage ' + str(i) + '</label>' + _ticket_emoji_select("button_emoji" + str(i), guild=guild) for i in range(3, 11))) + (''.join('<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage ' + str(i) + ' (optional)</label><input name="button_description' + str(i) + '" maxlength="100" placeholder="Kurze Erklärung für diese Anfrageart"></div>' for i in range(1, 11)) if guild_has_feature(cfg, "ticket") else '<p class="muted">Bis zu zwei Buttons sind im Free-Plan enthalten. Dropdowns sind Premium.</p>'))
         + (('<label>Darstellung (Premium)</label><select name="display_mode" class="ticket-display-mode"><option value="buttons">Buttons (bis zu 10)</option><option value="select">Dropdown-Menü (bis zu 10 Optionen)</option></select>') if guild_has_feature(cfg, "ticket") else '<div style="opacity:.48;filter:grayscale(1)"><strong>🔒 Premium Funktion</strong><select disabled><option>Dropdown / mehrere Buttons</option></select></div>')
         + '<p class="muted">Im Free-Plan sind bis zu zwei Anfrage-Buttons pro Panel verfügbar. Premium kann bis zu zehn Anfragearten als Buttons oder über ein Dropdown anbieten.</p>'
         + '<script>(function(){const form=document.currentScript.closest("form");if(!form)return;const mode=form.querySelector(".ticket-display-mode");const fields=form.querySelectorAll(".ticket-option-description");function sync(){fields.forEach(el=>{el.hidden=!mode||mode.value!=="select";});}if(mode){mode.addEventListener("change",sync);sync();}})();</script>'
@@ -7285,7 +7344,7 @@ def guild_tickets(guild_id):
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description (Premium)</label><input disabled type="text" value="{html.escape(str(option_description), quote=True)}"></div></div>'
             else:
                 button_fields += f'<label>Button {i} ' + ('(erforderlich)' if i == 1 else '(optional)') + f'</label><input type="text" name="button{i}" maxlength="80" value="{html.escape(str(value), quote=True)}" placeholder="z. B. Allgemeiner Support">'
-                button_fields += f'<label>Emoji für Anfrage {i}</label>' + _ticket_emoji_select(f"button_emoji{i}", option_emoji)
+                button_fields += f'<label>Emoji für Anfrage {i}</label>' + _ticket_emoji_select(f"button_emoji{i}", option_emoji, guild=guild)
                 button_fields += f'<div class="ticket-option-description" hidden><label>Dropdown-Description für Anfrage {i} (optional)</label><input type="text" name="button_description{i}" maxlength="100" value="{html.escape(str(option_description), quote=True)}" placeholder="Kurze Erklärung für diese Anfrageart"></div>'
         panel_summary = html.escape(str(panel.get("title", "Support-Ticket")))
         panel_channel = guild.get_channel(int(panel.get("channel_id") or 0))
