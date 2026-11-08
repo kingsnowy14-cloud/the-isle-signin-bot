@@ -8944,7 +8944,7 @@ async def ironwolf_global_stats_worker():
                 await message.edit(embed=embed)
             print(
                 f"[IRONWOLF-GLOBAL-STATS] Updated channel {_IRONWOLF_GLOBAL_STATS_CHANNEL_ID}: "
-                f"{len(human_user_ids)} human users across {len(guilds)} servers.",
+                f"{len(user_ids)} human users across {len(guilds)} servers.",
                 flush=True,
             )
         except Exception as exc:
