@@ -5488,6 +5488,33 @@ _ticket_ai_last_reply = {}
 _ticket_quick_support_last_ping = {}
 
 
+class QuickSupportCloseView(discord.ui.View):
+    """Persistent close button; any thread participant may close the case."""
+
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Close Support",
+        style=discord.ButtonStyle.danger,
+        emoji="🔒",
+        custom_id="quick_support:close_private_thread",
+    )
+    async def close_private_thread(self, interaction: discord.Interaction, button: discord.ui.Button):
+        thread = interaction.channel
+        if not isinstance(thread, discord.Thread):
+            await interaction.response.send_message("This button only works inside a support thread.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await thread.edit(archived=True, locked=True, reason=f"Quick Support closed by {interaction.user}")
+            await interaction.followup.send("🔒 This support case has been closed.", ephemeral=True)
+            print(f"[QUICK SUPPORT] Thread {thread.id} closed by {interaction.user.id}.", flush=True)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            print(f"[QUICK SUPPORT] Could not close thread {thread.id}: {type(exc).__name__}: {exc}", flush=True)
+            await interaction.followup.send("I couldn't close this thread. The bot needs Manage Threads permission.", ephemeral=True)
+
+
 class QuickSupportThreadView(discord.ui.View):
     """Persistent button that opens a private support thread for a Quick Support request."""
 
@@ -5563,7 +5590,9 @@ class QuickSupportThreadView(discord.ui.View):
             await thread.add_user(interaction.user)
             await thread.send(
                 f"🆘 **Quick Support**\nRequest from: {requester.mention}\nSupport: {interaction.user.mention}\n"
-                "You can chat privately here. Only invited members and the server team can view this thread.",
+                "You can chat privately here. Only invited members and the server team can view this thread.\n"
+                "Press **Close Support** when the issue is resolved.",
+                view=QuickSupportCloseView(),
                 allowed_mentions=discord.AllowedMentions.none(),
             )
             request["thread_id"] = str(thread.id)
@@ -5580,8 +5609,9 @@ class QuickSupportThreadView(discord.ui.View):
             )
 
 
-# Register once at startup so buttons on older Quick Support messages keep working after restarts.
+# Register persistent QuickSupport controls so old messages and threads keep working after restarts.
 bot.add_view(QuickSupportThreadView())
+bot.add_view(QuickSupportCloseView())
 
 
 @bot.tree.command(name="ai-knowledge", description="Show the server knowledge currently saved for IronWolf AI")
@@ -5688,7 +5718,7 @@ async def on_message(message: discord.Message):
                         alert_message = await message.channel.send(
                             f"🆘 {quick_role.mention} — {message.author.mention} needs help.",
                             view=QuickSupportThreadView(),
-                            allowed_mentions=discord.AllowedMentions(roles=[quick_role], users=False, everyone=False),
+                            allowed_mentions=discord.AllowedMentions.none(),
                         )
                         data.setdefault("quick_support_requests", {})[str(alert_message.id)] = {
                             "guild_id": str(guild.id),
@@ -9568,6 +9598,34 @@ async def on_ready():
                 print(f"[TICKET VIEW] Could not restore panel view: guild={guild_id} panel={panel_key} error={type(exc).__name__}: {exc}", flush=True)
     print(f"[TICKET VIEW] Persistent ticket panel views restored: {_restored_ticket_panels}.", flush=True)
     print(f"[QUICK SUPPORT] Persistent thread view registered; message_content_intent={bot.intents.message_content}.", flush=True)
+    # Re-open previous Quick Support cases: clear the handled marker and unarchive
+    # their existing private threads without creating duplicate threads or requests.
+    _quick_support_reopened = 0
+    for _request in data.setdefault("quick_support_requests", {}).values():
+        if not isinstance(_request, dict):
+            continue
+        _request.pop("handled_by", None)
+        _thread_id = _request.get("thread_id")
+        _guild_id = _request.get("guild_id")
+        if not (str(_thread_id or "").isdigit() and str(_guild_id or "").isdigit()):
+            continue
+        _guild = bot.get_guild(int(_guild_id))
+        if _guild is None:
+            continue
+        _thread = _guild.get_thread(int(_thread_id))
+        if _thread is None:
+            try:
+                _thread = await _guild.fetch_channel(int(_thread_id))
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                _thread = None
+        if isinstance(_thread, discord.Thread) and _thread.archived:
+            try:
+                await _thread.edit(archived=False, locked=False, reason="Quick Support cases reopened during bot update")
+                _quick_support_reopened += 1
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                print(f"[QUICK SUPPORT] Could not reopen thread {_thread_id}: {type(exc).__name__}: {exc}", flush=True)
+    save_json(DATA_FILE, data)
+    print(f"[QUICK SUPPORT] Previous cases reset; {_quick_support_reopened} archived threads reopened.", flush=True)
     try:
         # Discord allows at most 100 global slash commands. Keep economy commands
         # guild-scoped so they do not prevent the main command set from syncing.
