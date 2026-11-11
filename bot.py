@@ -4938,6 +4938,78 @@ async def social_alert_loop():
         await asyncio.sleep(120)
 
 
+# Additional message-level safeguards: mass mentions and repeated-message spam.
+_message_security_history = defaultdict(deque)
+_message_security_cooldowns = {}
+_NEW_ACCOUNT_ALERT_AGE_SECONDS = 24 * 60 * 60
+_MASS_MENTION_THRESHOLD = 5
+_DUPLICATE_MESSAGE_THRESHOLD = 4
+
+
+async def inspect_message_security(message: discord.Message, cfg: dict) -> bool:
+    """Apply high-confidence anti-spam checks; return True when a message was handled."""
+    if not message.guild or not isinstance(message.author, discord.Member):
+        return False
+    member = message.author
+    if (
+        member.id == message.guild.owner_id
+        or member.guild_permissions.administrator
+        or member.guild_permissions.manage_messages
+        or is_security_trusted(member, cfg)
+    ):
+        return False
+
+    now = time.monotonic()
+    key = (message.guild.id, member.id)
+    if now - _message_security_cooldowns.get(key, 0) < 60:
+        return False
+
+    mentions = len(message.mentions) + len(message.role_mentions)
+    content = " ".join((message.content or "").casefold().split())
+    history = _message_security_history[key]
+    history.append((now, content))
+    while history and now - history[0][0] > 30:
+        history.popleft()
+
+    identical = sum(1 for _, previous in history if content and previous == content)
+    reason = None
+    timeout_minutes = 2
+    if mentions >= _MASS_MENTION_THRESHOLD:
+        reason = f"Mass mention spam: {mentions} user/role mentions in one message."
+        timeout_minutes = 5
+    elif identical >= _DUPLICATE_MESSAGE_THRESHOLD:
+        reason = f"Repeated-message spam: {identical} identical messages within 30 seconds."
+
+    if not reason:
+        return False
+
+    _message_security_cooldowns[key] = now
+    try:
+        await message.delete()
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        pass
+
+    action = "Nachricht gelöscht."
+    try:
+        await member.timeout(
+            datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes),
+            reason=f"IronWolf message security: {reason}",
+        )
+        action += f" Timeout: {timeout_minutes} Minuten."
+    except (discord.Forbidden, discord.HTTPException):
+        action += " Timeout fehlgeschlagen; Moderatoren müssen prüfen."
+
+    await security_log(
+        message.guild,
+        "🛡️ Nachrichtenschutz ausgelöst",
+        f"**Mitglied:** {member.mention} (`{member.id}`)\n"
+        f"**Erkennung:** {reason}\n**Aktion:** {action}\n"
+        f"**Kanal:** {message.channel.mention}",
+        discord.Color.orange(),
+    )
+    return True
+
+
 # ----------------------------- SECURITY: HONEYPOT / ANTI-NUKE / ANTI-RAID -----------------------------
 
 # Rolling counters live in memory; they reset when the bot restarts.
@@ -5829,6 +5901,9 @@ async def on_message(message: discord.Message):
                         pass
                     return
 
+        if await inspect_message_security(message, cfg):
+            return
+
         if cfg.get("automod_enabled", False):
             now_mono = time.monotonic()
             key = (guild.id, message.author.id)
@@ -6512,6 +6587,17 @@ async def on_member_join(member: discord.Member):
         if guild_has_feature(guild_config(member.guild.id), "wolfanalytics"):
             wolfanalytics_record(member.guild.id, "join")
     cfg = guild_config(member.guild.id)
+    if not member.bot:
+        account_age_seconds = max(0, (datetime.now(timezone.utc) - member.created_at).total_seconds())
+        if account_age_seconds < _NEW_ACCOUNT_ALERT_AGE_SECONDS:
+            await security_log(
+                member.guild,
+                "🔎 Neues Discord-Konto beigetreten",
+                f"{member.mention} (`{member.id}`) ist mit einem erst "
+                f"{account_age_seconds / 3600:.1f} Stunden alten Konto beigetreten. "
+                "Hinweis zur Moderatorenprüfung; keine automatische Strafe.",
+                discord.Color.orange(),
+            )
     # Run welcome handling first so other optional modules cannot suppress it.
     await send_welcome_for_member(member, cfg)
     # Assign configured AutoRole roles immediately on join (separate lists for humans and bots).
