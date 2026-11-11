@@ -5901,7 +5901,7 @@ async def on_message(message: discord.Message):
                         pass
                     return
 
-        if await inspect_message_security(message, cfg):
+        if cfg.get("automod_enabled", False) and await inspect_message_security(message, cfg):
             return
 
         if cfg.get("automod_enabled", False):
