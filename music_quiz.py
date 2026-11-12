@@ -28,6 +28,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
     db.execute(
         """CREATE TABLE IF NOT EXISTS musicquiz_songs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             artist TEXT NOT NULL,
             file_path TEXT NOT NULL UNIQUE,
@@ -148,8 +149,8 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
         try:
             await attachment.save(destination)
             db.execute(
-                "INSERT INTO musicquiz_songs(title, artist, file_path, added_by) VALUES (?, ?, ?, ?)",
-                (parts[0][:90], parts[1][:90], str(destination), ctx.author.id),
+                "INSERT INTO musicquiz_songs(guild_id, title, artist, file_path, added_by) VALUES (?, ?, ?, ?, ?)",
+                (ctx.guild.id, parts[0][:90], parts[1][:90], str(destination), ctx.author.id),
             )
             db.commit()
         except Exception as exc:
@@ -166,7 +167,8 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
     @commands.guild_only()
     async def list_songs(ctx):
         songs = db.execute(
-            "SELECT id, title, artist FROM musicquiz_songs ORDER BY title COLLATE NOCASE LIMIT 30"
+            "SELECT id, title, artist FROM musicquiz_songs WHERE guild_id = ? ORDER BY title COLLATE NOCASE LIMIT 30"
+            (ctx.guild.id,),
         ).fetchall()
         if not songs:
             await ctx.reply("Die Songbibliothek ist noch leer. Ein Moderator kann Songs mit musicquiz add hinzufügen.", mention_author=False)
@@ -183,12 +185,12 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
     @commands.has_guild_permissions(manage_guild=True)
     async def remove_song(ctx, song_id: int):
         row = db.execute(
-            "SELECT file_path, title FROM musicquiz_songs WHERE id = ?", (song_id,)
+            "SELECT file_path, title FROM musicquiz_songs WHERE id = ? AND guild_id = ?", (song_id, ctx.guild.id)
         ).fetchone()
         if row is None:
             await ctx.reply("Diese Song-ID wurde nicht gefunden.", mention_author=False)
             return
-        db.execute("DELETE FROM musicquiz_songs WHERE id = ?", (song_id,))
+        db.execute("DELETE FROM musicquiz_songs WHERE id = ? AND guild_id = ?", (song_id, ctx.guild.id))
         db.commit()
         Path(row[0]).unlink(missing_ok=True)
         await ctx.reply(f"{discord.utils.escape_markdown(row[1])} wurde entfernt.", mention_author=False)
@@ -251,7 +253,8 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
             return
 
         songs = db.execute(
-            "SELECT id, title, artist, file_path FROM musicquiz_songs"
+            "SELECT id, title, artist, file_path FROM musicquiz_songs WHERE guild_id = ?"
+            (guild_id,),
         ).fetchall()
         songs = [song for song in songs if Path(song[3]).is_file()]
         if len(songs) < 4:
