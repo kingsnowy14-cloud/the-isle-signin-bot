@@ -4429,6 +4429,7 @@ def guild_page(guild_id):
         ("🎟️ Ticket System", [("🎟️", "Ticket Panels", "Create and manage ticket panels", "/tickets")]),
         ("🧩 Modules", [("🆘", "Quick Support", "Automatic support-team pings in tickets", "/quick-support")]),
         ("📨 Support & Communication", [("🔊", "Temporary Voice", "Create temporary voice rooms from a trigger channel", "/temporary-voice"), ("✉️", "Message Builder", "Create messages, embeds and buttons", "/messages")]),
+        ("🎮 Community & Fun", [("🎮", "Mini-Games", "Launch Counting, Flag Guessing, Dino Quiz, Quiz, Hangman and Word Scramble from the dashboard", "/mini-games")]),
         ("⚙️ Server Tools & Customization", [("📡", "Channels & Logs", "Configure logs and destination channels", "?section=channels#settings-panel"), ("🔊", "Temporary Voice", "Voice triggers and room categories", "/temporary-voice"), ("📊", "Server Statistics", "Live counters in voice channels", "/server-statistics"), ("💰", "Economy", "Economy and shop features", "/economy"), ("🪪", "Member ID Cards", "Member identity cards", "/ausweis")]),
         ("📊 Insights & Administration", [("📈", "Live Statistics", "Activity and command usage", "/stats"), ("⌘", "Commands", "Enable or disable commands", "/commands"), ("📋", "System-Logs", "Configure all server activity logs", "/server-logs"), ("⌘", "Command Log", "Configure command activity logging", "/command-log"), ("📜", "Audit Log", "Review dashboard changes", "/audit-log"), ("🩺", "System Health", "Bot connection and permissions", "/health"), ("🗄️", "Backup & Restore", "Export and restore server settings", "/backup"), ("🧩", "Module Manager", "Enable or disable bot modules", "?section=modules"), ("🛠️", "Module Template", "Create a downloadable module starter", "?section=template")]),
     ]
@@ -6499,6 +6500,93 @@ def guild_games(guild_id):
         '<section class="card"><h2>🏆 Games leaderboard</h2><table><thead><tr><th>#</th><th>Discord User ID</th><th>Points</th></tr></thead><tbody>' + ranking_html + '</tbody></table></section>'
     )
     return _render(guild.name + " · IronWolf Games", body)
+
+
+
+@app.route("/guild/<guild_id>/mini-games", methods=["GET", "POST"])
+def guild_community_minigames(guild_id):
+    """Launch the Evrima community mini-games directly from the dashboard."""
+    guild, response = _authorized_guild(guild_id)
+    if response:
+        return response
+    gid = str(guild.id)
+    cfg = _guild_config(guild.id)
+    games = {
+        "count": ("🔢", "Counting"),
+        "flag": ("🚩", "Flag Guessing"),
+        "dinoquiz": ("🦖", "Dino Quiz"),
+        "quiz": ("🧠", "Quiz"),
+        "hangman": ("🔤", "Hangman"),
+        "scramble": ("🔀", "Word Scramble"),
+    }
+    notice = ""
+    if request.method == "POST":
+        if not _csrf_ok():
+            abort(400, "CSRF validation failed. Please reload the page.")
+        actor = guild.get_member(int(session.get("user_id", "0")))
+        if actor is None or not (actor.guild_permissions.administrator or actor.guild_permissions.manage_guild):
+            abort(403, "You need Administrator or Manage Server permissions.")
+        if not _bot or not getattr(_bot, "loop", None) or not _bot.loop.is_running():
+            abort(503, "The bot is not connected right now.")
+        action = request.form.get("action", "").strip()
+        game = request.form.get("game", "").strip().lower()
+        channel_raw = request.form.get("channel_id", "").strip()
+        if game not in games:
+            abort(400, "Please select a valid mini-game.")
+        if not channel_raw.isdigit():
+            abort(400, "Please select a valid text channel.")
+        channel = guild.get_channel(int(channel_raw))
+        if not isinstance(channel, discord.TextChannel):
+            abort(400, "Please select a valid text channel.")
+        bot_member = guild.me
+        if bot_member is None or not channel.permissions_for(bot_member).send_messages:
+            abort(403, "The bot needs permission to send messages in the selected channel.")
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                _bot.start_dashboard_minigame(guild, channel, game), _bot.loop
+            )
+            result = future.result(timeout=25)
+            notice = '<div class="alert success">✅ ' + html.escape(str(result)) + '</div>'
+            _audit_dashboard_change(guild.id, "Community Mini-Games", session.get("user_id"), str(result))
+        except Exception as exc:
+            notice = '<div class="alert error">⚠️ ' + html.escape(str(exc) or type(exc).__name__)[:500] + '</div>'
+    channel_options = '<option value="">Select a text channel</option>' + "".join(
+        '<option value="' + str(ch.id) + '">#' + html.escape(ch.name) + '</option>'
+        for ch in guild.text_channels
+    )
+    game_options = "".join(
+        '<option value="' + key + '">' + icon + ' ' + title + '</option>'
+        for key, (icon, title) in games.items()
+    )
+    active_rounds = getattr(_bot, "_minigame_active_rounds", {}) if _bot else {}
+    active_rows = []
+    for (active_guild_id, channel_id), state in active_rounds.items():
+        if active_guild_id != guild.id:
+            continue
+        channel = guild.get_channel(channel_id)
+        active_rows.append(
+            '<tr><td>' + html.escape(games.get(state.get("game"), ("🎮", state.get("game", "Game")))[1]) +
+            '</td><td>' + ('#' + html.escape(channel.name) if channel else 'Unknown channel') +
+            '</td><td><span class="pill">RUNNING</span></td></tr>'
+        )
+    active_html = "".join(active_rows) or '<tr><td colspan="3">No mini-game is currently running on this server.</td></tr>'
+    body = (
+        '<section class="card"><span class="pill">COMMUNITY GAMING</span><h1>🎮 Mini-Games Control Center</h1>'
+        '<p>Start and stop all six community mini-games directly from this dashboard. No slash commands are used.</p>'
+        + notice +
+        '<form method="post">' + _csrf_field() +
+        '<label>Mini-game</label><select name="game" required>' + game_options + '</select>'
+        '<label>Discord text channel</label><select name="channel_id" required>' + channel_options + '</select>'
+        '<button type="submit" name="action" value="launch">▶ Start game</button>'
+        '<p class="muted">Select the same game and channel again to stop its active round. Only one game can run in a channel at a time.</p>'
+        '</form></section>'
+        '<section class="card"><h2>🟢 Active games</h2><table><thead><tr><th>Game</th><th>Channel</th><th>Status</th></tr></thead><tbody>' + active_html + '</tbody></table></section>'
+        '<section class="card"><h2>Included games</h2><div class="grid">'
+        + "".join('<article><h3>' + icon + ' ' + title + '</h3></article>' for icon, title in games.values()) +
+        '</div><p>Points, individual leaderboards, the combined leaderboard, automatic next rounds and language menus are handled by the game engine.</p></section>'
+        '<p><a href="/guild/' + gid + '">← Back to server dashboard</a></p>'
+    )
+    return _render(guild.name + " · Mini-Games", body)
 
 
 @app.route("/guild/<guild_id>/economy", methods=["GET", "POST"])
