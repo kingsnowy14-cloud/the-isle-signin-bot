@@ -103,12 +103,12 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
         embed = discord.Embed(
             title="🐺 IronWolf · Guess the Song",
             description=(
-                "musicquiz start [runden] – Spiel starten (du musst im Voice-Channel sein)\n"
-                "musicquiz add Titel | Interpret – Audiodatei als Anhang hinzufügen\n"
-                "musicquiz songs – verfügbare Songs anzeigen\n"
-                "musicquiz remove ID – Song aus der Bibliothek entfernen\n"
-                "musicquiz leaderboard – Top 10 anzeigen\n"
-                "musicquiz stop – laufendes Spiel beenden"
+                "!musicquiz start [runden] – Spiel starten (du musst im Voice-Channel sein)\n"
+                "!musicquiz add Titel | Interpret – Audiodatei als Anhang hinzufügen\n"
+                "!musicquiz songs – verfügbare Songs anzeigen\n"
+                "!musicquiz remove ID – Song aus der Bibliothek entfernen\n"
+                "!musicquiz leaderboard – Top 10 anzeigen\n"
+                "!musicquiz stop – laufendes Spiel beenden"
             ),
             color=discord.Color.blurple(),
         )
@@ -121,14 +121,14 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
     async def add_song(ctx, *, metadata: str):
         if not ctx.message.attachments:
             await ctx.reply(
-                "Bitte hänge eine Audiodatei an. Format: musicquiz add Titel | Interpret",
+                "Bitte hänge eine Audiodatei an. Format: !musicquiz add Titel | Interpret",
                 mention_author=False,
             )
             return
         parts = [part.strip() for part in metadata.split("|", 1)]
         if len(parts) != 2 or not all(parts):
             await ctx.reply(
-                "Bitte nutze das Format musicquiz add Titel | Interpret und hänge die Audiodatei an.",
+                "Bitte nutze das Format !musicquiz add Titel | Interpret und hänge die Audiodatei an.",
                 mention_author=False,
             )
             return
@@ -171,7 +171,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
             (ctx.guild.id,),
         ).fetchall()
         if not songs:
-            await ctx.reply("Die Songbibliothek ist noch leer. Ein Moderator kann Songs mit musicquiz add hinzufügen.", mention_author=False)
+            await ctx.reply("Die Songbibliothek ist noch leer. Ein Moderator kann Songs mit !musicquiz add hinzufügen.", mention_author=False)
             return
         lines = [f"ID {song[0]} · {discord.utils.escape_markdown(song[1])} — {discord.utils.escape_markdown(song[2])}" for song in songs]
         await ctx.reply(embed=discord.Embed(
@@ -205,7 +205,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
             (ctx.guild.id,),
         ).fetchall()
         if not rows:
-            await ctx.reply("Noch keine Punkte vorhanden. Starte mit musicquiz start das erste Quiz!", mention_author=False)
+            await ctx.reply("Noch keine Punkte vorhanden. Starte mit !musicquiz start das erste Quiz!", mention_author=False)
             return
         lines = []
         medals = ["🥇", "🥈", "🥉"]
@@ -404,7 +404,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
                 ) or "Diesmal wurden keine Punkte erzielt."
                 await ctx.send(embed=discord.Embed(
                     title="🏆 IronWolf · Music Quiz beendet",
-                    description=f"Endergebnis:\n{summary}\n\nDauerhafte Rangliste: musicquiz leaderboard",
+                    description=f"Endergebnis:\n{summary}\n\nDauerhafte Rangliste: !musicquiz leaderboard",
                     color=discord.Color.gold(),
                 ), allowed_mentions=discord.AllowedMentions.none())
             else:
@@ -433,7 +433,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
         if isinstance(original, commands.MissingPermissions):
             message = "Für diese Aktion brauchst du die Berechtigung Server verwalten."
         elif isinstance(original, commands.MissingRequiredArgument):
-            message = "Bitte prüfe die Syntax mit musicquiz."
+            message = "Bitte prüfe die Syntax mit !musicquiz."
         elif isinstance(original, commands.BadArgument):
             message = "Bitte gib eine gültige Song-ID beziehungsweise Rundenzahl an."
         else:
