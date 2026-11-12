@@ -253,7 +253,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
             return
 
         songs = db.execute(
-            "SELECT id, title, artist, file_path FROM musicquiz_songs WHERE guild_id = ?"
+            "SELECT id, title, artist, file_path FROM musicquiz_songs WHERE guild_id = ?",
             (guild_id,),
         ).fetchall()
         songs = [song for song in songs if Path(song[3]).is_file()]
