@@ -1022,7 +1022,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
             "Correct numbers get ✅. A wrong number resets the count to **1**. Use /count again to stop."
         )
 
-    @bot.tree.command(name="flag", description="Start a flag guessing round")
+    @register_command(name="flag", description="Start a flag guessing round")
     async def flag_command(interaction: discord.Interaction):
         flag, answer, aliases = random.choice(FLAGS)
         await start_round(
@@ -1030,7 +1030,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
             f"🌍 **Flag Guessing!**\nWhich country does this flag belong to?\n\n# {flag}\n\nType your answer in chat!"
         )
 
-    @bot.tree.command(name="dinoquiz", description="Start an Evrima dinosaur guessing round")
+    @register_command(name="dinoquiz", description="Start an Evrima dinosaur guessing round")
     async def dinoquiz_command(interaction: discord.Interaction):
         question_en, answer, aliases, question_de, answer_de = random.choice(DINO_QUESTIONS)
         await start_round(
@@ -1099,7 +1099,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
             super().__init__(timeout=1800)
             self.add_item(QuizLanguageSelect(question, options))
 
-    @bot.tree.command(name="quiz", description="Start a general gaming and knowledge quiz")
+    @register_command(name="quiz", description="Start a general gaming and knowledge quiz")
     async def quiz_command(interaction: discord.Interaction):
         question, options, correct_index = random.choice(QUIZ_QUESTIONS)
         labels = ["A", "B", "C", "D"]
@@ -1118,7 +1118,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
             except discord.HTTPException:
                 pass
 
-    @bot.tree.command(name="wordscramble", description="Start or stop an English word scramble game")
+    @register_command(name="wordscramble", description="Start or stop an English word scramble game")
     async def wordscramble_command(interaction: discord.Interaction):
         word = random.choice(SCRAMBLE_WORDS)
         scrambled = _scramble_word(word)
@@ -1127,7 +1127,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
             f"🔀 **Word Scramble!**\nUnscramble the letters to find the English word:\n\n**{scrambled}**\n\nType your answer in chat! The first correct answer earns **2 points**. Use /wordscramble again to stop."
         )
 
-    @bot.tree.command(name="hangman", description="Start an English hangman word game")
+    @register_command(name="hangman", description="Start an English hangman word game")
     async def hangman_command(interaction: discord.Interaction):
         word = random.choice(HANGMAN_WORDS)
         state = {"word": word, "guessed": set(), "wrong": 0, "max_wrong": 6}
@@ -1147,7 +1147,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
         app_commands.Choice(name="Word Scramble", value="scramble"),
     ]
 
-    @bot.tree.command(name="resetminigames", description="Reset all mini-game scores and leaderboards")
+    @register_command(name="resetminigames", description="Reset all mini-game scores and leaderboards")
     @app_commands.default_permissions(administrator=True)
     async def resetminigames_command(interaction: discord.Interaction):
         if interaction.guild is None:
@@ -1195,7 +1195,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
             "The bot's code and other features are unchanged. New scores start from zero."
         )
 
-    @bot.tree.command(name="leaderboard", description="Show the leaderboard for a mini-game")
+    @register_command(name="leaderboard", description="Show the leaderboard for a mini-game")
     @app_commands.describe(game="Choose which game's leaderboard to view")
     @app_commands.choices(game=game_choices)
     async def leaderboard_command(interaction: discord.Interaction, game: app_commands.Choice[str]):
@@ -1220,7 +1220,7 @@ def setup_minigames(bot: commands.Bot, db: sqlite3.Connection, register_commands
         )
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="mystats", description="Show your mini-game statistics")
+    @register_command(name="mystats", description="Show your mini-game statistics")
     async def mystats_command(interaction: discord.Interaction):
         if interaction.guild_id is None:
             await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
