@@ -61,6 +61,11 @@ bot = GuildGateBot(command_prefix=("!", "."), intents=intents, case_insensitive=
 from community_minigames import setup_minigames
 _MINIGAME_DB = sqlite3.connect(data_path("community_minigames.sqlite3"), check_same_thread=False)
 setup_minigames(bot, _MINIGAME_DB, register_commands=False)
+
+# Voice-based Guess the Song community game.
+from music_quiz import setup_music_quiz
+_MUSIC_QUIZ_DB = sqlite3.connect(data_path("music_quiz.sqlite3"), check_same_thread=False)
+setup_music_quiz(bot, _MUSIC_QUIZ_DB)
 _automation_worker_task = None
 _team_ban_expiry_task = None
 _birthday_worker_task = None
