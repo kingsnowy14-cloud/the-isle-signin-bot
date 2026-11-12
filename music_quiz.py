@@ -167,7 +167,7 @@ def setup_music_quiz(bot: commands.Bot, db: sqlite3.Connection) -> None:
     @commands.guild_only()
     async def list_songs(ctx):
         songs = db.execute(
-            "SELECT id, title, artist FROM musicquiz_songs WHERE guild_id = ? ORDER BY title COLLATE NOCASE LIMIT 30"
+            "SELECT id, title, artist FROM musicquiz_songs WHERE guild_id = ? ORDER BY title COLLATE NOCASE LIMIT 30",
             (ctx.guild.id,),
         ).fetchall()
         if not songs:
