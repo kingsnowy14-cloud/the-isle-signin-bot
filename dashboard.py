@@ -1732,7 +1732,9 @@ def public_privacy_policy():
     <section class="card">
       <h1>IronWolf – Datenschutzerklärung</h1>
       <p><strong>Stand:</strong> 17. Oktober 2026</p>
-      <p>IronWolf ist ein Discord-Bot mit einer Weboberfläche zur Kontoverifizierung. Diese Erklärung beschreibt die Verarbeitung bei der freiwilligen Verknüpfung eines Roblox-Kontos mit einem Discord-Konto.</p>
+      <p>IronWolf ist ein Discord-Bot mit einer Weboberfläche zur Kontoverifizierung. Diese Erklärung beschreibt die Verarbeitung bei der freiwilligen Verknüpfung eines Roblox-Kontos mit einem Discord-Konto sowie bei der Nutzung des Web-Dashboards.</p>
+      <h2>Website-Besuche im Dashboard</h2>
+      <p>Wenn du im Dashboard mit Discord angemeldet bist, werden dein Discord-Anzeigename, die aufgerufene Seite sowie Datum und Uhrzeit des Besuchs (UTC) für die Website-Statistik gespeichert. Diese namentlichen Besuchseinträge sind nur für den autorisierten Administrator sichtbar. Nicht angemeldete Besucher werden nicht namentlich erfasst; ihre Aufrufe fließen nur in zusammengefasste Statistiken ein. Für diese Besuchseinträge werden keine IP-Adressen oder Browser-Fingerprints gespeichert. Der Betreiber muss die anwendbare Rechtsgrundlage und eine angemessene Speicherdauer vor dem produktiven Einsatz festlegen.</p>
       <h2>Welche Daten verarbeitet werden</h2>
       <ul>
         <li>Discord-Nutzer-ID und gegebenenfalls die Discord Servers-ID, um die Verknüpfung dem richtigen Konto und Server zuzuordnen.</li>
