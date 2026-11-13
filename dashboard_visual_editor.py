@@ -67,7 +67,7 @@ def register_visual_editor(app, data_path):
             if not isinstance(value, dict) or len(value) > limit:
                 return jsonify({"error": "invalid " + name}), 400
             cleaned[name] = value
-        for key, value in cleaned["content"].items():
+        for key, value in cleaned["changes"].items():
             if not isinstance(key, str) or len(key) > 600 or not isinstance(value, str) or len(value) > 50000:
                 return jsonify({"error": "invalid content"}), 400
         for key, value in cleaned["images"].items():
@@ -92,8 +92,15 @@ def register_visual_editor(app, data_path):
                     raise ValueError()
             except (TypeError, ValueError):
                 return jsonify({"error": "invalid position"}), 400
+        saved_state = {
+            "content": cleaned["changes"],
+            "tierPrices": cleaned["tierPrices"],
+            "layout": cleaned["layout"],
+            "images": cleaned["images"],
+            "styles": cleaned["styles"],
+        }
         with _LOCK:
-            write_state(cleaned)
+            write_state(saved_state)
         return jsonify({"ok": True, "saved": True})
 
     @bp.get("/api/visual-edits-public")
