@@ -1316,9 +1316,11 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
     # English onboarding hint is sent immediately after the ticket controls.
     staff_ping = f"{support_role.mention} " if support_role else ""
     await channel.send(
-        f"{staff_ping}👋 **Welcome, {interaction.user.mention}!** Thanks for contacting support.\n"
-        "Please describe your issue and include any relevant details.\n\n"
-        "Our support team will assist you as soon as possible.",
+        f"{staff_ping}👋 **Welcome to IronWolf Support, {interaction.user.mention}!**\n\n"
+        "Thank you for reaching out. Please describe your issue clearly and include any relevant information, screenshots, or steps to reproduce the problem.\n\n"
+        "🛡️ **What happens next?**\n"
+        "A member of our support team will review your request and reply here as soon as possible. Please keep all related details in this ticket so we can help you faster.\n\n"
+        "💙 Thank you for your patience!",
         allowed_mentions=discord.AllowedMentions(
             users=[interaction.user],
             roles=[support_role] if support_role else [],
@@ -1497,7 +1499,7 @@ def ticket_status_embed(meta, channel_id=None):
     claimed_by = meta.get("claimed_by")
     embed = discord.Embed(
         title=f"🎫 Ticket — {str(meta.get('label') or 'Support')[:220]}",
-        description="Use the buttons below to manage this ticket. The support team will assist you as soon as possible.",
+        description="Welcome! Please use this channel to explain your issue and share any helpful details. Our support team will review your request and get back to you as soon as possible.\n\n**Support controls** are available below for authorized staff.",
         color=discord.Color.blurple(),
     )
     embed.add_field(name="Category", value=str(meta.get("label") or "Ticket")[:100], inline=True)
@@ -1506,35 +1508,58 @@ def ticket_status_embed(meta, channel_id=None):
     return embed
 
 
-class TicketMemberAccessModal(discord.ui.Modal):
-    def __init__(self, add: bool):
-        self.add_member = add
-        super().__init__(title="Add User to Ticket" if add else "Remove User from Ticket")
-        self.member_input = discord.ui.TextInput(
-            label="Member ID or @mention",
-            placeholder="Enter a Discord user ID or mention",
-            required=True,
-            max_length=32,
+class TicketAddUserSelect(discord.ui.UserSelect):
+    def __init__(self):
+        super().__init__(
+            placeholder="Select a server member to add",
+            min_values=1,
+            max_values=1,
+            custom_id="ticket:add_user:select",
         )
-        self.add_item(self.member_input)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        raw_value = str(self.member_input.value).strip()
-        match = re.fullmatch(r"<@!?(\\d+)>", raw_value)
-        member_id = int(match.group(1) if match else raw_value) if (match or raw_value.isdigit()) else None
-        if member_id is None:
-            await interaction.response.send_message("Please enter a valid Discord user ID or @mention.", ephemeral=True)
-            return
-        member = interaction.guild.get_member(member_id) if interaction.guild else None
-        if member is None and interaction.guild:
-            try:
-                member = await interaction.guild.fetch_member(member_id)
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                member = None
+    async def callback(self, interaction: discord.Interaction):
+        await _change_ticket_member(interaction, self.values[0], True)
+
+
+class TicketAddUserView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=180)
+        self.add_item(TicketAddUserSelect())
+
+
+class TicketRemoveUserSelect(discord.ui.Select):
+    def __init__(self, members):
+        self.member_ids = {str(member.id): member for member in members}
+        options = [
+            discord.SelectOption(
+                label=(member.display_name or member.name)[:100],
+                description=f"@{member.name}"[:100],
+                value=str(member.id),
+            )
+            for member in members[:25]
+        ]
+        super().__init__(
+            placeholder="Select an added member to remove",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="ticket:remove_user:select",
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        member = self.member_ids.get(self.values[0])
         if member is None:
-            await interaction.response.send_message("That member could not be found in this server.", ephemeral=True)
+            await interaction.response.send_message(
+                "That member is no longer available in this ticket.", ephemeral=True
+            )
             return
-        await _change_ticket_member(interaction, member, self.add_member)
+        await _change_ticket_member(interaction, member, False)
+
+
+class TicketRemoveUserView(discord.ui.View):
+    def __init__(self, members):
+        super().__init__(timeout=180)
+        self.add_item(TicketRemoveUserSelect(members))
 
 
 class TicketControlView(discord.ui.View):
@@ -1564,7 +1589,7 @@ class TicketControlView(discord.ui.View):
 
         add_button = discord.ui.Button(
             label="Add User",
-            style=discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.success,
             emoji="➕",
             custom_id="ticket:add_user",
             row=1,
@@ -1574,7 +1599,7 @@ class TicketControlView(discord.ui.View):
 
         remove_button = discord.ui.Button(
             label="Remove User",
-            style=discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.danger,
             emoji="➖",
             custom_id="ticket:remove_user",
             row=1,
@@ -1590,7 +1615,11 @@ class TicketControlView(discord.ui.View):
         if not is_support(interaction.user, meta, interaction.guild):
             await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
             return
-        await interaction.response.send_modal(TicketMemberAccessModal(add=True))
+        await interaction.response.send_message(
+            "👤 **Add a member to this ticket**\nChoose a server member from the list below. They will immediately receive access to this ticket.",
+            view=TicketAddUserView(),
+            ephemeral=True,
+        )
 
     async def remove_user(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
@@ -1600,7 +1629,34 @@ class TicketControlView(discord.ui.View):
         if not is_support(interaction.user, meta, interaction.guild):
             await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
             return
-        await interaction.response.send_modal(TicketMemberAccessModal(add=False))
+        channel = interaction.channel
+        owner_id = meta.get("owner_id")
+        added_members = []
+        if isinstance(channel, discord.TextChannel):
+            for target, overwrite in channel.overwrites.items():
+                if (
+                    isinstance(target, discord.Member)
+                    and target.id != owner_id
+                    and (overwrite.view_channel is True or overwrite.send_messages is True)
+                ):
+                    added_members.append(target)
+        elif isinstance(channel, discord.Thread):
+            added_members = [
+                member for member in channel.members
+                if member.id != owner_id and not is_support(member, meta, interaction.guild)
+            ]
+        added_members.sort(key=lambda member: (member.display_name or member.name).casefold())
+        if not added_members:
+            await interaction.response.send_message(
+                "There are no individually added members to remove from this ticket.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            "👥 **Remove a member from this ticket**\nChoose one of the members who has been given access. Their ticket access will be removed immediately.",
+            view=TicketRemoveUserView(added_members),
+            ephemeral=True,
+        )
 
     async def claim(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
