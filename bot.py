@@ -1564,6 +1564,16 @@ class TicketControlView(discord.ui.View):
         claim_button.callback = self.claim
         self.add_item(claim_button)
 
+        release_button = discord.ui.Button(
+            label="Release",
+            style=discord.ButtonStyle.success,
+            emoji="🔓",
+            custom_id="ticket:release",
+            row=0,
+        )
+        release_button.callback = self.release
+        self.add_item(release_button)
+
         add_button = discord.ui.Button(
             label="Add User",
             style=discord.ButtonStyle.secondary,
