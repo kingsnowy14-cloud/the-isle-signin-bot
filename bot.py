@@ -1464,7 +1464,7 @@ class TicketPanelView(discord.ui.View):
             self.add_item(button)
 
 
-class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
+class TicketInternalNoteModal(discord.ui.Modal, title="Internal Team Note"):
     note = discord.ui.TextInput(
         label="Note (support team only)",
         style=discord.TextStyle.paragraph,
@@ -1492,25 +1492,53 @@ class TicketInternalNoteModal(discord.ui.Modal, title="Interne Teamnotiz"):
 
 
 def ticket_status_embed(meta, channel_id=None):
-    """Build the compact, single-source ticket summary shown above the controls."""
-    ticket_id = meta.get("ticket_number") or channel_id or "Unknown"
+    """Build the compact ticket summary shown above the controls."""
     owner_id = meta.get("owner_id")
     claimed_by = meta.get("claimed_by")
+    category = str(meta.get("label") or "Support")[:100]
     embed = discord.Embed(
-        title="🎫 Ticket Information",
+        title=f"🎫 Ticket — {category}",
         description=(
-            "**Ticket commands**\n"
-            "• /add @user — give another member access to this private ticket\n"
-            "• /remove @user — remove a member from this private ticket\n"
-            "• Use the Close Ticket button below when your request is resolved."
+            "Please describe your issue and include any relevant details.\n\n"
+            "**Ticket access:** Support staff can use **Add User** or **Remove User** below.\n"
+            "**Closing:** Use **Close** when your request has been resolved."
         ),
         color=discord.Color.blurple(),
     )
-    embed.add_field(name="Category", value=str(meta.get("label") or "Ticket")[:100], inline=True)
-    embed.add_field(name="Ticket ID", value=str(ticket_id), inline=True)
     embed.add_field(name="Opened by", value=f"<@{owner_id}>" if owner_id else "Unknown", inline=True)
     embed.add_field(name="Claimed by", value=f"<@{claimed_by}>" if claimed_by else "Nobody", inline=True)
     return embed
+
+
+class TicketMemberModal(discord.ui.Modal):
+    def __init__(self, add: bool):
+        self.add_member = add
+        action = "Add User" if add else "Remove User"
+        super().__init__(title=action)
+        self.member_input = discord.ui.TextInput(
+            label="Member mention or ID",
+            placeholder="@member or Discord user ID",
+            max_length=32,
+            required=True,
+        )
+        self.add_item(self.member_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.guild is None:
+            await interaction.response.send_message("This action can only be used in a server.", ephemeral=True)
+            return
+        match = re.search(r"\d{15,22}", str(self.member_input.value))
+        if not match:
+            await interaction.response.send_message("Enter a valid member mention or Discord user ID.", ephemeral=True)
+            return
+        try:
+            member = interaction.guild.get_member(int(match.group(0)))
+            if member is None:
+                member = await interaction.guild.fetch_member(int(match.group(0)))
+        except (discord.NotFound, discord.HTTPException, ValueError):
+            await interaction.response.send_message("That member could not be found in this server.", ephemeral=True)
+            return
+        await _change_ticket_member(interaction, member, self.add_member)
 
 
 class TicketControlView(discord.ui.View):
@@ -1519,7 +1547,7 @@ class TicketControlView(discord.ui.View):
 
         # Put the close action first so it is immediately visible at the top of the ticket.
         close_button = discord.ui.Button(
-            label="Close Ticket",
+            label="Close",
             style=discord.ButtonStyle.danger,
             emoji="🔒",
             custom_id="ticket:close",
@@ -1538,15 +1566,45 @@ class TicketControlView(discord.ui.View):
         claim_button.callback = self.claim
         self.add_item(claim_button)
 
-        release_button = discord.ui.Button(
-            label="Release",
+        add_button = discord.ui.Button(
+            label="Add User",
             style=discord.ButtonStyle.secondary,
-            emoji="🔓",
-            custom_id="ticket:release",
+            emoji="➕",
+            custom_id="ticket:add_user",
             row=0,
         )
-        release_button.callback = self.release
-        self.add_item(release_button)
+        add_button.callback = self.add_user
+        self.add_item(add_button)
+
+        remove_button = discord.ui.Button(
+            label="Remove User",
+            style=discord.ButtonStyle.secondary,
+            emoji="➖",
+            custom_id="ticket:remove_user",
+            row=0,
+        )
+        remove_button.callback = self.remove_user
+        self.add_item(remove_button)
+
+    async def add_user(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta:
+            await interaction.response.send_message("Ticket data not found.", ephemeral=True)
+            return
+        if not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketMemberModal(add=True))
+
+    async def remove_user(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta:
+            await interaction.response.send_message("Ticket data not found.", ephemeral=True)
+            return
+        if not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketMemberModal(add=False))
 
     async def claim(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
