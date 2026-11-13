@@ -860,7 +860,7 @@ def _page(title, body):
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)} · IronWolf</title>
+<title>{html.escape(title)} · IronWolf</title>{editor_head}
 <style>
 :root{{--bg:#080b12;--panel:#101725;--panel2:#151f30;--text:#f2f5fb;--muted:#98a7bd;--accent:#72c7ff;--accent2:#b7e5ff;--border:rgba(154,177,211,.17);--shadow:0 22px 70px rgba(0,0,0,.34);--glow:rgba(91,141,255,.14);}}
 *{{box-sizing:border-box}}html{{scroll-behavior:smooth;scroll-padding-top:100px}}
