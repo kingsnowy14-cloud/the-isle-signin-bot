@@ -57,6 +57,10 @@ _guild_cache_lock = threading.Lock()
 _GUILD_CACHE_TTL = 45
 _GUILD_CACHE_STALE_TTL = 300
 
+from dashboard_visual_editor import register_visual_editor
+register_visual_editor(app, data_path)
+
+
 TEXT_SETTINGS = {
     "welcome_message": {
         "label": "Welcome message",
@@ -841,6 +845,17 @@ def _page(title, body):
         + ('<form class="nav-logout" method="post" action="/logout">' + _csrf_field() + '<button type="submit" class="nav-logout-button">Logout</button></form>' if logged_in else '<a href="/login">Login</a>')
         + '</nav>'
     )
+    editor_admin = str(session.get("user_id", "")) == "1493110334280564807"
+    editor_csrf = ""
+    if editor_admin:
+        editor_csrf = session.get("visual_editor_csrf") or secrets.token_urlsafe(32)
+        session["visual_editor_csrf"] = editor_csrf
+    editor_assets = (
+        '<script src="/static/visual-edits.js" defer></script>'
+        + ('<meta name="visual-editor-csrf" content="' + html.escape(editor_csrf, quote=True) + '">'
+           '<link rel="stylesheet" href="/static/visual-editor.css">'
+           '<script src="/static/visual-editor.js" defer></script>' if editor_admin else '')
+    )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} · IronWolf</title>
@@ -1110,7 +1125,7 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
   }},{{passive:true}});
  }}
 }})();
-</script></body></html>"""
+</script>{editor_assets}</body></html>"""
 
 
 
