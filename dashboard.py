@@ -858,6 +858,8 @@ def _page(title, body):
         '<script src="/static/visual-edits.js" defer></script>'
         + ('<script src="/static/visual-editor.js" defer></script>' if editor_admin else '')
     )
+    if editor_admin:
+        nav = nav.replace('</nav>', '<a class="nav-server" href="/admin/website-statistics">📊 Website stats</a></nav>')
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)} · IronWolf</title>{editor_head}
@@ -1684,6 +1686,32 @@ def _render(title, body, status=200):
     return response
 
 
+
+@app.route("/admin/website-statistics")
+def website_statistics():
+    if str(session.get("user_id", "")) != "1493110334280564807":
+        abort(403)
+    with sqlite3.connect(str(data_path("website_page_views.sqlite3")), timeout=10) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS page_views (day TEXT NOT NULL, path TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(day,path))")
+        total = conn.execute("SELECT COALESCE(SUM(views),0) FROM page_views").fetchone()[0]
+        today = conn.execute("SELECT COALESCE(SUM(views),0) FROM page_views WHERE day=date('now')").fetchone()[0]
+        daily = conn.execute("SELECT day,SUM(views) FROM page_views GROUP BY day ORDER BY day DESC LIMIT 30").fetchall()
+        pages = conn.execute("SELECT path,SUM(views) FROM page_views GROUP BY path ORDER BY SUM(views) DESC LIMIT 20").fetchall()
+    daily_rows = "".join("<tr><td>" + html.escape(str(day)) + "</td><td>" + str(int(count)) + "</td></tr>" for day,count in daily)
+    page_rows = "".join("<tr><td>" + html.escape(str(path)) + "</td><td>" + str(int(count)) + "</td></tr>" for path,count in pages)
+    body = (
+        '<section class="card"><h1>📊 Website Statistics</h1>'
+        '<div class="dashboard-metrics"><div class="dashboard-metric"><strong>' + str(int(total)) + '</strong><span>Total page views</span></div>'
+        '<div class="dashboard-metric"><strong>' + str(int(today)) + '</strong><span>Today (UTC)</span></div></div>'
+        '<h2>Last 30 days</h2><table><tr><th>Date (UTC)</th><th>Page views</th></tr>'
+        + (daily_rows or '<tr><td colspan="2">No data yet</td></tr>') + '</table>'
+        '<h2>Most visited pages</h2><table><tr><th>Page</th><th>Views</th></tr>'
+        + (page_rows or '<tr><td colspan="2">No data yet</td></tr>') + '</table>'
+        '<p class="muted">Only aggregated page-view counts are stored. No IP addresses or visitor profiles are collected.</p></section>'
+    )
+    return _render("Website Statistics", body)
+
+
 @app.route("/privacy")
 def public_privacy_policy():
     """Public privacy notice for Roblox OAuth review."""
@@ -1958,7 +1986,19 @@ def _guild_roles(guild):
 
 @app.before_request
 def log_dashboard_navigation():
-    """Log module-page requests to diagnose unexpected dashboard redirects."""
+    """Log module-page requests and count anonymous aggregate website views."""
+    if request.method == "GET":
+        path = request.path or "/"
+        ignored = ("/static/", "/api/", "/uploads/", "/admin/website-statistics")
+        assets = (".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico", ".woff", ".woff2", ".map")
+        if not path.startswith(ignored) and path not in {"/favicon.ico", "/robots.txt"} and not path.lower().endswith(assets):
+            try:
+                with sqlite3.connect(str(data_path("website_page_views.sqlite3")), timeout=10) as conn:
+                    conn.execute("PRAGMA busy_timeout=10000")
+                    conn.execute("CREATE TABLE IF NOT EXISTS page_views (day TEXT NOT NULL, path TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(day,path))")
+                    conn.execute("INSERT INTO page_views(day,path,views) VALUES(date('now'),?,1) ON CONFLICT(day,path) DO UPDATE SET views=views+1", (path[:300],))
+            except sqlite3.Error as exc:
+                print(f"[WEBSITE STATS] Could not record page view: {type(exc).__name__}", flush=True)
     if request.path.startswith("/guild/"):
         print(
             f"[DASHBOARD NAV] {request.method} {request.path} "
