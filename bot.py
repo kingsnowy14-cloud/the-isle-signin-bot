@@ -1318,8 +1318,6 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
     await channel.send(
         f"{staff_ping}👋 **Welcome, {interaction.user.mention}!** Thanks for contacting support.\n"
         "Please describe your issue and include any relevant details.\n\n"
-        "**Ticket access:** Support staff can use the Add User and Remove User buttons below.\n"
-        "**Closing:** Press the 🔒 Close Ticket button when your request is resolved.\n"
         "Our support team will assist you as soon as possible.",
         allowed_mentions=discord.AllowedMentions(
             users=[interaction.user],
