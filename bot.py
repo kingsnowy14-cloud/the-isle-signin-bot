@@ -1508,34 +1508,50 @@ def ticket_status_embed(meta, channel_id=None):
     return embed
 
 
-class TicketMemberAccessModal(discord.ui.Modal):
-    def __init__(self, add: bool):
-        self.add_member = add
-        super().__init__(title="Add User to Ticket" if add else "Remove User from Ticket")
-        self.member_input = discord.ui.TextInput(
-            label="Member ID or @mention",
-            placeholder="Enter a Discord user ID or mention",
-            required=True,
-            max_length=32,
-        )
-        self.add_item(self.member_input)
+class TicketMemberSelectView(discord.ui.View):
+    """Ephemeral member picker used by the Add User and Remove User ticket buttons."""
 
-    async def on_submit(self, interaction: discord.Interaction):
-        raw_value = str(self.member_input.value).strip()
-        match = re.fullmatch(r"<@!?(\\d+)>", raw_value)
-        member_id = int(match.group(1) if match else raw_value) if (match or raw_value.isdigit()) else None
-        if member_id is None:
-            await interaction.response.send_message("Please enter a valid Discord user ID or @mention.", ephemeral=True)
+    def __init__(self, add: bool):
+        super().__init__(timeout=180)
+        self.add_member = add
+        self.member_select = discord.ui.UserSelect(
+            placeholder="Choose a server member",
+            min_values=1,
+            max_values=1,
+        )
+        self.member_select.callback = self.select_member
+        self.add_item(self.member_select)
+
+    async def select_member(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("This action is only available inside a server.", ephemeral=True)
             return
-        member = interaction.guild.get_member(member_id) if interaction.guild else None
-        if member is None and interaction.guild:
+        member = self.member_select.values[0]
+        if not isinstance(member, discord.Member):
             try:
-                member = await interaction.guild.fetch_member(member_id)
+                member = await interaction.guild.fetch_member(member.id)
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                member = None
-        if member is None:
-            await interaction.response.send_message("That member could not be found in this server.", ephemeral=True)
-            return
+                await interaction.response.send_message("That member could not be found in this server.", ephemeral=True)
+                return
+
+        if not self.add_member:
+            channel = interaction.channel
+            has_direct_access = False
+            if isinstance(channel, discord.TextChannel):
+                has_direct_access = channel.overwrites_for(member).view_channel is True
+            elif isinstance(channel, discord.Thread):
+                try:
+                    await channel.fetch_member(member.id)
+                    has_direct_access = True
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    has_direct_access = False
+            if not has_direct_access:
+                await interaction.response.send_message(
+                    "That member does not have direct access to this ticket.",
+                    ephemeral=True,
+                )
+                return
+
         await _change_ticket_member(interaction, member, self.add_member)
 
 
@@ -1602,7 +1618,11 @@ class TicketControlView(discord.ui.View):
         if not is_support(interaction.user, meta, interaction.guild):
             await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
             return
-        await interaction.response.send_modal(TicketMemberAccessModal(add=True))
+        await interaction.response.send_message(
+            "Select the member who should get access to this ticket:",
+            view=TicketMemberSelectView(add=True),
+            ephemeral=True,
+        )
 
     async def remove_user(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
@@ -1612,7 +1632,11 @@ class TicketControlView(discord.ui.View):
         if not is_support(interaction.user, meta, interaction.guild):
             await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
             return
-        await interaction.response.send_modal(TicketMemberAccessModal(add=False))
+        await interaction.response.send_message(
+            "Select the member whose access to this ticket should be removed:",
+            view=TicketMemberSelectView(add=False),
+            ephemeral=True,
+        )
 
     async def claim(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
