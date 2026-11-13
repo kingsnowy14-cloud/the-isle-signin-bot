@@ -82,7 +82,7 @@ def register_visual_editor(app, data_path):
             for prop, value in style.items():
                 if prop not in allowed or not isinstance(value, str) or len(value) > 180:
                     return jsonify({"error": "invalid style property"}), 400
-                if re.search(r"url\\s*\\(|expression|javascript", value, re.I):
+                if re.search(r"url\s*\(|expression|javascript", value, re.I):
                     return jsonify({"error": "invalid style value"}), 400
         for key, pos in cleaned["layout"].items():
             if not isinstance(key, str) or not isinstance(pos, dict):
@@ -139,7 +139,7 @@ def register_visual_editor(app, data_path):
 
     @bp.get("/uploads/<path:filename>")
     def visual_editor_upload_file(filename):
-        if not re.fullmatch(r"[a-f0-9]{32}\\.(png|jpg|jpeg|gif|webp)", filename):
+        if not re.fullmatch(r"[a-f0-9]{32}\.(png|jpg|jpeg|gif|webp)", filename):
             abort(404)
         path = upload_dir / filename
         if not path.is_file():
