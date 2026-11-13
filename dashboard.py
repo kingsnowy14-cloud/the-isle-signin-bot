@@ -1697,6 +1697,17 @@ def website_statistics():
         today = conn.execute("SELECT COALESCE(SUM(views),0) FROM page_views WHERE day=date('now')").fetchone()[0]
         daily = conn.execute("SELECT day,SUM(views) FROM page_views GROUP BY day ORDER BY day DESC LIMIT 30").fetchall()
         pages = conn.execute("SELECT path,SUM(views) FROM page_views GROUP BY path ORDER BY SUM(views) DESC LIMIT 20").fetchall()
+        conn.execute("""CREATE TABLE IF NOT EXISTS website_visitor_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visited_at TEXT NOT NULL,
+            discord_name TEXT NOT NULL,
+            path TEXT NOT NULL
+        )""")
+        visitors = conn.execute("SELECT discord_name,visited_at,path FROM website_visitor_events ORDER BY id DESC LIMIT 200").fetchall()
+    visitor_rows = "".join(
+        "<tr><td>" + html.escape(str(name)) + "</td><td>" + html.escape(str(stamp).replace("T", " ") + " UTC") + "</td><td>" + html.escape(str(path)) + "</td></tr>"
+        for name,stamp,path in visitors
+    )
     daily_rows = "".join("<tr><td>" + html.escape(str(day)) + "</td><td>" + str(int(count)) + "</td></tr>" for day,count in daily)
     page_rows = "".join("<tr><td>" + html.escape(str(path)) + "</td><td>" + str(int(count)) + "</td></tr>" for path,count in pages)
     body = (
@@ -1707,7 +1718,9 @@ def website_statistics():
         + (daily_rows or '<tr><td colspan="2">No data yet</td></tr>') + '</table>'
         '<h2>Most visited pages</h2><table><tr><th>Page</th><th>Views</th></tr>'
         + (page_rows or '<tr><td colspan="2">No data yet</td></tr>') + '</table>'
-        '<p class="muted">Only aggregated page-view counts are stored. No IP addresses or visitor profiles are collected.</p></section>'
+        '<h2>Recent signed-in visitors</h2><table><tr><th>Discord name</th><th>Date &amp; time</th><th>Page</th></tr>'
+        + (visitor_rows or '<tr><td colspan="3">No signed-in visits recorded yet</td></tr>') + '</table>'
+        '<p class="muted">Named visit records are created only for users signed in with Discord. Visitors who are not signed in are not identified. Times are UTC.</p></section>'
     )
     return _render("Website Statistics", body)
 
@@ -1997,6 +2010,18 @@ def log_dashboard_navigation():
                     conn.execute("PRAGMA busy_timeout=10000")
                     conn.execute("CREATE TABLE IF NOT EXISTS page_views (day TEXT NOT NULL, path TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(day,path))")
                     conn.execute("INSERT INTO page_views(day,path,views) VALUES(date('now'),?,1) ON CONFLICT(day,path) DO UPDATE SET views=views+1", (path[:300],))
+                    discord_name = str(session.get("discord_username", "")).strip()
+                    if discord_name:
+                        conn.execute("""CREATE TABLE IF NOT EXISTS website_visitor_events (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            visited_at TEXT NOT NULL,
+                            discord_name TEXT NOT NULL,
+                            path TEXT NOT NULL
+                        )""")
+                        conn.execute(
+                            "INSERT INTO website_visitor_events(visited_at,discord_name,path) VALUES(?,?,?)",
+                            (datetime.now(timezone.utc).isoformat(timespec="seconds"), discord_name[:100], path[:300]),
+                        )
             except sqlite3.Error as exc:
                 print(f"[WEBSITE STATS] Could not record page view: {type(exc).__name__}", flush=True)
     if request.path.startswith("/guild/"):
@@ -2445,7 +2470,9 @@ def callback():
     if token_data.get("refresh_token"):
         session["refresh_token"] = token_data["refresh_token"]
     session["access_token_expires_at"] = time.time() + int(token_data.get("expires_in", 604800))
-    session["user_id"] = str(profile.json().get("id", ""))
+    profile_data = profile.json()
+    session["user_id"] = str(profile_data.get("id", ""))
+    session["discord_username"] = str(profile_data.get("global_name") or profile_data.get("username") or "Discord user")[:100]
     session["csrf_token"] = secrets.token_urlsafe(32)
     return redirect(url_for("index"))
 
