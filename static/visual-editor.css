@@ -1,0 +1,173 @@
+.visual-edit-launch{background:#8f1c34;border-color:#d72b3f;color:#fff;cursor:pointer;font:800 11px Inter,Arial,sans-serif}
+.visual-edit-launch:hover{background:#b52340}
+.visual-editor-bar{position:fixed;z-index:10000;left:50%;bottom:18px;transform:translateX(-50%);display:none;align-items:center;gap:12px;max-width:calc(100vw - 24px);padding:12px 16px;border:1px solid #8b3447;border-radius:10px;background:#171216;box-shadow:0 12px 50px #000b;color:#fff;font:600 12px Inter,Arial,sans-serif}
+.visual-editor-bar.is-visible{display:flex}
+.visual-editor-bar button{border:0;border-radius:6px;padding:10px 13px;background:#d72b3f;color:#fff;font-weight:800;cursor:pointer}
+.visual-editor-bar button.secondary{background:#302329;border:1px solid #59404a}
+.visual-editor-status{color:#c8b9be;min-width:72px}
+body.visual-editing [data-visual-editable="1"]{outline:1px dashed #e34a62;outline-offset:4px;cursor:default!important}
+body.visual-editing [data-visual-editable="1"]:hover{background:#d72b3f18}
+body.visual-editing [contenteditable="true"]{outline:2px solid #ff6479;background:#25151b!important;cursor:text;min-width:12px}
+@media(max-width:600px){.visual-editor-bar{width:calc(100vw - 20px);justify-content:space-between;gap:6px;padding:9px}.visual-editor-bar span{font-size:10px}.visual-editor-bar button{padding:9px 10px;font-size:10px}}
+
+/* Visual editor for allowlisted Discord admins */
+.visual-edit-launch{position:fixed;z-index:12000;top:16px;right:18px;background:#a51d3a;color:#fff;border:1px solid #e34a62;border-radius:8px;padding:11px 15px;font-weight:800;cursor:pointer;box-shadow:0 6px 24px #0009}
+.visual-editor-bar{position:fixed;z-index:12001;left:50%;bottom:18px;transform:translateX(-50%);display:none;align-items:center;gap:10px;max-width:calc(100vw - 24px);padding:12px 16px;border:1px solid #8b3447;border-radius:10px;background:#171216;box-shadow:0 12px 50px #000b;color:#fff;font:600 12px Inter,Arial,sans-serif}
+.visual-editor-bar.is-visible{display:flex}
+.visual-editor-bar button{border:0;border-radius:6px;padding:10px 13px;background:#d72b3f;color:#fff;font-weight:800;cursor:pointer}
+.visual-editor-bar button.secondary{background:#302329;border:1px solid #59404a}
+.visual-editor-status{color:#c8b9be;min-width:72px}
+body.visual-editing [data-visual-editable="1"]{outline:1px dashed #e34a62;outline-offset:4px;cursor:default!important}
+body.visual-editing [contenteditable="true"]{outline:2px solid #ff6479;background:#25151b!important;min-width:12px}
+body.visual-editing [data-visual-movable="1"]{cursor:move;outline:1px dashed #e34a62}
+@media(max-width:600px){.visual-edit-launch{top:10px;right:10px;padding:9px;font-size:10px}.visual-editor-bar{width:calc(100vw - 20px);justify-content:space-between;gap:6px;padding:9px}.visual-editor-bar button{padding:9px 10px;font-size:10px}}
+
+/* Webnode-style editor controls and image handling */
+.visual-editor-bar{flex-wrap:wrap}
+.visual-editor-help{font-size:11px;color:#f1dfe3}
+body.visual-editing{cursor:default!important}
+body.visual-editing a,body.visual-editing button{cursor:move!important}
+body.visual-editing a,body.visual-editing button{pointer-events:auto}
+body.visual-editing img{outline:2px dashed #ed5363;outline-offset:3px;cursor:pointer}
+body.visual-editing [data-visual-editable="1"]{user-select:text}
+.visual-editor-added-image{display:block;max-width:min(100%,900px);height:auto;margin:24px auto;border:1px dashed #ed5363}
+.visual-editor-bar button:disabled{opacity:.5;cursor:wait}
+@media(max-width:650px){.visual-editor-bar{flex-wrap:wrap}.visual-editor-help{width:100%}}
+
+/* Fixed left-side visual editor and Word-like formatting controls */
+.visual-edit-launch{position:fixed!important;left:0!important;top:42%!important;z-index:100020!important;writing-mode:vertical-rl!important;transform:rotate(180deg)!important;border:1px solid #8f3b4b!important;border-left:0!important;border-radius:0 9px 9px 0!important;background:#b9233b!important;color:#fff!important;padding:18px 11px!important;font:800 12px Inter,Arial,sans-serif!important;letter-spacing:1.4px!important;box-shadow:0 8px 28px #0009!important;cursor:pointer!important}
+.visual-edit-launch.is-active{left:356px!important;top:18px!important;writing-mode:horizontal-tb!important;transform:none!important;border-radius:7px!important;padding:12px 16px!important}
+.visual-editor-panel{position:fixed;z-index:100010;left:0;top:0;bottom:0;width:350px;max-width:88vw;padding:0 17px 22px;background:#111013;border-right:1px solid #6a303c;box-shadow:12px 0 40px #0009;color:#f7f1f2;overflow-y:auto;transform:translateX(-110%);transition:transform .22s ease;font:12px Inter,Arial,sans-serif}
+.visual-editor-panel.is-open{transform:translateX(0)}
+.ve-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;margin:0 -17px 12px;padding:18px 17px;background:#171316;border-bottom:1px solid #39252b;font-size:14px;letter-spacing:1.2px}
+.ve-head button{background:transparent;border:0;color:#fff;font-size:26px;cursor:pointer}
+.ve-status{padding:11px 12px;margin:10px 0 16px;border:1px solid #55303a;background:#211317;color:#e6bdc5;line-height:1.5}
+.ve-group{display:grid;gap:10px;padding:15px 0;border-bottom:1px solid #30272a}
+.ve-group>b{font-size:10px;letter-spacing:1.4px;color:#f07888}
+.ve-tools{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ve-tools button,.ve-group>button{min-height:34px;border:1px solid #574047;border-radius:4px;background:#21191d;color:#fff;cursor:pointer}
+.ve-tools select,.ve-group select{grid-column:span 2;min-height:36px;background:#21191d;color:#fff;border:1px solid #574047;border-radius:4px;padding:6px}
+.ve-group label{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#cfc3c7;font-size:11px}
+.ve-group input[type=color]{width:48px;height:30px;padding:2px;border:1px solid #574047;border-radius:4px;background:#21191d;cursor:pointer}
+.ve-group input[type=range]{width:145px;accent-color:#d72b3f}
+.ve-group small{color:#a99da1;font-size:10px;line-height:1.6}
+.ve-primary{background:#b9233b!important;border-color:#e04b60!important;color:white!important;font-weight:800}
+.ve-muted{background:#1a1719!important;color:#c5b8bc!important}
+.ve-footer{position:sticky;bottom:-22px;background:#111013;grid-template-columns:1fr 1fr;padding-bottom:22px}
+.ve-footer button{padding:12px 8px;border-radius:4px;cursor:pointer}
+body.visual-editing{cursor:default!important}
+body.visual-editing a,body.visual-editing button{cursor:default!important}
+body.visual-editing img{outline:2px dashed #ed5363;outline-offset:3px;cursor:pointer}
+body.visual-editing [contenteditable=true]{outline:2px solid #ed5363;outline-offset:3px;cursor:text!important}
+.visual-editor-added-image{display:block;max-width:min(100%,900px);height:auto;margin:24px auto;border:1px dashed #ed5363}
+@media(max-width:560px){.visual-editor-panel{width:min(330px,88vw)}.visual-edit-launch.is-active{left:min(336px,89vw)!important;top:10px!important}}
+
+
+/* Refined editor: compact top-left launch button and polished page styling */
+.visual-edit-launch{left:18px!important;right:auto!important;top:16px!important;writing-mode:horizontal-tb!important;transform:none!important;border:1px solid #f05a70!important;border-radius:10px!important;padding:12px 17px!important;background:linear-gradient(135deg,#d72b3f,#81172e)!important;box-shadow:0 8px 28px #0009,0 0 0 1px #ffffff12 inset!important;letter-spacing:.8px!important}
+.visual-edit-launch:hover{filter:brightness(1.12);transform:translateY(-1px)!important}
+.visual-edit-launch.is-active{left:368px!important;top:16px!important}
+.visual-editor-panel{background:linear-gradient(180deg,#171317 0%,#100e11 100%);border-right:1px solid #713443;box-shadow:16px 0 50px #000b}
+.ve-head{background:linear-gradient(110deg,#25131a,#171316);padding-top:20px;padding-bottom:20px}
+.ve-head b{font-size:13px;letter-spacing:1.8px}
+.ve-status{border-radius:8px;background:linear-gradient(120deg,#2a151c,#1b1418);border-color:#66303d}
+.ve-group{gap:12px}
+.ve-group>b{letter-spacing:1.6px}
+.ve-tools button,.ve-group>button,.ve-tools select,.ve-group select{border-radius:7px;transition:background .15s,border-color .15s}
+.ve-tools button:hover,.ve-group>button:hover{background:#392027;border-color:#bd4359}
+.ve-group input[type=color]{border-radius:7px;width:54px;height:34px}
+.ve-primary{background:linear-gradient(135deg,#df334d,#971c37)!important;border-radius:7px!important;box-shadow:0 5px 16px #a51d3a30}
+.ve-footer{padding-top:14px}
+body.visual-editing main,body.visual-editing section,body.visual-editing header,body.visual-editing footer,body.visual-editing .hero,body.visual-editing .section{outline:1px dashed #d94a61;outline-offset:-3px}
+@media(max-width:560px){.visual-edit-launch{left:10px!important;top:10px!important;padding:10px 13px!important}.visual-edit-launch.is-active{left:min(340px,89vw)!important;top:10px!important}}
+
+/* Clear, visible mouse indicator while the visual editor is active */
+.ve-cursor-mark{position:fixed;left:-100px;top:-100px;z-index:100050;width:22px;height:22px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 2px #d72b3f,0 2px 12px #000c;pointer-events:none;transform:translate(-50%,-50%);opacity:0;transition:opacity .12s ease;background:#d72b3f22}
+.ve-cursor-mark:after{content:"";position:absolute;width:4px;height:4px;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:#fff}
+body.visual-editing .ve-cursor-mark{opacity:1}
+
+/* Header editor shortcut sits directly beside the BLOODFANG wordmark */
+.topbar{gap:14px}
+.topbar>.visual-edit-launch{position:static!important;left:auto!important;right:auto!important;top:auto!important;writing-mode:horizontal-tb!important;transform:none!important;flex:0 0 auto;white-space:nowrap;border:1px solid #e34a62!important;border-radius:8px!important;padding:10px 13px!important;background:linear-gradient(135deg,#d72b3f,#81172e)!important;box-shadow:0 4px 16px #0007!important;font:800 10px Inter,Arial,sans-serif!important;letter-spacing:.4px!important}
+.topbar>.visual-edit-launch:hover{filter:brightness(1.12);transform:translateY(-1px)!important}
+.ve-size-control{display:grid;grid-template-columns:1fr auto;align-items:center;gap:7px;grid-column:1/-1}
+.ve-size-control label{display:flex;justify-content:space-between;grid-column:1/-1}
+.ve-size-control output{color:#fff;font-weight:800;font-variant-numeric:tabular-nums}
+.ve-size-control input[type=range]{width:100%;grid-column:1/-1;accent-color:#d72b3f}
+.ve-size-control button{grid-column:1/-1;min-height:32px}
+.visual-editor-added-image{max-width:min(100%,900px);height:auto;object-fit:contain}
+@media(max-width:760px){.topbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.topbar>.visual-edit-launch{padding:9px 10px!important;font-size:9px!important}.topbar .main-nav{width:100%}}
+
+/* Keep the editor shortcut immediately beside the brand, navigation stays right-aligned */
+.topbar{justify-content:flex-start!important}
+.topbar>.main-nav{margin-left:auto}
+
+
+/* Compact draggable floating editor instead of a full-height left rail */
+.visual-editor-panel{left:auto!important;right:18px!important;top:88px!important;bottom:auto!important;width:min(390px,calc(100vw - 24px))!important;max-width:calc(100vw - 24px)!important;height:min(78vh,760px)!important;max-height:calc(100vh - 104px)!important;padding:0 16px 18px!important;border:1px solid #75404c!important;border-radius:14px!important;overflow:auto!important;transform:translateX(calc(100% + 30px))!important;transition:transform .2s ease,box-shadow .2s ease!important;box-shadow:0 18px 60px #000c!important;resize:both;min-width:300px;min-height:220px}
+.visual-editor-panel.is-open{transform:translateX(0)!important}
+.visual-editor-panel.is-minimized{height:58px!important;min-height:58px!important;resize:none;overflow:hidden!important}
+.ve-head{margin:0 -16px 12px!important;padding:15px 16px!important;cursor:grab;touch-action:none;user-select:none}
+.ve-head:active{cursor:grabbing}
+.ve-head-actions{display:flex;align-items:center;gap:7px}
+.ve-head-actions button{width:30px;height:30px;border:1px solid #60404a;border-radius:7px;background:#25191e;color:#fff;font-size:20px;line-height:1}
+.ve-head b small{font-size:9px;font-weight:500;letter-spacing:0;color:#bdaeb3}
+@media(max-width:560px){.visual-editor-panel{right:8px!important;top:74px!important;width:calc(100vw - 16px)!important;max-width:calc(100vw - 16px)!important;height:78vh!important;max-height:calc(100vh - 86px)!important;resize:none}}
+
+/* Native mouse pointer: no crosshair and no fake cursor overlay */
+body.visual-editing,body.visual-editing *{cursor:default!important}
+body.visual-editing .visual-editor-panel button,body.visual-editing .visual-editor-panel select,body.visual-editing .visual-editor-panel input{cursor:pointer!important}
+body.visual-editing .visual-editor-panel .ve-head{cursor:grab!important}
+body.visual-editing .visual-editor-panel .ve-head:active{cursor:grabbing!important}
+body.visual-editing [contenteditable="true"]{cursor:text!important}
+body.visual-editing img{cursor:pointer!important}
+.ve-cursor-mark{display:none!important}
+
+/* Uploaded image controls: selectable, resizable by width, and draggable in editor mode */
+.visual-editor-added-image{max-width:none;object-fit:contain;cursor:move!important;}
+.visual-editor-logo{display:inline-block;vertical-align:middle;margin:0 8px;max-width:100%;height:auto;}
+body.visual-logo-picking .brand,body.visual-logo-picking .hero-mark,body.visual-logo-picking main section,body.visual-logo-picking .store-bottom,body.visual-logo-picking header,body.visual-logo-picking footer{outline:2px dashed #f3bd4f!important;outline-offset:3px!important;cursor:default!important;}
+
+
+/* Word-like direct mouse resizing for uploaded pictures and logos */
+body.visual-editing img.visual-editor-added-image,
+body.visual-editing img.visual-editor-logo{
+  display:inline-block!important;
+  max-width:none!important;
+  min-width:40px;
+  min-height:30px;
+  height:auto;
+  overflow:auto;
+  resize:both;
+  overflow:auto!important;
+  object-fit:contain;
+  vertical-align:middle;
+  cursor:move!important;
+}
+.visual-editor-logo-slot{display:inline-flex!important;align-items:center;justify-content:flex-start;min-width:40px;min-height:30px;vertical-align:middle}
+.visual-editor-logo-slot>img.visual-editor-logo{margin:0!important}
+.visual-editor-panel{resize:both!important}
+.visual-editor-panel.is-minimized{resize:none!important}
+
+/* Preset logo placement in the site header and hero. */
+body.visual-editing .topbar .visual-editor-logo-slot{display:inline-flex!important;align-items:center;vertical-align:middle;}
+body.visual-editing .topbar .brand img.visual-editor-logo{display:inline-block!important;width:34px!important;height:34px!important;max-width:34px!important;object-fit:contain!important;margin:0 9px 0 0!important;vertical-align:middle!important;}
+body.visual-editing .hero-mark img.visual-editor-logo{display:inline-block!important;max-width:120px!important;max-height:120px!important;object-fit:contain!important;}
+
+/* Editor-only drag handle for reliable mouse resizing across browsers. */
+.ve-image-resize-handle{display:none;position:fixed;z-index:100020;width:18px;height:18px;padding:0;border:2px solid #fff;border-radius:50%;background:#e43f5b;box-shadow:0 1px 8px #000b;cursor:nwse-resize!important;touch-action:none}
+body.visual-editing .ve-image-resize-handle{display:block}
+
+/* Uploaded images should never show editor-style dashed borders or outlines. */
+.visual-editor-added-image,
+body.visual-editing img,
+body.visual-editing img.visual-editor-added-image,
+body.visual-editing img.visual-editor-logo {
+  border: 0 !important;
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+/* Keep the admin editor launcher in the same top-left position on every page. */
+.topbar>.brand{flex:0 0 auto}.topbar>.visual-edit-launch{flex:0 0 auto;margin-left:14px;margin-right:auto;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:9px 13px;background:#211419;border-color:#70404a;color:#fff}.topbar>.main-nav{margin-left:auto}.message>.brand+.visual-edit-launch{display:inline-flex;vertical-align:middle;margin:0 0 0 14px;min-height:38px;padding:9px 13px;background:#211419;border:1px solid #70404a;border-radius:4px;color:#fff;font-size:12px;font-weight:700;white-space:nowrap}
+@media(max-width:560px){.topbar{justify-content:flex-start;gap:0}.topbar>.visual-edit-launch{margin-left:10px;padding:8px 9px;font-size:10px}.topbar>.main-nav{margin-left:auto;gap:6px}.message>.brand+.visual-edit-launch{margin-left:8px;padding:8px 9px;font-size:10px}}
