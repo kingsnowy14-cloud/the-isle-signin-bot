@@ -850,11 +850,13 @@ def _page(title, body):
     if editor_admin:
         editor_csrf = session.get("visual_editor_csrf") or secrets.token_urlsafe(32)
         session["visual_editor_csrf"] = editor_csrf
-    editor_assets = (
+    editor_head = (
+        '<meta name="visual-editor-csrf" content="' + html.escape(editor_csrf, quote=True) + '">'
+        '<link rel="stylesheet" href="/static/visual-editor.css">' if editor_admin else ''
+    )
+    editor_scripts = (
         '<script src="/static/visual-edits.js" defer></script>'
-        + ('<meta name="visual-editor-csrf" content="' + html.escape(editor_csrf, quote=True) + '">'
-           '<link rel="stylesheet" href="/static/visual-editor.css">'
-           '<script src="/static/visual-editor.js" defer></script>' if editor_admin else '')
+        + ('<script src="/static/visual-editor.js" defer></script>' if editor_admin else '')
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1125,7 +1127,7 @@ nav:not(.module-nav) .nav-logout-button{{width:auto!important;white-space:nowrap
   }},{{passive:true}});
  }}
 }})();
-</script>{editor_assets}</body></html>"""
+</script>{editor_scripts}</body></html>"""
 
 
 
