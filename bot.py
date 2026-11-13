@@ -1259,7 +1259,8 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
     cfg["ticket_counter"] = int(cfg.get("ticket_counter", 0)) + 1
     ticket_number = cfg["ticket_counter"]
     safe_name = "".join(c.lower() if c.isalnum() else "-" for c in interaction.user.name).strip("-")
-    channel_name = f"ticket-{ticket_number:04d}-{safe_name[:30] or 'user'}"
+    safe_label = "".join(c.lower() if c.isalnum() else "-" for c in str(button_label)).strip("-")
+    channel_name = f"ticket-{safe_label[:24] or 'support'}-{safe_name[:24] or 'user'}"
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
@@ -1317,8 +1318,8 @@ async def _create_ticket_from_interaction(interaction: discord.Interaction, pane
     await channel.send(
         f"{staff_ping}👋 **Welcome, {interaction.user.mention}!** Thanks for contacting support.\n"
         "Please describe your issue and include any relevant details.\n\n"
-        "**Ticket access:** Use /add @user to invite another member, or /remove @user to remove someone.\n"
-        "**Closing:** Press the 🔒 Close Ticket button in the ticket information message when your request is resolved.\n"
+        "**Ticket access:** Support staff can use the Add User and Remove User buttons below.\n"
+        "**Closing:** Press the 🔒 Close Ticket button when your request is resolved.\n"
         "Our support team will assist you as soon as possible.",
         allowed_mentions=discord.AllowedMentions(
             users=[interaction.user],
@@ -1497,20 +1498,45 @@ def ticket_status_embed(meta, channel_id=None):
     owner_id = meta.get("owner_id")
     claimed_by = meta.get("claimed_by")
     embed = discord.Embed(
-        title="🎫 Ticket Information",
-        description=(
-            "**Ticket commands**\n"
-            "• /add @user — give another member access to this private ticket\n"
-            "• /remove @user — remove a member from this private ticket\n"
-            "• Use the Close Ticket button below when your request is resolved."
-        ),
+        title=f"🎫 Ticket — {str(meta.get('label') or 'Support')[:220]}",
+        description="Use the buttons below to manage this ticket. The support team will assist you as soon as possible.",
         color=discord.Color.blurple(),
     )
     embed.add_field(name="Category", value=str(meta.get("label") or "Ticket")[:100], inline=True)
-    embed.add_field(name="Ticket ID", value=str(ticket_id), inline=True)
     embed.add_field(name="Opened by", value=f"<@{owner_id}>" if owner_id else "Unknown", inline=True)
     embed.add_field(name="Claimed by", value=f"<@{claimed_by}>" if claimed_by else "Nobody", inline=True)
     return embed
+
+
+class TicketMemberAccessModal(discord.ui.Modal):
+    def __init__(self, add: bool):
+        self.add_member = add
+        super().__init__(title="Add User to Ticket" if add else "Remove User from Ticket")
+        self.member_input = discord.ui.TextInput(
+            label="Member ID or @mention",
+            placeholder="Enter a Discord user ID or mention",
+            required=True,
+            max_length=32,
+        )
+        self.add_item(self.member_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw_value = str(self.member_input.value).strip()
+        match = re.fullmatch(r"<@!?(\\d+)>", raw_value)
+        member_id = int(match.group(1) if match else raw_value) if (match or raw_value.isdigit()) else None
+        if member_id is None:
+            await interaction.response.send_message("Please enter a valid Discord user ID or @mention.", ephemeral=True)
+            return
+        member = interaction.guild.get_member(member_id) if interaction.guild else None
+        if member is None and interaction.guild:
+            try:
+                member = await interaction.guild.fetch_member(member_id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                member = None
+        if member is None:
+            await interaction.response.send_message("That member could not be found in this server.", ephemeral=True)
+            return
+        await _change_ticket_member(interaction, member, self.add_member)
 
 
 class TicketControlView(discord.ui.View):
@@ -1538,15 +1564,45 @@ class TicketControlView(discord.ui.View):
         claim_button.callback = self.claim
         self.add_item(claim_button)
 
-        release_button = discord.ui.Button(
-            label="Release",
+        add_button = discord.ui.Button(
+            label="Add User",
             style=discord.ButtonStyle.secondary,
-            emoji="🔓",
-            custom_id="ticket:release",
-            row=0,
+            emoji="➕",
+            custom_id="ticket:add_user",
+            row=1,
         )
-        release_button.callback = self.release
-        self.add_item(release_button)
+        add_button.callback = self.add_user
+        self.add_item(add_button)
+
+        remove_button = discord.ui.Button(
+            label="Remove User",
+            style=discord.ButtonStyle.secondary,
+            emoji="➖",
+            custom_id="ticket:remove_user",
+            row=1,
+        )
+        remove_button.callback = self.remove_user
+        self.add_item(remove_button)
+
+    async def add_user(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta:
+            await interaction.response.send_message("Ticket data not found.", ephemeral=True)
+            return
+        if not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketMemberAccessModal(add=True))
+
+    async def remove_user(self, interaction: discord.Interaction):
+        meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
+        if not meta:
+            await interaction.response.send_message("Ticket data not found.", ephemeral=True)
+            return
+        if not is_support(interaction.user, meta, interaction.guild):
+            await interaction.response.send_message("Only the configured support team can manage ticket members.", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketMemberAccessModal(add=False))
 
     async def claim(self, interaction: discord.Interaction):
         meta = data.setdefault("tickets", {}).get(str(interaction.channel_id))
