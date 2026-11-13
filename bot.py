@@ -1572,7 +1572,7 @@ class TicketControlView(discord.ui.View):
 
         claim_button = discord.ui.Button(
             label="Claim",
-            style=discord.ButtonStyle.primary,
+            style=discord.ButtonStyle.success,
             emoji="🙋",
             custom_id="ticket:claim",
             row=0,
@@ -1582,7 +1582,7 @@ class TicketControlView(discord.ui.View):
 
         release_button = discord.ui.Button(
             label="Release",
-            style=discord.ButtonStyle.success,
+            style=discord.ButtonStyle.secondary,
             emoji="🔓",
             custom_id="ticket:release",
             row=0,
@@ -1592,7 +1592,7 @@ class TicketControlView(discord.ui.View):
 
         add_button = discord.ui.Button(
             label="Add User",
-            style=discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.primary,
             emoji="➕",
             custom_id="ticket:add_user",
             row=1,
@@ -1602,7 +1602,7 @@ class TicketControlView(discord.ui.View):
 
         remove_button = discord.ui.Button(
             label="Remove User",
-            style=discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.danger,
             emoji="➖",
             custom_id="ticket:remove_user",
             row=1,
