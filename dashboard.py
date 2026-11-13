@@ -1989,7 +1989,7 @@ def log_dashboard_navigation():
     """Log module-page requests and count anonymous aggregate website views."""
     if request.method == "GET":
         path = request.path or "/"
-        ignored = ("/static/", "/api/", "/uploads/", "/admin/website-statistics")
+        ignored = ("/static/", "/api/", "/uploads/", "/admin/")
         assets = (".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico", ".woff", ".woff2", ".map")
         if not path.startswith(ignored) and path not in {"/favicon.ico", "/robots.txt"} and not path.lower().endswith(assets):
             try:
